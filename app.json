@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "almanac",
+    "slug": "almanac",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.jeunepigeon.almanac"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "0fa615d9-f762-48d6-95ac-1201c1284b9e"
+      }
+    },
+    "owner": "jeunepigeon",
+    "plugins": [
+      "expo-sqlite"
+    ]
+  }
+}
