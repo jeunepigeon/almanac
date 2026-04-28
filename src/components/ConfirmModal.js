@@ -10,6 +10,8 @@ export default function ConfirmModal({
   onConfirm,
   onCancel,
   destructive = false,
+  // Si on veut afficher 2 boutons d'action en plus d'annuler (ex: archiver / effacer).
+  extraActions = null,
 }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
@@ -19,16 +21,41 @@ export default function ConfirmModal({
             {title ? <Text style={styles.title}>{title}</Text> : null}
             {message ? <Text style={styles.message}>{message}</Text> : null}
 
-            <View style={styles.actions}>
-              <TouchableOpacity onPress={onCancel} style={styles.actionBtn}>
-                <Text style={styles.actionMuted}>{cancelLabel}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={onConfirm} style={styles.actionBtn}>
-                <Text style={destructive ? styles.actionDanger : styles.actionPrimary}>
-                  {confirmLabel}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            {extraActions ? (
+              <View style={styles.actionsCol}>
+                {extraActions.map((a) => (
+                  <TouchableOpacity
+                    key={a.label}
+                    onPress={a.onPress}
+                    style={styles.actionRow}
+                  >
+                    <Text
+                      style={[
+                        styles.actionRowLabel,
+                        a.destructive && { color: theme.colors.danger },
+                      ]}
+                    >
+                      {a.label}
+                    </Text>
+                    {a.hint ? <Text style={styles.actionRowHint}>{a.hint}</Text> : null}
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity onPress={onCancel} style={styles.actionRow}>
+                  <Text style={styles.actionMuted}>{cancelLabel}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.actions}>
+                <TouchableOpacity onPress={onCancel} style={styles.actionBtn}>
+                  <Text style={styles.actionMuted}>{cancelLabel}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={onConfirm} style={styles.actionBtn}>
+                  <Text style={destructive ? styles.actionDanger : styles.actionPrimary}>
+                    {confirmLabel}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </Pressable>
         </View>
       </Pressable>
@@ -72,9 +99,29 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: theme.spacing.lg,
   },
+  actionsCol: {
+    gap: theme.spacing.xs,
+  },
   actionBtn: {
     paddingVertical: theme.spacing.sm,
     paddingHorizontal: theme.spacing.sm,
+  },
+  actionRow: {
+    paddingVertical: theme.spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: theme.colors.border,
+  },
+  actionRowLabel: {
+    color: theme.colors.text,
+    fontSize: theme.font.sizes.md,
+    fontWeight: '400',
+    letterSpacing: 0.5,
+  },
+  actionRowHint: {
+    color: theme.colors.textFaint,
+    fontSize: theme.font.sizes.sm,
+    fontWeight: '300',
+    marginTop: 2,
   },
   actionMuted: {
     color: theme.colors.textMuted,
@@ -89,7 +136,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   actionDanger: {
-    color: '#E0524C',
+    color: theme.colors.danger,
     fontSize: theme.font.sizes.md,
     fontWeight: '400',
     letterSpacing: 1,

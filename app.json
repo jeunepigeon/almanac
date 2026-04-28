@@ -1,27 +1,30 @@
 {
   "expo": {
-    "name": "almanac",
+    "name": "Almanac",
     "slug": "almanac",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": true,
+    "userInterfaceStyle": "dark",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0E0E0E"
     },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": false,
+      "bundleIdentifier": "com.jeunepigeon.almanac"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#0E0E0E"
       },
-      "edgeToEdgeEnabled": true,
-      "package": "com.jeunepigeon.almanac"
+      "package": "com.jeunepigeon.almanac",
+      "versionCode": 100
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -31,9 +34,8 @@
         "projectId": "0fa615d9-f762-48d6-95ac-1201c1284b9e"
       }
     },
-    "owner": "jeunepigeon",
     "plugins": [
-      "expo-sqlite"
+      "expo-iap"
     ]
   }
 }

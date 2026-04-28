@@ -1,5 +1,4 @@
 // Palette pensée pour rester sobre et lisible.
-// Le thème sera affiné plus tard, là on pose juste les bases.
 
 export const theme = {
   colors: {
@@ -11,19 +10,22 @@ export const theme = {
     textFaint: '#3A3A3A',
     border: '#2A2A2A',
     accent: '#EDEDED',
+    danger: '#E0524C',
   },
-  // Palette des 10 couleurs de substances
+  // Palette des 12 couleurs de substances.
   substanceColors: [
-    '#E0524C', // rouge
-    '#E08C3C', // orange
-    '#D9C04A', // jaune
-    '#6FB36F', // vert
-    '#4FB8A8', // turquoise
-    '#5784C2', // bleu
-    '#8E6FB8', // violet
-    '#C26FA8', // magenta
-    '#9C7B5C', // brun
-    '#8A8A8A', // gris
+    '#FF4962', // rouge vif
+    '#EA1E63', // rose foncé
+    '#01C853', // vert vif
+    '#009788', // vert teal
+    '#2196F3', // bleu clair
+    '#3F51B5', // bleu foncé
+    '#9C28B1', // violet
+    '#00BCD5', // cyan
+    '#FEC107', // jaune
+    '#FF9700', // orange
+    '#795547', // brun
+    '#607D8B', // gris bleu
   ],
   spacing: {
     xs: 4,
@@ -34,11 +36,13 @@ export const theme = {
   },
   font: {
     sizes: {
+      xs: 10,
       sm: 12,
       md: 14,
       lg: 18,
       xl: 24,
       xxl: 32,
+      xxxl: 48,
     },
   },
 };
