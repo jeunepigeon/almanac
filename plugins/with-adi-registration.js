@@ -1,21 +1,26 @@
 const { withAndroidManifest } = require('@expo/config-plugins');
 
 module.exports = function withADIRegistration(config) {
-  return withAndroidManifest(config, async (config) => {
-    const manifest = config.modResults;
-    
-    // Ajoute le meta-data ADI au manifest
-    if (!manifest.manifest[0]['meta-data']) {
-      manifest.manifest[0]['meta-data'] = [];
+  return withAndroidManifest(config, (config) => {
+    const manifest = config.modResults.manifest;
+
+    if (!manifest['meta-data']) {
+      manifest['meta-data'] = [];
     }
-    
-    manifest.manifest[0]['meta-data'].push({
-      $: {
-        'android:name': 'com.google.android.gms.ads.REGISTRATION_TOKEN',
-        'android:value': 'CXGEUMV2VDBDKAAAAAAAAAAAAA'
-      }
-    });
-    
+
+    const exists = manifest['meta-data'].find(
+      (item) => item.$['android:name'] === 'com.google.android.play.developerverfication.REGISTRATION_TOKEN'
+    );
+
+    if (!exists) {
+      manifest['meta-data'].push({
+        $: {
+          'android:name': 'com.google.android.play.developerverfication.REGISTRATION_TOKEN',
+          'android:value': 'CXGEUMV2VDBDKAAAAAAAAAAAAA',
+        },
+      });
+    }
+
     return config;
   });
 };
