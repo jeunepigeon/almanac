@@ -20,12 +20,12 @@ import {
 } from 'expo-iap';
 
 export const DONATION_PRODUCTS = [
-  { id: 'small_tip', label: 'Small tip', emoji: '☕', price: '0,99 €' },
-  { id: 'coffee',    label: 'Coffee',    emoji: '☕', price: '1,99 €' },
-  { id: 'beer',      label: 'Beer',      emoji: '🍺', price: '4,99 €' },
-  { id: 'meal',      label: 'Meal',      emoji: '🍽️', price: '9,99 €' },
-  { id: 'legend',    label: 'Legend',    emoji: '👑', price: '19,99 €' },
-  { id: 'ultra',     label: 'Ultra',     emoji: '🚀', price: '49,99 €' },
+  { id: 'small_tip', label: 'Palier 1', price: '0,99 €' },
+  { id: 'coffee',    label: 'Palier 2', price: '1,99 €' },
+  { id: 'beer',      label: 'Palier 3', price: '4,99 €' },
+  { id: 'meal',      label: 'Palier 4', price: '9,99 €' },
+  { id: 'legend',    label: 'Palier 5', price: '19,99 €' },
+  { id: 'ultra',     label: 'Palier 6', price: '49,99 €' },
 ];
 
 const PRODUCT_IDS = DONATION_PRODUCTS.map((p) => p.id);

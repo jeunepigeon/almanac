@@ -64,7 +64,7 @@ export default function SettingsScreen() {
 
       <Text style={styles.sectionTitle}>Soutenir le projet</Text>
       <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('Donations')}>
-        <Text style={styles.rowLabel}>Soutenir le développeur ❤️</Text>
+        <Text style={styles.rowLabel}>Soutenir le développement</Text>
         <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
       </TouchableOpacity>
 
@@ -87,7 +87,7 @@ export default function SettingsScreen() {
       <Text style={styles.sectionTitle}>À propos</Text>
       <View style={styles.row}>
         <Text style={styles.rowLabel}>Version</Text>
-        <Text style={styles.rowValue}>1.0.0</Text>
+        <Text style={styles.rowValue}>1.0.1</Text>
       </View>
       <View style={styles.row}>
         <Text style={styles.rowLabel}>Consos enregistrées depuis</Text>

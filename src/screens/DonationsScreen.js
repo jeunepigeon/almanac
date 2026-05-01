@@ -47,7 +47,6 @@ export default function DonationsScreen() {
               disabled={!!purchasing || !connected}
               activeOpacity={0.6}
             >
-              <Text style={styles.emoji}>{product.emoji}</Text>
               <Text style={styles.rowLabel}>{product.label}</Text>
               {isBuying ? (
                 <ActivityIndicator size="small" color={theme.colors.text} />
@@ -72,7 +71,6 @@ export default function DonationsScreen() {
       >
         <Pressable style={styles.overlay} onPress={consumeThanks}>
           <View style={styles.thankYouCard}>
-            <Text style={styles.thankYouEmoji}>❤️</Text>
             <Text style={styles.thankYouTitle}>Merci pour ton soutien</Text>
             <Text style={styles.thankYouText}>
               Ça compte vraiment. Bonne continuation.
@@ -150,7 +148,6 @@ const styles = StyleSheet.create({
   },
   rowLast: { borderBottomWidth: 0 },
   rowBuying: { opacity: 0.5 },
-  emoji: { fontSize: 18, width: 24, textAlign: 'center' },
   rowLabel: {
     flex: 1,
     color: theme.colors.text,
@@ -187,7 +184,6 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     gap: theme.spacing.md,
   },
-  thankYouEmoji: { fontSize: 36 },
   thankYouTitle: {
     color: theme.colors.text,
     fontSize: theme.font.sizes.lg,
