@@ -1,30 +1,21 @@
 {
   "cli": {
-    "version": ">= 18.8.1",
-    "appVersionSource": "remote"
+    "version": ">= 5.0.0"
   },
   "build": {
-    "development": {
-      "developmentClient": true,
-      "distribution": "internal",
-      "android": {
-        "buildType": "apk"
-      }
-    },
     "preview": {
-      "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {},
+      "hooks": {
+        "pre-install": "./eas-hooks/eas-build-pre-install.sh"
       }
     },
     "production": {
-      "autoIncrement": true,
       "android": {
-        "buildType": "apk"
+        "buildType": "app-bundle"
       }
     }
-  },
-  "submit": {
-    "production": {}
   }
 }
