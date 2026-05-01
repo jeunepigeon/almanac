@@ -303,12 +303,6 @@ export function computeGlobalStats(consumptionsBySubstance, substancesById, wind
   };
 }
 
-function dayKeyOf(ts) {
-  const d = new Date(ts);
-  const p = (n) => (n < 10 ? `0${n}` : `${n}`);
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
 // Format intervalle moyen en texte humain
 export function formatInterval(ms) {
   if (ms == null) return '—';
