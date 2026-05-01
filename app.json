@@ -11,6 +11,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#0E0E0E"
     },
+    "plugins": [
+      "./plugins/with-adi-registration.js"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.jeunepigeon.almanac"
