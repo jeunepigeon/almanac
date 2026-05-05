@@ -1,38 +1,23 @@
 // Calculs de statistiques sur des consommations.
-// Fenêtres temporelles supportées : 'this_month', '3m', '6m', '1y', 'all'.
+// Fenêtres temporelles : jours glissants.
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 export const WINDOWS = [
-  { id: 'this_month', label: 'Ce mois' },
-  { id: '3m', label: '3 mois' },
-  { id: '6m', label: '6 mois' },
-  { id: '1y', label: '1 an' },
-  { id: 'all', label: 'Tout' },
+  { id: '30d',  label: '30j' },
+  { id: '90d',  label: '90j' },
+  { id: '180d', label: '180j' },
+  { id: '365d', label: '365j' },
+  { id: 'all',  label: 'Tout' },
 ];
 
 // Renvoie [start, end] (timestamps en ms) pour une fenêtre donnée.
-// 'all' renvoie [null, now].
 export function windowRange(windowId, now = Date.now()) {
   const end = now;
-  const d = new Date(now);
-  if (windowId === 'this_month') {
-    d.setDate(1);
-    d.setHours(0, 0, 0, 0);
-    return [d.getTime(), end];
-  }
-  if (windowId === '3m') {
-    d.setMonth(d.getMonth() - 3);
-    return [d.getTime(), end];
-  }
-  if (windowId === '6m') {
-    d.setMonth(d.getMonth() - 6);
-    return [d.getTime(), end];
-  }
-  if (windowId === '1y') {
-    d.setFullYear(d.getFullYear() - 1);
-    return [d.getTime(), end];
-  }
+  if (windowId === '30d')  return [end - 30  * MS_PER_DAY, end];
+  if (windowId === '90d')  return [end - 90  * MS_PER_DAY, end];
+  if (windowId === '180d') return [end - 180 * MS_PER_DAY, end];
+  if (windowId === '365d') return [end - 365 * MS_PER_DAY, end];
   // 'all'
   return [null, end];
 }

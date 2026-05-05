@@ -20,7 +20,7 @@ export default function StatsView({
   substancesById,
   color = theme.colors.text,
 }) {
-  const [windowId, setWindowId] = useState('this_month');
+  const [windowId, setWindowId] = useState('30d');
   // Sélection des tranches du camembert : 'sobres' + substanceId -> bool
   // Réinitialisé à chaque changement de globalStats (fenêtre ou données)
   const [pieSelection, setPieSelection] = useState(null);
