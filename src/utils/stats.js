@@ -39,8 +39,18 @@ function dayKeyOf(ts) {
 }
 
 // Calcule l'ensemble des stats principales.
-export function computeStats(consumptions, windowId, now = Date.now()) {
-  const inWindow = filterInWindow(consumptions, windowId, now);
+export function computeStats(consumptions, windowId, options = {}) {
+  const now = typeof options === 'number' ? options : (options.now || Date.now());
+  const customRange = typeof options === 'object' ? options.customRange : null;
+  const perPrise = typeof options === 'object' ? (options.perPrise || false) : false;
+
+  let inWindow;
+  if (customRange) {
+    const [start, end] = customRange;
+    inWindow = consumptions.filter((c) => c.timestamp >= start && c.timestamp <= end);
+  } else {
+    inWindow = filterInWindow(consumptions, windowId, now);
+  }
   const total = inWindow.length;
 
   if (total === 0) {
@@ -68,7 +78,7 @@ export function computeStats(consumptions, windowId, now = Date.now()) {
   const daysSet = new Set(inWindow.map((c) => dayKeyOf(c.timestamp)));
   const daysWithConsumption = daysSet.size;
 
-  const [start, end] = windowRange(windowId, now);
+  const [start, end] = customRange ? customRange : windowRange(windowId, now);
   let totalDays;
   if (start === null) {
     // 'all' : du jour de la première conso à aujourd'hui
@@ -222,14 +232,21 @@ export function computeStats(consumptions, windowId, now = Date.now()) {
 
 // Stats globales : par-substance et répartition pour camembert.
 // activeOnly : si true, n'inclut que les substances non-archivées.
-export function computeGlobalStats(consumptionsBySubstance, substancesById, windowId, now = Date.now(), { activeOnly = true } = {}) {
+export function computeGlobalStats(consumptionsBySubstance, substancesById, windowId, now = Date.now(), { activeOnly = true, customRange = null } = {}) {
   // Collecte toutes les consos actives dans la fenêtre, par substance
   const consosBySubInWindow = {};
   for (const subId of Object.keys(consumptionsBySubstance)) {
     const sub = substancesById[subId];
     if (!sub) continue;
     if (activeOnly && sub.archived) continue;
-    consosBySubInWindow[subId] = filterInWindow(consumptionsBySubstance[subId] || [], windowId, now);
+    if (customRange) {
+      const [s, e] = customRange;
+      consosBySubInWindow[subId] = (consumptionsBySubstance[subId] || []).filter(
+        (c) => c.timestamp >= s && c.timestamp <= e
+      );
+    } else {
+      consosBySubInWindow[subId] = filterInWindow(consumptionsBySubstance[subId] || [], windowId, now);
+    }
   }
 
   // Jours avec conso par substance (binaire : 1 point = 1 jour)
@@ -245,7 +262,7 @@ export function computeGlobalStats(consumptionsBySubstance, substancesById, wind
   }
 
   // Calcul de la fenêtre
-  const [start, end] = windowRange(windowId, now);
+  const [start, end] = customRange ? customRange : windowRange(windowId, now);
   let totalDaysInWindow = 0;
   const allConsos = Object.values(consosBySubInWindow).flat();
   if (start !== null) {

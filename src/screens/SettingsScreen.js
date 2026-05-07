@@ -87,7 +87,7 @@ export default function SettingsScreen() {
       <Text style={styles.sectionTitle}>À propos</Text>
       <View style={styles.row}>
         <Text style={styles.rowLabel}>Version</Text>
-        <Text style={styles.rowValue}>1.0.2</Text>
+        <Text style={styles.rowValue}>1.0.4</Text>
       </View>
       <View style={styles.row}>
         <Text style={styles.rowLabel}>Consos enregistrées depuis</Text>
