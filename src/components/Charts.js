@@ -50,9 +50,10 @@ export function BarChart({ data, labels, color = theme.colors.text, height = 120
   );
 }
 
-// ---------- LineChart : courbe simple ----------
-// data : array of { ts, count } sur une période
-export function LineChart({ data, color = theme.colors.text, height = 140 }) {
+// ---------- LineChart : courbe simple ou arc-en-ciel par segment ----------
+// data : array of { ts, count }
+// segmentColors : array de couleurs (longueur = data.length - 1), optionnel
+export function LineChart({ data, color = theme.colors.text, height = 140, segmentColors = null }) {
   const w = SCREEN_W - 64;
   if (!data || data.length === 0) {
     return (
@@ -69,7 +70,6 @@ export function LineChart({ data, color = theme.colors.text, height = 140 }) {
   const innerW = w - padX * 2;
   const innerH = height - padY * 2;
 
-  // Si une seule donnée, affiche un point au centre
   if (data.length === 1) {
     return (
       <Svg width={w} height={height} style={{ alignSelf: 'center' }}>
@@ -79,19 +79,39 @@ export function LineChart({ data, color = theme.colors.text, height = 140 }) {
   }
 
   const stepX = innerW / (data.length - 1);
-  const points = data.map((d, i) => {
-    const x = padX + i * stepX;
-    const y = padY + innerH - (d.count / max) * innerH;
-    return { x, y };
-  });
+  const points = data.map((d, i) => ({
+    x: padX + i * stepX,
+    y: padY + innerH - (d.count / max) * innerH,
+  }));
 
-  // Path
+  if (segmentColors && segmentColors.length >= data.length - 1) {
+    // Arc-en-ciel : un Path par segment
+    const segments = [];
+    for (let i = 0; i < points.length - 1; i++) {
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const segColor = segmentColors[i] || color;
+      const segPath = `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
+      const areaPath = `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y} L ${p2.x} ${padY + innerH} L ${p1.x} ${padY + innerH} Z`;
+      segments.push({ segPath, areaPath, segColor });
+    }
+    return (
+      <Svg width={w} height={height} style={{ alignSelf: 'center' }}>
+        {segments.map((s, i) => (
+          <Path key={`a${i}`} d={s.areaPath} fill={s.segColor} opacity={0.15} />
+        ))}
+        {segments.map((s, i) => (
+          <Path key={`l${i}`} d={s.segPath} stroke={s.segColor} strokeWidth={1.5} fill="none" />
+        ))}
+      </Svg>
+    );
+  }
+
+  // Courbe simple (mode substance ou global sans segmentColors)
   let pathD = `M ${points[0].x} ${points[0].y}`;
   for (let i = 1; i < points.length; i++) {
     pathD += ` L ${points[i].x} ${points[i].y}`;
   }
-
-  // Path zone fill (pour effet aire)
   let areaD = pathD;
   areaD += ` L ${points[points.length - 1].x} ${padY + innerH}`;
   areaD += ` L ${points[0].x} ${padY + innerH} Z`;

@@ -126,6 +126,32 @@ export default function StatsView({
     return top ? top.substance.color : color;
   }, [mode, globalStats, pieSelection, color]);
 
+  const segmentColors = useMemo(() => {
+    if (mode !== 'global' || !stats?.timeline || !consumptionsBySubstance) return null;
+    const timeline = stats.timeline;
+    if (timeline.length < 2) return null;
+    const dayKey = (ts) => {
+      const d = new Date(ts);
+      const p = (n) => (n < 10 ? `0${n}` : `${n}`);
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    };
+    return timeline.slice(0, -1).map((point) => {
+      const k = dayKey(point.ts);
+      let maxCount = 0;
+      let topColor = dominantColor;
+      for (const subId of Object.keys(consumptionsBySubstance)) {
+        if (pieSelection && pieSelection[subId] === false) continue;
+        const sub = substancesById?.[subId];
+        if (!sub || sub.archived) continue;
+        const count = (consumptionsBySubstance[subId] || []).filter(
+          (c) => dayKey(c.timestamp) === k
+        ).length;
+        if (count > maxCount) { maxCount = count; topColor = sub.color; }
+      }
+      return topColor;
+    });
+  }, [mode, stats, consumptionsBySubstance, substancesById, pieSelection, dominantColor]);
+
   const openPicker = (target) => {
     setPickerTarget(target);
     setPickerVisible(true);
@@ -246,14 +272,14 @@ export default function StatsView({
             }>
               <View style={styles.pieRow}>
                 <PieChart size={130} data={pieData} />
-                <ScrollView style={{ flex: 1, maxHeight: 200 }} contentContainerStyle={styles.pieCheckboxList} showsVerticalScrollIndicator={false} nestedScrollEnabled>
+                <View style={[styles.pieCheckboxList, { flex: 1 }]}>
                   {globalStats.jourssobresEntry && (
                     <PieCheckbox id="sobres" label="Jours sobres" value={globalStats.jourssobresEntry.count} color={theme.colors.textFaint} checked={!!pieSelection.sobres} onToggle={() => togglePieItem('sobres')} />
                   )}
                   {globalStats.breakdown.map((b) => (
                     <PieCheckbox key={b.substance.id} id={b.substance.id} label={b.substance.name} value={b.count} color={b.substance.color} checked={!!pieSelection[b.substance.id]} onToggle={() => togglePieItem(b.substance.id)} />
                   ))}
-                </ScrollView>
+                </View>
               </View>
               <Text style={styles.pieNote}>En jours · {globalStats.totalDaysInWindow}j au total</Text>
             </ChartCard>
@@ -282,12 +308,12 @@ export default function StatsView({
                 <View style={[styles.perPriseBox, perPrise && { backgroundColor: color, borderColor: color }]}>
                   {perPrise && <Ionicons name="checkmark" size={10} color="#fff" />}
                 </View>
-                <Text style={styles.perPriseLabel}>Par prise</Text>
+                <Text style={styles.perPriseLabel}>Par jour</Text>
               </TouchableOpacity>
             </View>
           }>
             {stats.timeline && stats.timeline.length > 0 && stats.total > 0 ? (
-              <LineChart data={stats.timeline} color={dominantColor} height={120} />
+              <LineChart data={stats.timeline} color={dominantColor} height={120} segmentColors={segmentColors} />
             ) : (
               <View style={styles.emptyChart}><Text style={styles.emptyChartText}>Pas de consommation sur la période</Text></View>
             )}
@@ -342,11 +368,23 @@ const styles = StyleSheet.create({
   windowSelector: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.md, marginBottom: theme.spacing.xs },
   windowChip: { paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs, borderRadius: 4, borderWidth: 1, borderColor: theme.colors.border },
   windowChipText: { color: theme.colors.textMuted, fontSize: theme.font.sizes.sm, fontWeight: '300', letterSpacing: 0.5 },
-  customRangeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm, paddingHorizontal: theme.spacing.md, marginBottom: theme.spacing.md },
-  customDateBtn: { paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs, borderRadius: 4, borderWidth: 1, borderColor: theme.colors.border },
-  customDateText: { fontSize: theme.font.sizes.sm, fontWeight: '300', letterSpacing: 0.5 },
-  customSep: { color: theme.colors.textMuted, fontSize: theme.font.sizes.sm },
-  periodBand: { fontSize: theme.font.sizes.xs, fontWeight: '300', letterSpacing: 0.5, textAlign: 'center', opacity: 0.7, marginBottom: theme.spacing.md },
+  customRangeRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: theme.spacing.md, marginHorizontal: theme.spacing.md,
+    marginBottom: theme.spacing.md, marginTop: theme.spacing.xs,
+  },
+  customDateBtn: {
+    paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm,
+    borderRadius: 4, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border,
+    minWidth: 90, alignItems: 'center',
+  },
+  customDateText: { fontSize: theme.font.sizes.sm, fontWeight: '300', letterSpacing: 1 },
+  customSep: { color: theme.colors.textMuted, fontSize: theme.font.sizes.md, fontWeight: '200' },
+  periodBand: {
+    fontSize: theme.font.sizes.xs, fontWeight: '300', letterSpacing: 1,
+    textAlign: 'center', opacity: 0.6, marginBottom: theme.spacing.md,
+    marginTop: 2,
+  },
   numbersRow: { flexDirection: 'row', paddingHorizontal: theme.spacing.md, marginBottom: theme.spacing.md, gap: theme.spacing.sm },
   metricCell: { flex: 1, backgroundColor: theme.colors.surface, paddingVertical: theme.spacing.md, paddingHorizontal: theme.spacing.sm, borderRadius: 4, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border, alignItems: 'center', minHeight: 70, justifyContent: 'center' },
   metricValue: { color: theme.colors.text, fontSize: theme.font.sizes.lg, fontWeight: '300', fontVariant: ['tabular-nums'], letterSpacing: 0.5 },

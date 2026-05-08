@@ -165,7 +165,7 @@ export function computeStats(consumptions, windowId, options = {}) {
     }
   }
 
-  // Timeline (consos par jour) — pour graphique courbe
+  // Timeline — perPrise=false (défaut) : nb prises par jour. perPrise=true : 1 si consommé, 0 sinon
   const timeline = [];
   if (totalDays > 0) {
     const startDay = start === null
@@ -182,7 +182,8 @@ export function computeStats(consumptions, windowId, options = {}) {
     let cur = new Date(startDay);
     while (cur.getTime() <= endDay.getTime()) {
       const k = dayKeyOf(cur.getTime());
-      timeline.push({ ts: cur.getTime(), count: dayCount[k] || 0 });
+      const raw = dayCount[k] || 0;
+      timeline.push({ ts: cur.getTime(), count: perPrise ? (raw > 0 ? 1 : 0) : raw });
       cur.setDate(cur.getDate() + 1);
     }
   }
