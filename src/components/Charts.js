@@ -50,7 +50,7 @@ export function BarChart({ data, labels, color = theme.colors.text, height = 120
   );
 }
 
-// ---------- LineChart : courbe simple ou arc-en-ciel par segment ----------
+// ---------- LineChart : courbe avec graduations temporelles ----------
 // data : array of { ts, count }
 // segmentColors : array de couleurs (longueur = data.length - 1), optionnel
 export function LineChart({ data, color = theme.colors.text, height = 140, segmentColors = null }) {
@@ -64,16 +64,19 @@ export function LineChart({ data, color = theme.colors.text, height = 140, segme
       </View>
     );
   }
+
+  const LABEL_H = 16;
+  const chartH = height - LABEL_H;
   const max = Math.max(...data.map((d) => d.count), 1);
   const padX = 8;
   const padY = 8;
   const innerW = w - padX * 2;
-  const innerH = height - padY * 2;
+  const innerH = chartH - padY * 2;
 
   if (data.length === 1) {
     return (
       <Svg width={w} height={height} style={{ alignSelf: 'center' }}>
-        <Circle cx={w / 2} cy={height / 2} r={3} fill={color} />
+        <Circle cx={w / 2} cy={chartH / 2} r={3} fill={color} />
       </Svg>
     );
   }
@@ -84,43 +87,62 @@ export function LineChart({ data, color = theme.colors.text, height = 140, segme
     y: padY + innerH - (d.count / max) * innerH,
   }));
 
+  // Graduation : 3 labels (début, milieu, fin)
+  const fmtShort = (ts) => {
+    const d = new Date(ts);
+    return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+  };
+  const labelIndices = [0, Math.floor((data.length - 1) / 2), data.length - 1];
+  const labels = labelIndices.map((i) => ({ x: points[i].x, text: fmtShort(data[i].ts) }));
+
   if (segmentColors && segmentColors.length >= data.length - 1) {
-    // Arc-en-ciel : un Path par segment
-    const segments = [];
-    for (let i = 0; i < points.length - 1; i++) {
-      const p1 = points[i];
-      const p2 = points[i + 1];
-      const segColor = segmentColors[i] || color;
-      const segPath = `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`;
-      const areaPath = `M ${p1.x} ${p1.y} L ${p2.x} ${p2.y} L ${p2.x} ${padY + innerH} L ${p1.x} ${padY + innerH} Z`;
-      segments.push({ segPath, areaPath, segColor });
-    }
     return (
-      <Svg width={w} height={height} style={{ alignSelf: 'center' }}>
-        {segments.map((s, i) => (
-          <Path key={`a${i}`} d={s.areaPath} fill={s.segColor} opacity={0.15} />
-        ))}
-        {segments.map((s, i) => (
-          <Path key={`l${i}`} d={s.segPath} stroke={s.segColor} strokeWidth={1.5} fill="none" />
-        ))}
-      </Svg>
+      <View>
+        <Svg width={w} height={chartH} style={{ alignSelf: 'center' }}>
+          {data.slice(0, -1).map((_, i) => {
+            const p1 = points[i]; const p2 = points[i + 1];
+            const c = segmentColors[i] || color;
+            return (
+              <Path key={`a${i}`} d={`M ${p1.x} ${p1.y} L ${p2.x} ${p2.y} L ${p2.x} ${padY + innerH} L ${p1.x} ${padY + innerH} Z`} fill={c} opacity={0.15} />
+            );
+          })}
+          {data.slice(0, -1).map((_, i) => {
+            const p1 = points[i]; const p2 = points[i + 1];
+            const c = segmentColors[i] || color;
+            return (
+              <Path key={`l${i}`} d={`M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`} stroke={c} strokeWidth={1.5} fill="none" />
+            );
+          })}
+        </Svg>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: padX }}>
+          {labels.map((l, i) => (
+            <Text key={i} style={{ color: theme.colors.textFaint, fontSize: 9, fontWeight: '300', letterSpacing: 0.3, textAlign: i === 0 ? 'left' : i === labels.length - 1 ? 'right' : 'center' }}>
+              {l.text}
+            </Text>
+          ))}
+        </View>
+      </View>
     );
   }
 
-  // Courbe simple (mode substance ou global sans segmentColors)
   let pathD = `M ${points[0].x} ${points[0].y}`;
-  for (let i = 1; i < points.length; i++) {
-    pathD += ` L ${points[i].x} ${points[i].y}`;
-  }
-  let areaD = pathD;
-  areaD += ` L ${points[points.length - 1].x} ${padY + innerH}`;
-  areaD += ` L ${points[0].x} ${padY + innerH} Z`;
+  for (let i = 1; i < points.length; i++) pathD += ` L ${points[i].x} ${points[i].y}`;
+  let areaD = pathD + ` L ${points[points.length - 1].x} ${padY + innerH} L ${points[0].x} ${padY + innerH} Z`;
 
   return (
-    <Svg width={w} height={height} style={{ alignSelf: 'center' }}>
-      <Path d={areaD} fill={color} opacity={0.15} />
-      <Path d={pathD} stroke={color} strokeWidth={1.5} fill="none" />
-    </Svg>
+    <View>
+      <Svg width={w} height={chartH} style={{ alignSelf: 'center' }}>
+        <Path d={areaD} fill={color} opacity={0.15} />
+        <Path d={pathD} stroke={color} strokeWidth={1.5} fill="none" />
+      </Svg>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: padX }}>
+        {labels.map((l, i) => (
+          <Text key={i} style={{ color: theme.colors.textFaint, fontSize: 9, fontWeight: '300', letterSpacing: 0.3, textAlign: i === 0 ? 'left' : i === labels.length - 1 ? 'right' : 'center' }}>
+            {l.text}
+          </Text>
+        ))}
+      </View>
+    </View>
   );
 }
 

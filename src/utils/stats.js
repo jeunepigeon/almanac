@@ -42,7 +42,7 @@ function dayKeyOf(ts) {
 export function computeStats(consumptions, windowId, options = {}) {
   const now = typeof options === 'number' ? options : (options.now || Date.now());
   const customRange = typeof options === 'object' ? options.customRange : null;
-  const perPrise = typeof options === 'object' ? (options.perPrise || false) : false;
+  const modeJours = typeof options === 'object' ? (options.modeJours || false) : false;
 
   let inWindow;
   if (customRange) {
@@ -165,7 +165,7 @@ export function computeStats(consumptions, windowId, options = {}) {
     }
   }
 
-  // Timeline — perPrise=false (défaut) : nb prises par jour. perPrise=true : 1 si consommé, 0 sinon
+  // Timeline — modeJours=false : nb prises par jour. modeJours=true : 0.5 si consommé, 0 sinon
   const timeline = [];
   if (totalDays > 0) {
     const startDay = start === null
@@ -183,7 +183,7 @@ export function computeStats(consumptions, windowId, options = {}) {
     while (cur.getTime() <= endDay.getTime()) {
       const k = dayKeyOf(cur.getTime());
       const raw = dayCount[k] || 0;
-      timeline.push({ ts: cur.getTime(), count: perPrise ? (raw > 0 ? 1 : 0) : raw });
+      timeline.push({ ts: cur.getTime(), count: modeJours ? (raw > 0 ? 0.5 : 0) : raw });
       cur.setDate(cur.getDate() + 1);
     }
   }

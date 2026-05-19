@@ -38,7 +38,7 @@ export default function StatsView({
   const [windowId, setWindowId] = useState('30d');
   const [pieSelection, setPieSelection] = useState(null);
   const [infoVisible, setInfoVisible] = useState(false);
-  const [perPrise, setPerPrise] = useState(false);
+  const [modeJours, setModeJours] = useState(false); // false = par prises, true = par jours
   const [customStart, setCustomStart] = useState(() => Date.now() - 30 * 86400000);
   const [customEnd, setCustomEnd] = useState(() => Date.now());
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -54,8 +54,8 @@ export default function StatsView({
   const subStats = useMemo(() => {
     if (mode !== 'substance') return null;
     const range = windowId === 'custom' ? effectiveRange : null;
-    return computeStats(consumptions || [], windowId, { customRange: range, perPrise });
-  }, [mode, consumptions, windowId, effectiveRange, perPrise]);
+    return computeStats(consumptions || [], windowId, { customRange: range, modeJours: modeJours });
+  }, [mode, consumptions, windowId, effectiveRange, modeJours]);
 
   const globalStats = useMemo(() => {
     if (mode !== 'global') return null;
@@ -79,8 +79,8 @@ export default function StatsView({
       allConsos.push(...(consumptionsBySubstance[subId] || []));
     }
     const range = windowId === 'custom' ? effectiveRange : null;
-    return computeStats(allConsos, windowId, { customRange: range, perPrise });
-  }, [mode, consumptionsBySubstance, substancesById, windowId, effectiveRange, pieSelection, perPrise]);
+    return computeStats(allConsos, windowId, { customRange: range, modeJours: modeJours });
+  }, [mode, consumptionsBySubstance, substancesById, windowId, effectiveRange, pieSelection, modeJours]);
 
   const stats = subStats || aggregateStats;
 
@@ -97,9 +97,14 @@ export default function StatsView({
 
   useEffect(() => {
     if (mode !== 'global' || !globalStats) return;
-    const sel = { sobres: true };
-    for (const b of globalStats.breakdown) sel[b.substance.id] = true;
-    setPieSelection(sel);
+    setPieSelection((prev) => {
+      const next = { sobres: prev?.sobres ?? true };
+      for (const b of globalStats.breakdown) {
+        // Garde l'état existant, init à true seulement si nouveau
+        next[b.substance.id] = prev?.[b.substance.id] ?? true;
+      }
+      return next;
+    });
   }, [mode, globalStats]);
 
   const pieData = useMemo(() => {
@@ -120,37 +125,75 @@ export default function StatsView({
     setPieSelection((prev) => prev ? { ...prev, [id]: !prev[id] } : prev);
   }, []);
 
+  // Breakdown trié par couleur (pour regrouper couleurs identiques)
+  const sortedBreakdown = useMemo(() => {
+    if (!globalStats?.breakdown) return [];
+    return [...globalStats.breakdown].sort((a, b) =>
+      a.substance.color.localeCompare(b.substance.color)
+    );
+  }, [globalStats]);
+
   const dominantColor = useMemo(() => {
     if (mode !== 'global' || !globalStats?.breakdown?.length) return color;
     const top = globalStats.breakdown.find((b) => !pieSelection || pieSelection[b.substance.id] !== false);
     return top ? top.substance.color : color;
   }, [mode, globalStats, pieSelection, color]);
 
+  // Précalcul : pour chaque dayKey → couleur substance dominante (optimisé)
+  const dayDominantColor = useMemo(() => {
+    if (mode !== 'global' || !consumptionsBySubstance) return {};
+    const map = {};
+    for (const subId of Object.keys(consumptionsBySubstance)) {
+      if (pieSelection && pieSelection[subId] === false) continue;
+      const sub = substancesById?.[subId];
+      if (!sub || sub.archived) continue;
+      for (const c of consumptionsBySubstance[subId] || []) {
+        const d = new Date(c.timestamp);
+        const p = (n) => (n < 10 ? `0${n}` : `${n}`);
+        const k = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+        if (!map[k]) map[k] = { color: sub.color, count: 1 };
+        else if (++map[k].count >= map[k].count) map[k].color = sub.color;
+      }
+    }
+    return map;
+  }, [mode, consumptionsBySubstance, substancesById, pieSelection]);
+
   const segmentColors = useMemo(() => {
-    if (mode !== 'global' || !stats?.timeline || !consumptionsBySubstance) return null;
+    if (mode !== 'global' || !stats?.timeline) return null;
     const timeline = stats.timeline;
     if (timeline.length < 2) return null;
+    return timeline.slice(0, -1).map((point) => {
+      const d = new Date(point.ts);
+      const p = (n) => (n < 10 ? `0${n}` : `${n}`);
+      const k = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+      return dayDominantColor[k]?.color || dominantColor;
+    });
+  }, [mode, stats, dayDominantColor, dominantColor]);
+
+  // Jours sobres consécutifs au global (toutes substances confondues)
+  const globalCurrentSoberDays = useMemo(() => {
+    if (mode !== 'global' || !consumptionsBySubstance) return null;
+    const allConsos = Object.values(consumptionsBySubstance).flat();
+    if (allConsos.length === 0) return null;
     const dayKey = (ts) => {
       const d = new Date(ts);
       const p = (n) => (n < 10 ? `0${n}` : `${n}`);
       return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
     };
-    return timeline.slice(0, -1).map((point) => {
-      const k = dayKey(point.ts);
-      let maxCount = 0;
-      let topColor = dominantColor;
-      for (const subId of Object.keys(consumptionsBySubstance)) {
-        if (pieSelection && pieSelection[subId] === false) continue;
-        const sub = substancesById?.[subId];
-        if (!sub || sub.archived) continue;
-        const count = (consumptionsBySubstance[subId] || []).filter(
-          (c) => dayKey(c.timestamp) === k
-        ).length;
-        if (count > maxCount) { maxCount = count; topColor = sub.color; }
-      }
-      return topColor;
-    });
-  }, [mode, stats, consumptionsBySubstance, substancesById, pieSelection, dominantColor]);
+    const daysWithConso = new Set(allConsos.map((c) => dayKey(c.timestamp)));
+    let streak = 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const cur = new Date(today);
+    while (true) {
+      const k = dayKey(cur.getTime());
+      if (daysWithConso.has(k)) break;
+      streak++;
+      cur.setDate(cur.getDate() - 1);
+      if (streak > 3650) break; // sécurité
+    }
+    return streak;
+  }, [mode, consumptionsBySubstance]);
 
   const openPicker = (target) => {
     setPickerTarget(target);
@@ -168,6 +211,14 @@ export default function StatsView({
 
   return (
     <ScrollView contentContainerStyle={styles.scrollContent}>
+
+      {/* Hero jours sobres — mode global uniquement */}
+      {mode === 'global' && globalCurrentSoberDays !== null && (
+        <View style={styles.globalHero}>
+          <Text style={styles.globalHeroLabel}>Jours sobres consécutifs</Text>
+          <Text style={styles.globalHeroValue}>{globalCurrentSoberDays}</Text>
+        </View>
+      )}
 
       {/* Sélecteur fenêtre */}
       <View style={styles.windowSelector}>
@@ -276,7 +327,7 @@ export default function StatsView({
                   {globalStats.jourssobresEntry && (
                     <PieCheckbox id="sobres" label="Jours sobres" value={globalStats.jourssobresEntry.count} color={theme.colors.textFaint} checked={!!pieSelection.sobres} onToggle={() => togglePieItem('sobres')} />
                   )}
-                  {globalStats.breakdown.map((b) => (
+                  {sortedBreakdown.map((b) => (
                     <PieCheckbox key={b.substance.id} id={b.substance.id} label={b.substance.name} value={b.count} color={b.substance.color} checked={!!pieSelection[b.substance.id]} onToggle={() => togglePieItem(b.substance.id)} />
                   ))}
                 </View>
@@ -304,12 +355,15 @@ export default function StatsView({
           <ChartCard title={
             <View style={styles.cardTitleRow}>
               <Text style={styles.cardTitleText}>Activité dans le temps</Text>
-              <TouchableOpacity onPress={() => setPerPrise((v) => !v)} style={styles.perPriseToggle}>
-                <View style={[styles.perPriseBox, perPrise && { backgroundColor: color, borderColor: color }]}>
-                  {perPrise && <Ionicons name="checkmark" size={10} color="#fff" />}
-                </View>
-                <Text style={styles.perPriseLabel}>Par jour</Text>
-              </TouchableOpacity>
+              <View style={styles.switchRow}>
+                <TouchableOpacity onPress={() => setModeJours(false)}>
+                  <Text style={[styles.switchOption, !modeJours && { color: theme.colors.text }]}>Prises</Text>
+                </TouchableOpacity>
+                <Text style={styles.switchSep}>/</Text>
+                <TouchableOpacity onPress={() => setModeJours(true)}>
+                  <Text style={[styles.switchOption, modeJours && { color: theme.colors.text }]}>Jours</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           }>
             {stats.timeline && stats.timeline.length > 0 && stats.total > 0 ? (
@@ -365,6 +419,19 @@ function PieCheckbox({ label, value, color, checked, onToggle }) {
 
 const styles = StyleSheet.create({
   scrollContent: { paddingTop: theme.spacing.sm, paddingBottom: 20 },
+  globalHero: {
+    alignItems: 'center', paddingVertical: theme.spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border,
+    marginBottom: theme.spacing.md,
+  },
+  globalHeroLabel: {
+    color: theme.colors.textMuted, fontSize: theme.font.sizes.xs, fontWeight: '300',
+    letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: theme.spacing.xs,
+  },
+  globalHeroValue: {
+    color: theme.colors.text, fontSize: 56, fontWeight: '200',
+    fontVariant: ['tabular-nums'], letterSpacing: 1,
+  },
   windowSelector: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.md, marginBottom: theme.spacing.xs },
   windowChip: { paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs, borderRadius: 4, borderWidth: 1, borderColor: theme.colors.border },
   windowChipText: { color: theme.colors.textMuted, fontSize: theme.font.sizes.sm, fontWeight: '300', letterSpacing: 0.5 },
@@ -382,8 +449,8 @@ const styles = StyleSheet.create({
   customSep: { color: theme.colors.textMuted, fontSize: theme.font.sizes.md, fontWeight: '200' },
   periodBand: {
     fontSize: theme.font.sizes.xs, fontWeight: '300', letterSpacing: 1,
-    textAlign: 'center', opacity: 0.6, marginBottom: theme.spacing.md,
-    marginTop: 2,
+    textAlign: 'center', opacity: 0.6, marginBottom: theme.spacing.lg,
+    marginTop: theme.spacing.sm,
   },
   numbersRow: { flexDirection: 'row', paddingHorizontal: theme.spacing.md, marginBottom: theme.spacing.md, gap: theme.spacing.sm },
   metricCell: { flex: 1, backgroundColor: theme.colors.surface, paddingVertical: theme.spacing.md, paddingHorizontal: theme.spacing.sm, borderRadius: 4, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border, alignItems: 'center', minHeight: 70, justifyContent: 'center' },
@@ -400,6 +467,9 @@ const styles = StyleSheet.create({
   pieCheckboxLabel: { flex: 1, color: theme.colors.text, fontSize: 11, fontWeight: '300' },
   pieCheckboxLabelOff: { color: theme.colors.textFaint },
   pieCheckboxValue: { color: theme.colors.textMuted, fontSize: 11, fontWeight: '300', fontVariant: ['tabular-nums'] },
+  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  switchOption: { color: theme.colors.textFaint, fontSize: 11, fontWeight: '300', letterSpacing: 0.5 },
+  switchSep: { color: theme.colors.textFaint, fontSize: 10, fontWeight: '200' },
   perPriseToggle: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   perPriseBox: { width: 14, height: 14, borderRadius: 3, borderWidth: 1, borderColor: theme.colors.textMuted, justifyContent: 'center', alignItems: 'center' },
   perPriseLabel: { color: theme.colors.textMuted, fontSize: 11, fontWeight: '300' },
