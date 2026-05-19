@@ -13,7 +13,8 @@ import {
   formatInterval,
   windowRange,
 } from '../utils/stats';
-import { BarChart, LineChart, PieChart, ChartCard } from './Charts';
+import { BarChart, LineChart, PieChart, ChartCard, MultiLineChart } from './Charts';
+import LiveCounter from './LiveCounter';
 
 const WEEKDAY_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 const HOUR_LABELS_24 = ['0','','','','','','6','','','','','','12','','','','','','18','','','','',''];
@@ -38,7 +39,7 @@ export default function StatsView({
   const [windowId, setWindowId] = useState('30d');
   const [pieSelection, setPieSelection] = useState(null);
   const [infoVisible, setInfoVisible] = useState(false);
-  const [modeJours, setModeJours] = useState(false); // false = par prises, true = par jours
+  const [useDoses, setUseDoses] = useState(false); // false = réinitialisations, true = doses
   const [customStart, setCustomStart] = useState(() => Date.now() - 30 * 86400000);
   const [customEnd, setCustomEnd] = useState(() => Date.now());
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -54,8 +55,8 @@ export default function StatsView({
   const subStats = useMemo(() => {
     if (mode !== 'substance') return null;
     const range = windowId === 'custom' ? effectiveRange : null;
-    return computeStats(consumptions || [], windowId, { customRange: range, modeJours: modeJours });
-  }, [mode, consumptions, windowId, effectiveRange, modeJours]);
+    return computeStats(consumptions || [], windowId, { customRange: range, useDoses: useDoses });
+  }, [mode, consumptions, windowId, effectiveRange, useDoses]);
 
   const globalStats = useMemo(() => {
     if (mode !== 'global') return null;
@@ -79,8 +80,8 @@ export default function StatsView({
       allConsos.push(...(consumptionsBySubstance[subId] || []));
     }
     const range = windowId === 'custom' ? effectiveRange : null;
-    return computeStats(allConsos, windowId, { customRange: range, modeJours: modeJours });
-  }, [mode, consumptionsBySubstance, substancesById, windowId, effectiveRange, pieSelection, modeJours]);
+    return computeStats(allConsos, windowId, { customRange: range, useDoses: useDoses });
+  }, [mode, consumptionsBySubstance, substancesById, windowId, effectiveRange, pieSelection, useDoses]);
 
   const stats = subStats || aggregateStats;
 
@@ -170,6 +171,65 @@ export default function StatsView({
     });
   }, [mode, stats, dayDominantColor, dominantColor]);
 
+  // Multi-courbes au global : une courbe par substance cochée
+  const multiCurves = useMemo(() => {
+    if (mode !== 'global' || !stats?.timeline || !consumptionsBySubstance) return null;
+    const timeline = stats.timeline;
+    if (timeline.length === 0) return null;
+
+    const dayKey = (ts) => {
+      const d = new Date(ts);
+      const p = (n) => (n < 10 ? `0${n}` : `${n}`);
+      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+    };
+
+    const curves = [];
+    for (const subId of Object.keys(consumptionsBySubstance)) {
+      if (pieSelection && pieSelection[subId] === false) continue;
+      const sub = substancesById?.[subId];
+      if (!sub || sub.archived) continue;
+
+      // Agrège par jour
+      const dayMap = {};
+      for (const c of consumptionsBySubstance[subId] || []) {
+        const k = dayKey(c.timestamp);
+        if (useDoses) {
+          // Mode doses : somme des dosages
+          dayMap[k] = (dayMap[k] || 0) + (typeof c.dosage === 'number' ? c.dosage : 0);
+        } else {
+          // Mode réinitialisations : compte les prises
+          dayMap[k] = (dayMap[k] || 0) + 1;
+        }
+      }
+
+      const points = timeline.map((p) => ({
+        ts: p.ts,
+        count: dayMap[dayKey(p.ts)] || 0,
+      }));
+
+      // Inclure seulement si au moins une valeur > 0
+      if (points.some((p) => p.count > 0)) {
+        curves.push({
+          id: sub.id,
+          name: sub.name,
+          color: sub.color,
+          points,
+        });
+      }
+    }
+    return curves;
+  }, [mode, stats, consumptionsBySubstance, substancesById, pieSelection, useDoses]);
+
+  // Dernière conso toutes substances confondues (pour le hero global)
+  const lastGlobalTimestamp = useMemo(() => {
+    if (mode !== 'global' || !consumptionsBySubstance) return null;
+    let max = 0;
+    for (const list of Object.values(consumptionsBySubstance)) {
+      for (const c of list) if (c.timestamp > max) max = c.timestamp;
+    }
+    return max || null;
+  }, [mode, consumptionsBySubstance]);
+
   // Jours sobres consécutifs au global (toutes substances confondues)
   const globalCurrentSoberDays = useMemo(() => {
     if (mode !== 'global' || !consumptionsBySubstance) return null;
@@ -215,8 +275,16 @@ export default function StatsView({
       {/* Hero jours sobres — mode global uniquement */}
       {mode === 'global' && globalCurrentSoberDays !== null && (
         <View style={styles.globalHero}>
-          <Text style={styles.globalHeroLabel}>Jours sobres consécutifs</Text>
-          <Text style={styles.globalHeroValue}>{globalCurrentSoberDays}</Text>
+          <Text style={styles.globalHeroLabel}>Temps depuis la dernière</Text>
+          <View style={styles.counterWrap}>
+            <LiveCounter
+              timestamp={lastGlobalTimestamp}
+              style={styles.globalHeroCounter}
+            />
+          </View>
+          <Text style={styles.globalHeroSubLabel}>
+            {globalCurrentSoberDays} jour{globalCurrentSoberDays > 1 ? 's' : ''} sobre{globalCurrentSoberDays > 1 ? 's' : ''} consécutif{globalCurrentSoberDays > 1 ? 's' : ''}
+          </Text>
         </View>
       )}
 
@@ -275,8 +343,13 @@ export default function StatsView({
             <Metric value={stats.avgPerWeek.toFixed(1)} label="/ semaine" />
             <Metric value={formatInterval(stats.avgIntervalMs)} label="Intervalle moy." />
             <Metric
-              value={stats.trendPercent == null ? '—' : `${stats.trendPercent > 0 ? '+' : ''}${stats.trendPercent.toFixed(0)}%`}
-              label="Tendance"
+              value={(() => {
+                const total = stats.daysWithConsumption + stats.daysWithoutConsumption;
+                if (total === 0) return '—';
+                const pct = (stats.daysWithConsumption / total) * 100;
+                return `${pct.toFixed(0)}%`;
+              })()}
+              label="Jours consommés"
             />
           </View>
 
@@ -355,19 +428,18 @@ export default function StatsView({
           <ChartCard title={
             <View style={styles.cardTitleRow}>
               <Text style={styles.cardTitleText}>Activité dans le temps</Text>
-              <View style={styles.switchRow}>
-                <TouchableOpacity onPress={() => setModeJours(false)}>
-                  <Text style={[styles.switchOption, !modeJours && { color: theme.colors.text }]}>Prises</Text>
-                </TouchableOpacity>
-                <Text style={styles.switchSep}>/</Text>
-                <TouchableOpacity onPress={() => setModeJours(true)}>
-                  <Text style={[styles.switchOption, modeJours && { color: theme.colors.text }]}>Jours</Text>
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity onPress={() => setUseDoses((v) => !v)} style={styles.dosesToggle}>
+                <View style={[styles.dosesBox, useDoses && { backgroundColor: color, borderColor: color }]}>
+                  {useDoses && <Ionicons name="checkmark" size={10} color="#fff" />}
+                </View>
+                <Text style={styles.dosesLabel}>{useDoses ? 'Doses' : 'Réinitialisations'}</Text>
+              </TouchableOpacity>
             </View>
           }>
-            {stats.timeline && stats.timeline.length > 0 && stats.total > 0 ? (
-              <LineChart data={stats.timeline} color={dominantColor} height={120} segmentColors={segmentColors} />
+            {mode === 'global' && multiCurves && multiCurves.length > 0 ? (
+              <MultiLineChart curves={multiCurves} height={140} />
+            ) : stats.timeline && stats.timeline.length > 0 && stats.total > 0 ? (
+              <LineChart data={stats.timeline} color={dominantColor} height={140} segmentColors={segmentColors} />
             ) : (
               <View style={styles.emptyChart}><Text style={styles.emptyChartText}>Pas de consommation sur la période</Text></View>
             )}
@@ -428,6 +500,19 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted, fontSize: theme.font.sizes.xs, fontWeight: '300',
     letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: theme.spacing.xs,
   },
+  counterWrap: {
+    minHeight: 36, justifyContent: 'center', alignItems: 'center',
+    paddingHorizontal: theme.spacing.md, width: '100%',
+  },
+  globalHeroCounter: {
+    color: theme.colors.text,
+    fontSize: theme.font.sizes.xl, fontWeight: '300', letterSpacing: 0.5,
+    fontVariant: ['tabular-nums'], textAlign: 'center', flexShrink: 1,
+  },
+  globalHeroSubLabel: {
+    color: theme.colors.textFaint, fontSize: theme.font.sizes.xs, fontWeight: '300',
+    letterSpacing: 0.5, marginTop: theme.spacing.sm,
+  },
   globalHeroValue: {
     color: theme.colors.text, fontSize: 56, fontWeight: '200',
     fontVariant: ['tabular-nums'], letterSpacing: 1,
@@ -449,8 +534,9 @@ const styles = StyleSheet.create({
   customSep: { color: theme.colors.textMuted, fontSize: theme.font.sizes.md, fontWeight: '200' },
   periodBand: {
     fontSize: theme.font.sizes.xs, fontWeight: '300', letterSpacing: 1,
-    textAlign: 'center', opacity: 0.6, marginBottom: theme.spacing.lg,
-    marginTop: theme.spacing.sm,
+    textAlign: 'center', opacity: 0.6,
+    marginTop: theme.spacing.md,
+    marginBottom: theme.spacing.md,
   },
   numbersRow: { flexDirection: 'row', paddingHorizontal: theme.spacing.md, marginBottom: theme.spacing.md, gap: theme.spacing.sm },
   metricCell: { flex: 1, backgroundColor: theme.colors.surface, paddingVertical: theme.spacing.md, paddingHorizontal: theme.spacing.sm, borderRadius: 4, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border, alignItems: 'center', minHeight: 70, justifyContent: 'center' },
@@ -467,9 +553,9 @@ const styles = StyleSheet.create({
   pieCheckboxLabel: { flex: 1, color: theme.colors.text, fontSize: 11, fontWeight: '300' },
   pieCheckboxLabelOff: { color: theme.colors.textFaint },
   pieCheckboxValue: { color: theme.colors.textMuted, fontSize: 11, fontWeight: '300', fontVariant: ['tabular-nums'] },
-  switchRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  switchOption: { color: theme.colors.textFaint, fontSize: 11, fontWeight: '300', letterSpacing: 0.5 },
-  switchSep: { color: theme.colors.textFaint, fontSize: 10, fontWeight: '200' },
+  dosesToggle: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  dosesBox: { width: 14, height: 14, borderRadius: 3, borderWidth: 1, borderColor: theme.colors.textMuted, justifyContent: 'center', alignItems: 'center' },
+  dosesLabel: { color: theme.colors.textMuted, fontSize: 11, fontWeight: '300' },
   perPriseToggle: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   perPriseBox: { width: 14, height: 14, borderRadius: 3, borderWidth: 1, borderColor: theme.colors.textMuted, justifyContent: 'center', alignItems: 'center' },
   perPriseLabel: { color: theme.colors.textMuted, fontSize: 11, fontWeight: '300' },

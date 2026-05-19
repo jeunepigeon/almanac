@@ -1,3 +1,4 @@
+import React from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import Svg, { Rect, Path, Circle, G, Line, Text as SvgText } from 'react-native-svg';
 import { theme } from '../theme';
@@ -194,6 +195,93 @@ export function PieChart({ data, size = 160 }) {
         <Path key={i} d={s.path} fill={s.color} />
       ))}
     </Svg>
+  );
+}
+
+// ---------- MultiLineChart : plusieurs courbes superposées ----------
+// curves : [{ id, name, color, points: [{ts, count}] }]
+export function MultiLineChart({ curves, height = 140 }) {
+  const w = SCREEN_W - 64;
+  if (!curves || curves.length === 0) {
+    return (
+      <View style={{ height, justifyContent: 'center', alignItems: 'center' }}>
+        <Text style={{ color: theme.colors.textFaint, fontSize: theme.font.sizes.sm }}>
+          Pas de données
+        </Text>
+      </View>
+    );
+  }
+
+  const LABEL_H = 16;
+  const chartH = height - LABEL_H;
+  // Max global pour normaliser
+  let globalMax = 1;
+  for (const c of curves) {
+    for (const p of c.points) {
+      if (p.count > globalMax) globalMax = p.count;
+    }
+  }
+  const padX = 8;
+  const padY = 8;
+  const innerW = w - padX * 2;
+  const innerH = chartH - padY * 2;
+  const dataLen = curves[0].points.length;
+
+  if (dataLen === 0) {
+    return (
+      <View style={{ height, justifyContent: 'center', alignItems: 'center' }}>
+        <Text style={{ color: theme.colors.textFaint, fontSize: theme.font.sizes.sm }}>
+          Pas de données
+        </Text>
+      </View>
+    );
+  }
+  if (dataLen === 1) {
+    return (
+      <Svg width={w} height={height} style={{ alignSelf: 'center' }}>
+        {curves.map((c, i) => (
+          <Circle key={i} cx={w / 2} cy={chartH / 2} r={3} fill={c.color} />
+        ))}
+      </Svg>
+    );
+  }
+
+  const stepX = innerW / (dataLen - 1);
+
+  const fmtShort = (ts) => {
+    const d = new Date(ts);
+    return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+  };
+  const labelIndices = [0, Math.floor((dataLen - 1) / 2), dataLen - 1];
+  const labels = labelIndices.map((i) => ({ x: padX + i * stepX, text: fmtShort(curves[0].points[i].ts) }));
+
+  return (
+    <View>
+      <Svg width={w} height={chartH} style={{ alignSelf: 'center' }}>
+        {curves.map((curve, i) => {
+          const points = curve.points.map((d, j) => ({
+            x: padX + j * stepX,
+            y: padY + innerH - (d.count / globalMax) * innerH,
+          }));
+          let pathD = `M ${points[0].x} ${points[0].y}`;
+          for (let j = 1; j < points.length; j++) pathD += ` L ${points[j].x} ${points[j].y}`;
+          let areaD = pathD + ` L ${points[points.length - 1].x} ${padY + innerH} L ${points[0].x} ${padY + innerH} Z`;
+          return (
+            <React.Fragment key={curve.id || i}>
+              <Path d={areaD} fill={curve.color} opacity={0.10} />
+              <Path d={pathD} stroke={curve.color} strokeWidth={1.5} fill="none" opacity={0.9} />
+            </React.Fragment>
+          );
+        })}
+      </Svg>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: padX }}>
+        {labels.map((l, i) => (
+          <Text key={i} style={{ color: theme.colors.textFaint, fontSize: 9, fontWeight: '300', letterSpacing: 0.3, textAlign: i === 0 ? 'left' : i === labels.length - 1 ? 'right' : 'center' }}>
+            {l.text}
+          </Text>
+        ))}
+      </View>
+    </View>
   );
 }
 
