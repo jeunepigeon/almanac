@@ -35,6 +35,8 @@ export default function StatsView({
   consumptionsBySubstance,
   substancesById,
   color = theme.colors.text,
+  navigation,
+  substanceId,
 }) {
   const [windowId, setWindowId] = useState('30d');
   const [pieSelection, setPieSelection] = useState(null);
@@ -189,25 +191,41 @@ export default function StatsView({
       const sub = substancesById?.[subId];
       if (!sub || sub.archived) continue;
 
+      const subConsos = consumptionsBySubstance[subId] || [];
+
+      // Détecte si AU MOINS UNE conso de cette substance a un dosage utilisable
+      const hasAnyDosage = subConsos.some((c) => {
+        const v = parseFloat(c.dosage);
+        return !isNaN(v) && v > 0;
+      });
+
       // Agrège par jour
       const dayMap = {};
-      for (const c of consumptionsBySubstance[subId] || []) {
+      const daysWithConso = new Set();
+      for (const c of subConsos) {
         const k = dayKey(c.timestamp);
-        if (useDoses) {
-          // Mode doses : somme des dosages
-          dayMap[k] = (dayMap[k] || 0) + (typeof c.dosage === 'number' ? c.dosage : 0);
+        daysWithConso.add(k);
+        if (useDoses && hasAnyDosage) {
+          // Mode doses ET la substance a des dosages : somme des dosages
+          const v = parseFloat(c.dosage);
+          dayMap[k] = (dayMap[k] || 0) + (isNaN(v) ? 0 : v);
         } else {
-          // Mode réinitialisations : compte les prises
+          // Mode réinitialisations OU pas de dosage : compte les prises
           dayMap[k] = (dayMap[k] || 0) + 1;
         }
       }
 
-      const points = timeline.map((p) => ({
-        ts: p.ts,
-        count: dayMap[dayKey(p.ts)] || 0,
-      }));
+      // Mode doses sans dosage → on force hauteur plate à 0.5 pour les jours consommés
+      const usePlateauMode = useDoses && !hasAnyDosage;
 
-      // Inclure seulement si au moins une valeur > 0
+      const points = timeline.map((p) => {
+        const k = dayKey(p.ts);
+        if (usePlateauMode) {
+          return { ts: p.ts, count: daysWithConso.has(k) ? 0.5 : 0 };
+        }
+        return { ts: p.ts, count: dayMap[k] || 0 };
+      });
+
       if (points.some((p) => p.count > 0)) {
         curves.push({
           id: sub.id,
@@ -428,21 +446,38 @@ export default function StatsView({
           <ChartCard title={
             <View style={styles.cardTitleRow}>
               <Text style={styles.cardTitleText}>Activité dans le temps</Text>
-              <TouchableOpacity onPress={() => setUseDoses((v) => !v)} style={styles.dosesToggle}>
-                <View style={[styles.dosesBox, useDoses && { backgroundColor: color, borderColor: color }]}>
-                  {useDoses && <Ionicons name="checkmark" size={10} color="#fff" />}
-                </View>
-                <Text style={styles.dosesLabel}>{useDoses ? 'Doses' : 'Réinitialisations'}</Text>
-              </TouchableOpacity>
+              <View style={styles.modeSwitch}>
+                <TouchableOpacity
+                  onPress={() => setUseDoses(false)}
+                  style={[styles.modeBtn, !useDoses && styles.modeBtnActive]}
+                >
+                  <Text style={[styles.modeBtnText, !useDoses && styles.modeBtnTextActive]}>Prises</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setUseDoses(true)}
+                  style={[styles.modeBtn, useDoses && styles.modeBtnActive]}
+                >
+                  <Text style={[styles.modeBtnText, useDoses && styles.modeBtnTextActive]}>Dosage</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           }>
-            {mode === 'global' && multiCurves && multiCurves.length > 0 ? (
-              <MultiLineChart curves={multiCurves} height={140} />
-            ) : stats.timeline && stats.timeline.length > 0 && stats.total > 0 ? (
-              <LineChart data={stats.timeline} color={dominantColor} height={140} segmentColors={segmentColors} />
-            ) : (
-              <View style={styles.emptyChart}><Text style={styles.emptyChartText}>Pas de consommation sur la période</Text></View>
-            )}
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => navigation?.navigate('ActivityDetail', {
+                mode,
+                substanceId: mode === 'substance' ? substanceId : null,
+                color,
+              })}
+            >
+              {mode === 'global' && multiCurves && multiCurves.length > 0 ? (
+                <MultiLineChart curves={multiCurves} height={140} />
+              ) : stats.timeline && stats.timeline.length > 0 && stats.total > 0 ? (
+                <LineChart data={stats.timeline} color={dominantColor} height={140} segmentColors={segmentColors} />
+              ) : (
+                <View style={styles.emptyChart}><Text style={styles.emptyChartText}>Pas de consommation sur la période</Text></View>
+              )}
+            </TouchableOpacity>
           </ChartCard>
 
           <ChartCard title="Heure de la journée">
@@ -553,6 +588,22 @@ const styles = StyleSheet.create({
   pieCheckboxLabel: { flex: 1, color: theme.colors.text, fontSize: 11, fontWeight: '300' },
   pieCheckboxLabelOff: { color: theme.colors.textFaint },
   pieCheckboxValue: { color: theme.colors.textMuted, fontSize: 11, fontWeight: '300', fontVariant: ['tabular-nums'] },
+  modeSwitch: { flexDirection: 'row', gap: 0 },
+  modeBtn: {
+    paddingHorizontal: theme.spacing.sm, paddingVertical: 3,
+    borderWidth: 1, borderColor: theme.colors.border,
+  },
+  modeBtnActive: {
+    backgroundColor: theme.colors.surfaceAlt,
+    borderColor: theme.colors.text,
+  },
+  modeBtnText: {
+    color: theme.colors.textFaint, fontSize: 10,
+    fontWeight: '300', letterSpacing: 0.5,
+  },
+  modeBtnTextActive: {
+    color: theme.colors.text, fontWeight: '400',
+  },
   dosesToggle: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   dosesBox: { width: 14, height: 14, borderRadius: 3, borderWidth: 1, borderColor: theme.colors.textMuted, justifyContent: 'center', alignItems: 'center' },
   dosesLabel: { color: theme.colors.textMuted, fontSize: 11, fontWeight: '300' },

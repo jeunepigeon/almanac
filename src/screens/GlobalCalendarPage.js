@@ -127,6 +127,7 @@ export default function GlobalCalendarPage() {
           mode="global"
           consumptionsBySubstance={consumptionsBySubstanceForStats}
           substancesById={substancesById}
+          navigation={navigation}
         />
       )}
 

@@ -262,14 +262,43 @@ export function MultiLineChart({ curves, height = 140 }) {
           const points = curve.points.map((d, j) => ({
             x: padX + j * stepX,
             y: padY + innerH - (d.count / globalMax) * innerH,
+            v: d.count,
           }));
-          let pathD = `M ${points[0].x} ${points[0].y}`;
-          for (let j = 1; j < points.length; j++) pathD += ` L ${points[j].x} ${points[j].y}`;
-          let areaD = pathD + ` L ${points[points.length - 1].x} ${padY + innerH} L ${points[0].x} ${padY + innerH} Z`;
+
+          // Découpe la courbe en segments contigus où count > 0
+          const segments = [];
+          let curSeg = [];
+          for (const p of points) {
+            if (p.v > 0) {
+              curSeg.push(p);
+            } else {
+              if (curSeg.length > 0) segments.push(curSeg);
+              curSeg = [];
+            }
+          }
+          if (curSeg.length > 0) segments.push(curSeg);
+
+          if (segments.length === 0) return null;
+
           return (
             <React.Fragment key={curve.id || i}>
-              <Path d={areaD} fill={curve.color} opacity={0.10} />
-              <Path d={pathD} stroke={curve.color} strokeWidth={1.5} fill="none" opacity={0.9} />
+              {segments.map((seg, sIdx) => {
+                if (seg.length === 1) {
+                  // Point isolé : on dessine un petit cercle
+                  return (
+                    <Circle key={`c${sIdx}`} cx={seg[0].x} cy={seg[0].y} r={2} fill={curve.color} opacity={0.9} />
+                  );
+                }
+                let pathD = `M ${seg[0].x} ${seg[0].y}`;
+                for (let j = 1; j < seg.length; j++) pathD += ` L ${seg[j].x} ${seg[j].y}`;
+                let areaD = pathD + ` L ${seg[seg.length - 1].x} ${padY + innerH} L ${seg[0].x} ${padY + innerH} Z`;
+                return (
+                  <React.Fragment key={`s${sIdx}`}>
+                    <Path d={areaD} fill={curve.color} opacity={0.10} />
+                    <Path d={pathD} stroke={curve.color} strokeWidth={1.5} fill="none" opacity={0.9} />
+                  </React.Fragment>
+                );
+              })}
             </React.Fragment>
           );
         })}

@@ -125,6 +125,8 @@ export default function SubstanceScreen() {
           mode="substance"
           consumptions={consumptions || []}
           color={substance.color}
+          navigation={navigation}
+          substanceId={substanceId}
         />
       )}
 
