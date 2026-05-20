@@ -265,41 +265,26 @@ export function MultiLineChart({ curves, height = 140 }) {
             v: d.count,
           }));
 
-          // Découpe la courbe en segments contigus où count > 0
-          const segments = [];
-          let curSeg = [];
-          for (const p of points) {
-            if (p.v > 0) {
-              curSeg.push(p);
-            } else {
-              if (curSeg.length > 0) segments.push(curSeg);
-              curSeg = [];
-            }
-          }
-          if (curSeg.length > 0) segments.push(curSeg);
+          // Ne garde que les points non-zéro et trace une ligne entre eux
+          const nonZero = points.filter((p) => p.v > 0);
+          if (nonZero.length === 0) return null;
 
-          if (segments.length === 0) return null;
+          if (nonZero.length === 1) {
+            return <Circle key={curve.id || i} cx={nonZero[0].x} cy={nonZero[0].y} r={2.5} fill={curve.color} opacity={0.95} />;
+          }
+
+          let pathD = `M ${nonZero[0].x} ${nonZero[0].y}`;
+          for (let j = 1; j < nonZero.length; j++) pathD += ` L ${nonZero[j].x} ${nonZero[j].y}`;
 
           return (
-            <React.Fragment key={curve.id || i}>
-              {segments.map((seg, sIdx) => {
-                if (seg.length === 1) {
-                  // Point isolé : on dessine un petit cercle
-                  return (
-                    <Circle key={`c${sIdx}`} cx={seg[0].x} cy={seg[0].y} r={2} fill={curve.color} opacity={0.9} />
-                  );
-                }
-                let pathD = `M ${seg[0].x} ${seg[0].y}`;
-                for (let j = 1; j < seg.length; j++) pathD += ` L ${seg[j].x} ${seg[j].y}`;
-                let areaD = pathD + ` L ${seg[seg.length - 1].x} ${padY + innerH} L ${seg[0].x} ${padY + innerH} Z`;
-                return (
-                  <React.Fragment key={`s${sIdx}`}>
-                    <Path d={areaD} fill={curve.color} opacity={0.10} />
-                    <Path d={pathD} stroke={curve.color} strokeWidth={1.5} fill="none" opacity={0.9} />
-                  </React.Fragment>
-                );
-              })}
-            </React.Fragment>
+            <Path
+              key={curve.id || i}
+              d={pathD}
+              stroke={curve.color}
+              strokeWidth={1.5}
+              fill="none"
+              opacity={0.9}
+            />
           );
         })}
       </Svg>

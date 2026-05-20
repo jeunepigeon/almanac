@@ -10,6 +10,7 @@ import Svg, { Path, Circle, Line } from 'react-native-svg';
 import { theme } from '../theme';
 import { useStore } from '../store';
 import { WINDOWS, windowRange } from '../utils/stats';
+import { dbGetAllConsumptions, dbGetConsumptionsBySubstance } from '../db';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const ALL_WINDOWS = [...WINDOWS, { id: 'custom', label: 'Perso' }];
@@ -36,7 +37,39 @@ function fmtShort(ts) {
 export default function ActivityDetailScreen({ route, navigation }) {
   const { mode, substanceId, color = theme.colors.text } = route.params || {};
   const substances = useStore((s) => s.substances);
-  const consumptionsBySubstance = useStore((s) => s.consumptionsBySubstance);
+
+  // Charge les consos depuis la DB (mode global = toutes, mode substance = celles de la sub)
+  const [allConsos, setAllConsos] = useState(null);
+  useEffect(() => {
+    (async () => {
+      try {
+        if (mode === 'substance' && substanceId) {
+          const list = await dbGetConsumptionsBySubstance(substanceId);
+          setAllConsos(list);
+        } else {
+          const list = await dbGetAllConsumptions();
+          setAllConsos(list);
+        }
+      } catch (e) {
+        console.error('ActivityDetail load error', e);
+        setAllConsos([]);
+      }
+    })();
+  }, [mode, substanceId]);
+
+  const consumptionsBySubstance = useMemo(() => {
+    const map = {};
+    if (allConsos) {
+      for (const c of allConsos) {
+        // Le champ peut être 'substanceId' ou 'substance_id' selon la source
+        const subId = c.substanceId ?? c.substance_id;
+        if (!subId) continue;
+        if (!map[subId]) map[subId] = [];
+        map[subId].push(c);
+      }
+    }
+    return map;
+  }, [allConsos]);
 
   const substancesById = useMemo(() => {
     const map = {};
@@ -298,18 +331,17 @@ export default function ActivityDetailScreen({ route, navigation }) {
         />
       )}
 
-      {/* Indicateur de zoom + bouton reset */}
-      <View style={styles.zoomInfo}>
-        <Text style={styles.zoomInfoText}>
-          {fmtDate(visibleRange[0])} — {fmtDate(visibleRange[1])}
-          {zoomed && '  (zoomé)'}
-        </Text>
-        {zoomed && (
+      {/* Indicateur de zoom + bouton reset, uniquement quand zoomé */}
+      {zoomed && (
+        <View style={styles.zoomInfo}>
+          <Text style={styles.zoomInfoText}>
+            Zoom : {fmtDate(visibleRange[0])} — {fmtDate(visibleRange[1])}
+          </Text>
           <TouchableOpacity onPress={resetZoom} style={styles.resetZoom}>
-            <Text style={styles.resetZoomText}>Reset zoom</Text>
+            <Text style={styles.resetZoomText}>Reset</Text>
           </TouchableOpacity>
-        )}
-      </View>
+        </View>
+      )}
 
       <Text style={styles.helpText}>Pince pour zoomer, glisse pour naviguer</Text>
 
@@ -343,38 +375,15 @@ export default function ActivityDetailScreen({ route, navigation }) {
                     v: d.count,
                   }));
 
-                  // Segments contigus avec count > 0
-                  const segments = [];
-                  let curSeg = [];
-                  for (const p of points) {
-                    if (p.v > 0) curSeg.push(p);
-                    else {
-                      if (curSeg.length > 0) segments.push(curSeg);
-                      curSeg = [];
-                    }
+                  const nonZero = points.filter((p) => p.v > 0);
+                  if (nonZero.length === 0) return null;
+                  if (nonZero.length === 1) {
+                    return <Circle key={curve.id} cx={nonZero[0].x} cy={nonZero[0].y} r={3} fill={curve.color} />;
                   }
-                  if (curSeg.length > 0) segments.push(curSeg);
-
+                  let pathD = `M ${nonZero[0].x} ${nonZero[0].y}`;
+                  for (let j = 1; j < nonZero.length; j++) pathD += ` L ${nonZero[j].x} ${nonZero[j].y}`;
                   return (
-                    <View key={curve.id}>
-                      {segments.map((seg, sIdx) => {
-                        if (seg.length === 1) {
-                          return <Circle key={`c${sIdx}`} cx={seg[0].x} cy={seg[0].y} r={2.5} fill={curve.color} />;
-                        }
-                        let pathD = `M ${seg[0].x} ${seg[0].y}`;
-                        for (let j = 1; j < seg.length; j++) pathD += ` L ${seg[j].x} ${seg[j].y}`;
-                        let areaD = pathD + ` L ${seg[seg.length - 1].x} ${padY + innerH} L ${seg[0].x} ${padY + innerH} Z`;
-                        return (
-                          <Path key={`a${sIdx}`} d={areaD} fill={curve.color} opacity={0.10} />
-                        );
-                      })}
-                      {segments.map((seg, sIdx) => {
-                        if (seg.length === 1) return null;
-                        let pathD = `M ${seg[0].x} ${seg[0].y}`;
-                        for (let j = 1; j < seg.length; j++) pathD += ` L ${seg[j].x} ${seg[j].y}`;
-                        return <Path key={`l${sIdx}`} d={pathD} stroke={curve.color} strokeWidth={1.8} fill="none" opacity={0.95} />;
-                      })}
-                    </View>
+                    <Path key={curve.id} d={pathD} stroke={curve.color} strokeWidth={1.8} fill="none" opacity={0.95} />
                   );
                 })}
               </Svg>
