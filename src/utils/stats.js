@@ -318,3 +318,23 @@ export function formatInterval(ms) {
   if (min >= 2) return `${min.toFixed(0)} min`;
   return `${sec.toFixed(0)} s`;
 }
+
+// Formate un nombre de jours en texte long.
+// < 30 jours : "12 jours" ou "12j" si compact
+// >= 30 jours : "1 mois 12 jours"
+// >= 365 jours : "1 an 2 mois"
+export function formatDaysLong(days) {
+  if (days == null) return '—';
+  if (days < 30) return `${days}j`;
+  const years = Math.floor(days / 365);
+  const remAfterYear = days - years * 365;
+  const months = Math.floor(remAfterYear / 30);
+  const remDays = remAfterYear - months * 30;
+
+  if (years > 0) {
+    if (months > 0) return `${years} an${years > 1 ? 's' : ''}\n${months} mois`;
+    return `${years} an${years > 1 ? 's' : ''}`;
+  }
+  if (remDays > 0) return `${months} mois\n${remDays} j`;
+  return `${months} mois`;
+}

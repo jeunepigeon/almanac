@@ -11,6 +11,7 @@ import {
   computeStats,
   computeGlobalStats,
   formatInterval,
+  formatDaysLong,
   windowRange,
 } from '../utils/stats';
 import { BarChart, LineChart, PieChart, ChartCard, MultiLineChart } from './Charts';
@@ -187,7 +188,6 @@ export default function StatsView({
 
     const curves = [];
     for (const subId of Object.keys(consumptionsBySubstance)) {
-      if (pieSelection && pieSelection[subId] === false) continue;
       const sub = substancesById?.[subId];
       if (!sub || sub.archived) continue;
 
@@ -227,11 +227,13 @@ export default function StatsView({
       });
 
       if (points.some((p) => p.count > 0)) {
+        const visible = !pieSelection || pieSelection[subId] !== false;
         curves.push({
           id: sub.id,
           name: sub.name,
           color: sub.color,
           points,
+          visible,
         });
       }
     }
@@ -375,15 +377,15 @@ export default function StatsView({
           <View style={styles.numbersRow}>
             {mode === 'substance' && fullSubStats ? (
               <>
-                <Metric value={`${fullSubStats.longestSoberStreak}j`} label="+ longue pause" />
-                <Metric value={`${fullSubStats.longestActiveStreak}j`} label="+ longue série" />
-                <Metric value={`${fullSubStats.currentSoberStreak}j`} label="Pause en cours" />
+                <Metric value={formatDaysLong(fullSubStats.longestSoberStreak)} label="+ longue pause" />
+                <Metric value={formatDaysLong(fullSubStats.longestActiveStreak)} label="+ longue série" />
+                <Metric value={formatDaysLong(fullSubStats.currentSoberStreak)} label="Pause en cours" />
               </>
             ) : (
               <>
-                <Metric value={stats.longestSoberStreak ? `${stats.longestSoberStreak}j` : '—'} label="+ longue pause" />
-                <Metric value={stats.longestActiveStreak ? `${stats.longestActiveStreak}j` : '—'} label="+ longue série" />
-                <Metric value={stats.currentSoberStreak ? `${stats.currentSoberStreak}j` : '—'} label="Pause en cours" />
+                <Metric value={stats.longestSoberStreak ? formatDaysLong(stats.longestSoberStreak) : '—'} label="+ longue pause" />
+                <Metric value={stats.longestActiveStreak ? formatDaysLong(stats.longestActiveStreak) : '—'} label="+ longue série" />
+                <Metric value={stats.currentSoberStreak ? formatDaysLong(stats.currentSoberStreak) : '—'} label="Pause en cours" />
               </>
             )}
           </View>
@@ -446,20 +448,19 @@ export default function StatsView({
           <ChartCard title={
             <View style={styles.cardTitleRow}>
               <Text style={styles.cardTitleText}>Activité dans le temps</Text>
-              <View style={styles.modeSwitch}>
-                <TouchableOpacity
-                  onPress={() => setUseDoses(false)}
-                  style={[styles.modeBtn, !useDoses && styles.modeBtnActive]}
-                >
-                  <Text style={[styles.modeBtnText, !useDoses && styles.modeBtnTextActive]}>Prises</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setUseDoses(true)}
-                  style={[styles.modeBtn, useDoses && styles.modeBtnActive]}
-                >
-                  <Text style={[styles.modeBtnText, useDoses && styles.modeBtnTextActive]}>Dosage</Text>
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity
+                style={styles.capsule}
+                activeOpacity={0.7}
+                onPress={() => setUseDoses((v) => !v)}
+              >
+                <View style={[styles.capsuleIndicator, useDoses && styles.capsuleIndicatorRight]} />
+                <View style={styles.capsuleLabel}>
+                  <Text style={[styles.capsuleText, !useDoses && styles.capsuleTextActive]}>Prises</Text>
+                </View>
+                <View style={styles.capsuleLabel}>
+                  <Text style={[styles.capsuleText, useDoses && styles.capsuleTextActive]}>Dosage</Text>
+                </View>
+              </TouchableOpacity>
             </View>
           }>
             <TouchableOpacity
@@ -470,13 +471,19 @@ export default function StatsView({
                 color,
               })}
             >
-              {mode === 'global' && multiCurves && multiCurves.length > 0 ? (
-                <MultiLineChart curves={multiCurves} height={140} />
-              ) : stats.timeline && stats.timeline.length > 0 && stats.total > 0 ? (
-                <LineChart data={stats.timeline} color={dominantColor} height={140} segmentColors={segmentColors} />
-              ) : (
-                <View style={styles.emptyChart}><Text style={styles.emptyChartText}>Pas de consommation sur la période</Text></View>
-              )}
+              <View style={styles.chartExpandWrap}>
+                {mode === 'global' && multiCurves && multiCurves.length > 0 ? (
+                  <MultiLineChart curves={multiCurves} height={140} />
+                ) : stats.timeline && stats.timeline.length > 0 && stats.total > 0 ? (
+                  <LineChart data={stats.timeline} color={dominantColor} height={140} segmentColors={segmentColors} />
+                ) : (
+                  <View style={styles.emptyChart}><Text style={styles.emptyChartText}>Pas de consommation sur la période</Text></View>
+                )}
+                <View style={styles.expandIcon}>
+                  <Ionicons name="expand-outline" size={14} color={theme.colors.textMuted} />
+                </View>
+              </View>
+              <Text style={styles.exploreHint}>Cliquer pour explorer</Text>
             </TouchableOpacity>
           </ChartCard>
 
@@ -505,7 +512,7 @@ export default function StatsView({
 function Metric({ value, label }) {
   return (
     <View style={styles.metricCell}>
-      <Text style={styles.metricValue} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
+      <Text style={styles.metricValue} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.7}>{value}</Text>
       <Text style={styles.metricLabel}>{label}</Text>
     </View>
   );
@@ -574,8 +581,9 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.md,
   },
   numbersRow: { flexDirection: 'row', paddingHorizontal: theme.spacing.md, marginBottom: theme.spacing.md, gap: theme.spacing.sm },
-  metricCell: { flex: 1, backgroundColor: theme.colors.surface, paddingVertical: theme.spacing.md, paddingHorizontal: theme.spacing.sm, borderRadius: 4, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border, alignItems: 'center', minHeight: 70, justifyContent: 'center' },
-  metricValue: { color: theme.colors.text, fontSize: theme.font.sizes.lg, fontWeight: '300', fontVariant: ['tabular-nums'], letterSpacing: 0.5 },
+  metricCell: { flex: 1, backgroundColor: theme.colors.surface, paddingVertical: theme.spacing.md, paddingHorizontal: theme.spacing.sm, borderRadius: 4, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border, alignItems: 'center', minHeight: 90, justifyContent: 'center' },
+  metricValueAlign: { textAlign: 'center' },
+  metricValue: { color: theme.colors.text, fontSize: theme.font.sizes.lg, fontWeight: '300', fontVariant: ['tabular-nums'], letterSpacing: 0.5, textAlign: 'center' },
   metricLabel: { color: theme.colors.textFaint, fontSize: theme.font.sizes.xs, fontWeight: '300', letterSpacing: 0.5, textTransform: 'lowercase', marginTop: 4, textAlign: 'center' },
   pieRow: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
   pieNote: { color: theme.colors.textFaint, fontSize: theme.font.sizes.xs, fontWeight: '300', letterSpacing: 0.5, textAlign: 'center', marginTop: theme.spacing.sm },
@@ -588,7 +596,58 @@ const styles = StyleSheet.create({
   pieCheckboxLabel: { flex: 1, color: theme.colors.text, fontSize: 11, fontWeight: '300' },
   pieCheckboxLabelOff: { color: theme.colors.textFaint },
   pieCheckboxValue: { color: theme.colors.textMuted, fontSize: 11, fontWeight: '300', fontVariant: ['tabular-nums'] },
+  chartExpandWrap: { position: 'relative' },
+  expandIcon: {
+    position: 'absolute', top: 0, right: 4,
+    padding: 4, opacity: 0.6,
+  },
+  exploreHint: {
+    color: theme.colors.textFaint, fontSize: 10, fontWeight: '300',
+    textAlign: 'center', marginTop: theme.spacing.xs,
+    letterSpacing: 0.5, fontStyle: 'italic',
+  },
   modeSwitch: { flexDirection: 'row', gap: 0 },
+  capsule: {
+    flexDirection: 'row',
+    backgroundColor: theme.colors.surface,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
+    padding: 2,
+    position: 'relative',
+    width: 130,
+    height: 26,
+  },
+  capsuleIndicator: {
+    position: 'absolute',
+    top: 2,
+    left: 2,
+    width: 63,
+    height: 22,
+    borderRadius: 12,
+    backgroundColor: theme.colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: theme.colors.text,
+  },
+  capsuleIndicatorRight: {
+    left: 65,
+  },
+  capsuleLabel: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  capsuleText: {
+    color: theme.colors.textFaint,
+    fontSize: 10,
+    fontWeight: '300',
+    letterSpacing: 0.5,
+  },
+  capsuleTextActive: {
+    color: theme.colors.text,
+    fontWeight: '500',
+  },
   modeBtn: {
     paddingHorizontal: theme.spacing.sm, paddingVertical: 3,
     borderWidth: 1, borderColor: theme.colors.border,

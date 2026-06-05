@@ -12,6 +12,7 @@ import DayDetailModal from '../components/DayDetailModal';
 import SubstancePicker from '../components/SubstancePicker';
 import LogConsumptionModal from '../components/LogConsumptionModal';
 import StatsView from '../components/StatsView';
+import GlobalHistoryView from '../components/GlobalHistoryView';
 
 function pad2(n) { return n < 10 ? `0${n}` : `${n}`; }
 function dayKeyOf(ts) {
@@ -99,6 +100,7 @@ export default function GlobalCalendarPage() {
     <View style={styles.container}>
       <View style={styles.tabs}>
         <Tab label="Calendrier" active={activeTab === 'calendar'} onPress={() => setActiveTab('calendar')} />
+        <Tab label="Historique" active={activeTab === 'history'} onPress={() => setActiveTab('history')} />
         <Tab label="Stats" active={activeTab === 'stats'} onPress={() => setActiveTab('stats')} />
       </View>
 
@@ -106,6 +108,7 @@ export default function GlobalCalendarPage() {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <MonthCalendar
             markersByDay={markersByDay}
+            showSoberFill={true}
             onDayPress={(dayKey, dayTimestamp) => {
               // Si pas de conso ce jour : on saute la modal détail vide
               // et on ouvre directement le flow d'ajout (picker substance + log)
@@ -121,6 +124,16 @@ export default function GlobalCalendarPage() {
             }}
           />
         </ScrollView>
+      )}
+      {activeTab === 'history' && (
+        <GlobalHistoryView
+          consumptions={allConsumptions || []}
+          substancesById={substancesById}
+          onTapConsumption={(c) => {
+            const sid = c.substanceId ?? c.substance_id;
+            navigation.navigate('Substance', { substanceId: sid, focusDate: c.timestamp });
+          }}
+        />
       )}
       {activeTab === 'stats' && (
         <StatsView

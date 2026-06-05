@@ -259,32 +259,55 @@ export function MultiLineChart({ curves, height = 140 }) {
     <View>
       <Svg width={w} height={chartH} style={{ alignSelf: 'center' }}>
         {curves.map((curve, i) => {
+          // Skip invisible curves (décochées) — mais globalMax inclut leur valeur
+          if (curve.visible === false) return null;
+
           const points = curve.points.map((d, j) => ({
             x: padX + j * stepX,
             y: padY + innerH - (d.count / globalMax) * innerH,
             v: d.count,
+            ts: d.ts,
+            idx: j,
           }));
 
-          // Ne garde que les points non-zéro et trace une ligne entre eux
-          const nonZero = points.filter((p) => p.v > 0);
-          if (nonZero.length === 0) return null;
-
-          if (nonZero.length === 1) {
-            return <Circle key={curve.id || i} cx={nonZero[0].x} cy={nonZero[0].y} r={2.5} fill={curve.color} opacity={0.95} />;
+          // Décompose en segments de JOURS CONSÉCUTIFS avec count > 0
+          // Deux points sont reliés seulement si idx successifs (j et j+1)
+          const segments = [];
+          let cur = [];
+          for (let j = 0; j < points.length; j++) {
+            const p = points[j];
+            if (p.v > 0) {
+              if (cur.length === 0) cur.push(p);
+              else {
+                const prev = cur[cur.length - 1];
+                if (p.idx === prev.idx + 1) cur.push(p);
+                else {
+                  segments.push(cur);
+                  cur = [p];
+                }
+              }
+            } else {
+              if (cur.length > 0) {
+                segments.push(cur);
+                cur = [];
+              }
+            }
           }
+          if (cur.length > 0) segments.push(cur);
 
-          let pathD = `M ${nonZero[0].x} ${nonZero[0].y}`;
-          for (let j = 1; j < nonZero.length; j++) pathD += ` L ${nonZero[j].x} ${nonZero[j].y}`;
+          if (segments.length === 0) return null;
 
           return (
-            <Path
-              key={curve.id || i}
-              d={pathD}
-              stroke={curve.color}
-              strokeWidth={1.5}
-              fill="none"
-              opacity={0.9}
-            />
+            <React.Fragment key={curve.id || i}>
+              {segments.map((seg, sIdx) => {
+                if (seg.length === 1) {
+                  return <Circle key={`c${sIdx}`} cx={seg[0].x} cy={seg[0].y} r={2.5} fill={curve.color} opacity={0.95} />;
+                }
+                let pathD = `M ${seg[0].x} ${seg[0].y}`;
+                for (let j = 1; j < seg.length; j++) pathD += ` L ${seg[j].x} ${seg[j].y}`;
+                return <Path key={`l${sIdx}`} d={pathD} stroke={curve.color} strokeWidth={1.5} fill="none" opacity={0.9} />;
+              })}
+            </React.Fragment>
           );
         })}
       </Svg>

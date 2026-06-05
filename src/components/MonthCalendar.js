@@ -30,7 +30,7 @@ function dayKeyOf(date) {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
-export default function MonthCalendar({ markersByDay = {}, onDayPress, initialMonth }) {
+export default function MonthCalendar({ markersByDay = {}, onDayPress, initialMonth, showSoberFill = false }) {
   const [viewedMonth, setViewedMonth] = useState(() => {
     const d = initialMonth ? new Date(initialMonth) : new Date();
     d.setDate(1);
@@ -131,12 +131,14 @@ export default function MonthCalendar({ markersByDay = {}, onDayPress, initialMo
           const markers = markersByDay[key] || [];
           const isToday = date.getTime() === today.getTime();
           const isFuture = date.getTime() > today.getTime();
+          const isSober = showSoberFill && !isFuture && markers.length === 0;
 
           return (
             <TouchableOpacity
               key={i}
               style={[
                 styles.dayCell,
+                isSober && styles.dayCellSober,
                 isToday && styles.dayCellToday,
               ]}
               onPress={() => !isFuture && onDayPress?.(key, date.getTime())}
@@ -225,6 +227,9 @@ const styles = StyleSheet.create({
   },
   dayCellToday: {
     backgroundColor: theme.colors.surface,
+  },
+  dayCellSober: {
+    backgroundColor: 'rgba(1, 200, 83, 0.10)',
   },
   dayNumber: {
     color: theme.colors.text,

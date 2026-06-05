@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
   iconWrap: { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, justifyContent: 'center', alignItems: 'center' },
   rowMiddle: { flex: 1, gap: 2 },
   rowName: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '300', letterSpacing: 0.5 },
-  rowCounter: { color: theme.colors.textMuted, fontSize: theme.font.sizes.sm, fontWeight: '300', fontVariant: ['tabular-nums'] },
+  rowCounter: { color: theme.colors.text, fontSize: theme.font.sizes.lg, fontWeight: '600', fontVariant: ['tabular-nums'], letterSpacing: 0.5 },
   menuBtn: { padding: theme.spacing.xs },
   arrows: { flexDirection: 'row', gap: theme.spacing.xs },
   arrowBtn: {
