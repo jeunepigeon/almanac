@@ -254,9 +254,6 @@ function SubstanceRow({
       </View>
       <View style={styles.rowMiddle}>
         <Text style={styles.rowName} numberOfLines={1}>{substance.name}</Text>
-        {!reorderMode && (
-          <Text style={styles.rowSubLabel}>depuis dernière conso</Text>
-        )}
       </View>
       {!reorderMode && (
         <LiveCounter timestamp={lastTimestamp} style={styles.rowCounter} />
@@ -321,10 +318,10 @@ const styles = StyleSheet.create({
   },
   rowPressed: { backgroundColor: theme.colors.surface },
   iconWrap: { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, justifyContent: 'center', alignItems: 'center' },
-  rowMiddle: { flex: 1, gap: 2, marginRight: theme.spacing.sm },
-  rowName: { color: theme.colors.textMuted, fontSize: theme.font.sizes.sm, fontWeight: '300', letterSpacing: 0.5 },
+  rowMiddle: { flex: 1, marginRight: theme.spacing.sm, justifyContent: 'center' },
+  rowName: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '300', letterSpacing: 0.5 },
   rowSubLabel: { color: theme.colors.textFaint, fontSize: 10, fontWeight: '300', letterSpacing: 0.3, textTransform: 'lowercase' },
-  rowCounter: { color: theme.colors.text, fontSize: theme.font.sizes.lg, fontWeight: '700', fontVariant: ['tabular-nums'], letterSpacing: 0.5, textAlign: 'right' },
+  rowCounter: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '300', fontVariant: ['tabular-nums'], letterSpacing: 0.5, textAlign: 'right' },
   menuBtn: { padding: theme.spacing.xs },
   arrows: { flexDirection: 'row', gap: theme.spacing.xs },
   arrowBtn: {

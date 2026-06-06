@@ -263,37 +263,44 @@ export function MultiLineChart({ curves, height = 140, forcePoints = false }) {
 
           const points = curve.points.map((d, j) => ({
             x: padX + j * stepX,
-            y: padY + innerH - (d.count / globalMax) * innerH,
             v: d.count,
             ts: d.ts,
             idx: j,
           }));
 
-          // Compte les jours avec conso
           const activePoints = points.filter((p) => p.v > 0);
           if (activePoints.length === 0) return null;
 
-          // < 4 occurrences OU mode forcePoints = points isolés
+          // < 4 occurrences OU mode forcePoints = points isolés à 30% de hauteur (baseline visible)
           if (forcePoints || activePoints.length < 4) {
-            // Petit jitter horizontal pour distinguer les substances
             const visibleCurves = curves.filter((c) => c.visible !== false);
             const idx = visibleCurves.findIndex((c) => c.id === curve.id);
             const n = visibleCurves.length || 1;
-            const jitterFactor = stepX * 0.25; // jusqu'à 25% du pas
+            const jitterFactor = stepX * 0.25;
             const jitter = n > 1 ? (idx - (n - 1) / 2) * (jitterFactor / Math.max(1, n - 1)) : 0;
+            // Y fixe à 30% depuis le haut → en bas = padY + innerH, baseline = 30% du haut visible
+            const pointY = padY + innerH * 0.70;
             return (
               <React.Fragment key={curve.id || i}>
-                {activePoints.map((p, idx) => (
-                  <Circle key={`c${idx}`} cx={p.x + jitter} cy={p.y} r={3} fill={curve.color} opacity={0.95} />
+                {activePoints.map((p, idx2) => (
+                  <Circle key={`c${idx2}`} cx={p.x + jitter} cy={pointY} r={3} fill={curve.color} opacity={0.95} />
                 ))}
               </React.Fragment>
             );
           }
 
-          // ≥ 4 occurrences : courbe reliant tous les points non-zéro
-          let pathD = `M ${activePoints[0].x} ${activePoints[0].y}`;
-          for (let j = 1; j < activePoints.length; j++) {
-            pathD += ` L ${activePoints[j].x} ${activePoints[j].y}`;
+          // ≥ 4 occurrences : courbe scalée entre 5% (min) et 100% (max)
+          // Y = padY + innerH - (5% + 95% * (count / globalMax)) * innerH
+          // Donc même pour count=1, on a au moins 5% = baseline visible
+          const BASELINE = 0.05;
+          const curvePoints = activePoints.map((p) => ({
+            x: p.x,
+            y: padY + innerH - (BASELINE + (1 - BASELINE) * (p.v / globalMax)) * innerH,
+          }));
+
+          let pathD = `M ${curvePoints[0].x} ${curvePoints[0].y}`;
+          for (let j = 1; j < curvePoints.length; j++) {
+            pathD += ` L ${curvePoints[j].x} ${curvePoints[j].y}`;
           }
           return (
             <Path

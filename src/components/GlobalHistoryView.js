@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, ScrollView,
+  View, Text, StyleSheet, FlatList,
   TouchableOpacity, Pressable,
 } from 'react-native';
 import { theme } from '../theme';
@@ -97,11 +97,7 @@ export default function GlobalHistoryView({ consumptions, substancesById, onTapC
 
   return (
     <View style={styles.container}>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.pillsRow}
-      >
+      <View style={styles.pillsRow}>
         <Pill
           label="Toutes"
           active={selectedSet === null}
@@ -117,7 +113,7 @@ export default function GlobalHistoryView({ consumptions, substancesById, onTapC
             onPress={() => toggleSubstance(sub.id)}
           />
         ))}
-      </ScrollView>
+      </View>
 
       {grouped.length === 0 ? (
         <View style={styles.placeholder}>
@@ -180,6 +176,8 @@ function Pill({ label, color, active, onPress }) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   pillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     paddingHorizontal: theme.spacing.lg,
     paddingTop: theme.spacing.md,
     paddingBottom: theme.spacing.sm,
@@ -192,6 +190,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
     marginRight: 8,
+    marginBottom: 8,
     height: 30,
     justifyContent: 'center',
     minWidth: 60,

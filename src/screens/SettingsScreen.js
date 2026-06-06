@@ -87,7 +87,7 @@ export default function SettingsScreen() {
       <Text style={styles.sectionTitle}>À propos</Text>
       <View style={styles.row}>
         <Text style={styles.rowLabel}>Version</Text>
-        <Text style={styles.rowValue}>1.1.5</Text>
+        <Text style={styles.rowValue}>1.1.6</Text>
       </View>
       <View style={styles.row}>
         <Text style={styles.rowLabel}>Consos enregistrées depuis</Text>
@@ -98,7 +98,7 @@ export default function SettingsScreen() {
 
       {/* Crédit discret */}
       <View style={styles.creditWrap}>
-        <Text style={styles.creditText}>almanac — fait par pigeon</Text>
+        <Text style={styles.creditText}>almanac — développé par pigeon</Text>
       </View>
 
       <ActionSheet
