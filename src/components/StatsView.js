@@ -295,7 +295,7 @@ export default function StatsView({
       {/* Hero jours sobres — mode global uniquement */}
       {mode === 'global' && globalCurrentSoberDays !== null && (
         <View style={styles.globalHero}>
-          <Text style={styles.globalHeroLabel}>Temps depuis la dernière</Text>
+          <Text style={styles.globalHeroLabel}>Sobre de tout depuis</Text>
           <View style={styles.counterWrap}>
             <LiveCounter
               timestamp={lastGlobalTimestamp}
