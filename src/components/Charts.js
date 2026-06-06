@@ -271,14 +271,30 @@ export function MultiLineChart({ curves, height = 140, forcePoints = false }) {
           const activePoints = points.filter((p) => p.v > 0);
           if (activePoints.length === 0) return null;
 
-          // < 4 occurrences OU mode forcePoints = points isolés à 30% de hauteur (baseline visible)
-          if (forcePoints || activePoints.length < 4) {
+          // Si forcePoints (fenêtre courte) : points avec hauteur réelle
+          if (forcePoints) {
             const visibleCurves = curves.filter((c) => c.visible !== false);
             const idx = visibleCurves.findIndex((c) => c.id === curve.id);
             const n = visibleCurves.length || 1;
             const jitterFactor = stepX * 0.25;
             const jitter = n > 1 ? (idx - (n - 1) / 2) * (jitterFactor / Math.max(1, n - 1)) : 0;
-            // Y fixe à 30% depuis le haut → en bas = padY + innerH, baseline = 30% du haut visible
+            return (
+              <React.Fragment key={curve.id || i}>
+                {activePoints.map((p, idx2) => {
+                  const y = padY + innerH - (p.v / globalMax) * innerH;
+                  return <Circle key={`c${idx2}`} cx={p.x + jitter} cy={y} r={3} fill={curve.color} opacity={0.95} />;
+                })}
+              </React.Fragment>
+            );
+          }
+
+          // < 4 occurrences (hors forcePoints) = points isolés à 30% baseline
+          if (activePoints.length < 4) {
+            const visibleCurves = curves.filter((c) => c.visible !== false);
+            const idx = visibleCurves.findIndex((c) => c.id === curve.id);
+            const n = visibleCurves.length || 1;
+            const jitterFactor = stepX * 0.25;
+            const jitter = n > 1 ? (idx - (n - 1) / 2) * (jitterFactor / Math.max(1, n - 1)) : 0;
             const pointY = padY + innerH * 0.70;
             return (
               <React.Fragment key={curve.id || i}>
