@@ -68,12 +68,12 @@ export default function GlobalCalendarPage() {
     }
     const result = {};
     for (const k of Object.keys(map)) {
-      const colors = [];
+      const colorSet = new Set();
       for (const subId of map[k]) {
         const sub = substancesById[subId];
-        if (sub) colors.push(sub.color);
+        if (sub) colorSet.add(sub.color);
       }
-      result[k] = colors;
+      result[k] = Array.from(colorSet);
     }
     return result;
   }, [allConsumptions, substancesById]);

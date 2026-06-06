@@ -464,7 +464,7 @@ export default function StatsView({
             </View>
           }>
             {mode === 'global' && multiCurves && multiCurves.length > 0 ? (
-              <MultiLineChart curves={multiCurves} height={140} />
+              <MultiLineChart curves={multiCurves} height={140} forcePoints={windowId === '30d'} />
             ) : stats.timeline && stats.timeline.length > 0 && stats.total > 0 ? (
               <LineChart data={stats.timeline} color={dominantColor} height={140} segmentColors={segmentColors} />
             ) : (

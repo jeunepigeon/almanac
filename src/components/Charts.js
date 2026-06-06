@@ -200,7 +200,7 @@ export function PieChart({ data, size = 160 }) {
 
 // ---------- MultiLineChart : plusieurs courbes superposées ----------
 // curves : [{ id, name, color, points: [{ts, count}] }]
-export function MultiLineChart({ curves, height = 140 }) {
+export function MultiLineChart({ curves, height = 140, forcePoints = false }) {
   const w = SCREEN_W - 64;
   if (!curves || curves.length === 0) {
     return (
@@ -273,12 +273,18 @@ export function MultiLineChart({ curves, height = 140 }) {
           const activePoints = points.filter((p) => p.v > 0);
           if (activePoints.length === 0) return null;
 
-          // < 4 occurrences = points isolés, sinon courbe reliant tous les actifs
-          if (activePoints.length < 4) {
+          // < 4 occurrences OU mode forcePoints = points isolés
+          if (forcePoints || activePoints.length < 4) {
+            // Petit jitter horizontal pour distinguer les substances
+            const visibleCurves = curves.filter((c) => c.visible !== false);
+            const idx = visibleCurves.findIndex((c) => c.id === curve.id);
+            const n = visibleCurves.length || 1;
+            const jitterFactor = stepX * 0.25; // jusqu'à 25% du pas
+            const jitter = n > 1 ? (idx - (n - 1) / 2) * (jitterFactor / Math.max(1, n - 1)) : 0;
             return (
               <React.Fragment key={curve.id || i}>
                 {activePoints.map((p, idx) => (
-                  <Circle key={`c${idx}`} cx={p.x} cy={p.y} r={2.5} fill={curve.color} opacity={0.95} />
+                  <Circle key={`c${idx}`} cx={p.x + jitter} cy={p.y} r={3} fill={curve.color} opacity={0.95} />
                 ))}
               </React.Fragment>
             );

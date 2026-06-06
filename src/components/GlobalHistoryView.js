@@ -24,10 +24,35 @@ export default function GlobalHistoryView({ consumptions, substancesById, onTapC
 
   const filtered = useMemo(() => {
     if (!consumptions) return null;
-    if (!selectedSet) return consumptions;
-    return consumptions.filter((c) => {
+    if (!selectedSet) return consumptions; // Toutes
+
+    // Pour chaque jour, regroupe les substances consommées
+    const subsByDay = new Map();
+    for (const c of consumptions) {
+      const d = new Date(c.timestamp);
+      d.setHours(0, 0, 0, 0);
+      const dayKey = d.getTime();
       const sid = c.substanceId ?? c.substance_id;
-      return selectedSet.has(sid);
+      if (!subsByDay.has(dayKey)) subsByDay.set(dayKey, new Set());
+      subsByDay.get(dayKey).add(sid);
+    }
+
+    // Garde uniquement les jours qui contiennent TOUTES les substances cochées (AND)
+    const matchingDays = new Set();
+    for (const [day, subs] of subsByDay.entries()) {
+      let allMatch = true;
+      for (const wanted of selectedSet) {
+        if (!subs.has(wanted)) { allMatch = false; break; }
+      }
+      if (allMatch) matchingDays.add(day);
+    }
+
+    // Pour ces jours, on retourne uniquement les consos des substances cochées
+    return consumptions.filter((c) => {
+      const d = new Date(c.timestamp);
+      d.setHours(0, 0, 0, 0);
+      const sid = c.substanceId ?? c.substance_id;
+      return matchingDays.has(d.getTime()) && selectedSet.has(sid);
     });
   }, [consumptions, selectedSet]);
 
@@ -96,7 +121,7 @@ export default function GlobalHistoryView({ consumptions, substancesById, onTapC
 
       {grouped.length === 0 ? (
         <View style={styles.placeholder}>
-          <Text style={styles.placeholderText}>Aucun résultat</Text>
+          <Text style={styles.placeholderText}>Aucune conso correspondante</Text>
         </View>
       ) : (
         <FlatList

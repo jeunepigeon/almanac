@@ -233,13 +233,18 @@ const styles = StyleSheet.create({
     // Plus utilisé : on utilise dayNumberWrapSober à la place
   },
   dayNumberWrap: {
-    width: 30, height: 30, borderRadius: 15,
-    justifyContent: 'center', alignItems: 'center',
-    marginTop: 2, marginBottom: 2,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 2,
+    marginBottom: 2,
   },
   dayNumberWrapSober: {
     borderWidth: 1.2,
     borderColor: '#01C853',
+    borderRadius: 16,
   },
   dayNumber: {
     color: theme.colors.text,
