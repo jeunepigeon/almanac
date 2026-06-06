@@ -138,22 +138,23 @@ export default function MonthCalendar({ markersByDay = {}, onDayPress, initialMo
               key={i}
               style={[
                 styles.dayCell,
-                isSober && styles.dayCellSober,
                 isToday && styles.dayCellToday,
               ]}
               onPress={() => !isFuture && onDayPress?.(key, date.getTime())}
               disabled={isFuture}
               activeOpacity={0.6}
             >
-              <Text
-                style={[
-                  styles.dayNumber,
-                  isFuture && styles.dayNumberFuture,
-                  isToday && styles.dayNumberToday,
-                ]}
-              >
-                {date.getDate()}
-              </Text>
+              <View style={[styles.dayNumberWrap, isSober && styles.dayNumberWrapSober]}>
+                <Text
+                  style={[
+                    styles.dayNumber,
+                    isFuture && styles.dayNumberFuture,
+                    isToday && styles.dayNumberToday,
+                  ]}
+                >
+                  {date.getDate()}
+                </Text>
+              </View>
               {markers.length > 0 && (
                 <View style={styles.markersRow}>
                   {markers.slice(0, 5).map((color, idx) => (
@@ -229,14 +230,21 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
   },
   dayCellSober: {
-    backgroundColor: 'rgba(1, 200, 83, 0.10)',
+    // Plus utilisé : on utilise dayNumberWrapSober à la place
+  },
+  dayNumberWrap: {
+    width: 30, height: 30, borderRadius: 15,
+    justifyContent: 'center', alignItems: 'center',
+    marginTop: 2, marginBottom: 2,
+  },
+  dayNumberWrapSober: {
+    borderWidth: 1.2,
+    borderColor: '#01C853',
   },
   dayNumber: {
     color: theme.colors.text,
     fontSize: theme.font.sizes.md,
     fontWeight: '300',
-    marginTop: 4,
-    marginBottom: 4,
   },
   dayNumberToday: {
     fontWeight: '500',

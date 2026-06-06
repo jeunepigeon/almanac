@@ -1,17 +1,14 @@
 import { useState, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TextInput, ScrollView,
+  View, Text, StyleSheet, FlatList, ScrollView,
   TouchableOpacity, Pressable,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme';
 import { formatDateLong, formatTime } from '../utils/dates';
 
 export default function GlobalHistoryView({ consumptions, substancesById, onTapConsumption }) {
-  const [query, setQuery] = useState('');
-  const [filterSubId, setFilterSubId] = useState(null);
+  const [selectedSet, setSelectedSet] = useState(null);
 
-  // Liste de toutes les substances présentes dans l'historique (uniques)
   const presentSubstances = useMemo(() => {
     if (!consumptions) return [];
     const ids = new Set();
@@ -25,23 +22,15 @@ export default function GlobalHistoryView({ consumptions, substancesById, onTapC
       .sort((a, b) => a.color.localeCompare(b.color));
   }, [consumptions, substancesById]);
 
-  // Filtrage : substance + texte
   const filtered = useMemo(() => {
     if (!consumptions) return null;
-    const q = query.trim().toLowerCase();
+    if (!selectedSet) return consumptions;
     return consumptions.filter((c) => {
       const sid = c.substanceId ?? c.substance_id;
-      if (filterSubId && sid !== filterSubId) return false;
-      if (!q) return true;
-      const sub = substancesById?.[sid];
-      const name = (sub?.name || '').toLowerCase();
-      const notes = (c.notes || '').toLowerCase();
-      const dosage = String(c.dosage ?? '').toLowerCase();
-      return name.includes(q) || notes.includes(q) || dosage.includes(q);
+      return selectedSet.has(sid);
     });
-  }, [consumptions, query, filterSubId, substancesById]);
+  }, [consumptions, selectedSet]);
 
-  // Groupe par jour
   const grouped = useMemo(() => {
     if (!filtered) return [];
     const map = new Map();
@@ -60,6 +49,19 @@ export default function GlobalHistoryView({ consumptions, substancesById, onTapC
       }));
   }, [filtered]);
 
+  const toggleSubstance = (subId) => {
+    setSelectedSet((prev) => {
+      if (!prev) return new Set([subId]);
+      const next = new Set(prev);
+      if (next.has(subId)) next.delete(subId);
+      else next.add(subId);
+      if (next.size === 0) return null;
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelectedSet(null);
+
   if (!consumptions || consumptions.length === 0) {
     return (
       <View style={styles.placeholder}>
@@ -70,24 +72,6 @@ export default function GlobalHistoryView({ consumptions, substancesById, onTapC
 
   return (
     <View style={styles.container}>
-      {/* Barre de recherche */}
-      <View style={styles.searchWrap}>
-        <Ionicons name="search-outline" size={16} color={theme.colors.textMuted} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Rechercher dans l'historique..."
-          placeholderTextColor={theme.colors.textFaint}
-          value={query}
-          onChangeText={setQuery}
-        />
-        {query.length > 0 && (
-          <Pressable onPress={() => setQuery('')} hitSlop={8}>
-            <Ionicons name="close-circle" size={16} color={theme.colors.textMuted} />
-          </Pressable>
-        )}
-      </View>
-
-      {/* Pills filtres substances */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -95,22 +79,21 @@ export default function GlobalHistoryView({ consumptions, substancesById, onTapC
       >
         <Pill
           label="Toutes"
-          active={filterSubId === null}
+          active={selectedSet === null}
           color={theme.colors.text}
-          onPress={() => setFilterSubId(null)}
+          onPress={selectAll}
         />
         {presentSubstances.map((sub) => (
           <Pill
             key={sub.id}
             label={sub.name}
             color={sub.color}
-            active={filterSubId === sub.id}
-            onPress={() => setFilterSubId(filterSubId === sub.id ? null : sub.id)}
+            active={selectedSet !== null && selectedSet.has(sub.id)}
+            onPress={() => toggleSubstance(sub.id)}
           />
         ))}
       </ScrollView>
 
-      {/* Liste */}
       {grouped.length === 0 ? (
         <View style={styles.placeholder}>
           <Text style={styles.placeholderText}>Aucun résultat</Text>
@@ -134,7 +117,7 @@ export default function GlobalHistoryView({ consumptions, substancesById, onTapC
                   >
                     <View style={[styles.bullet, { backgroundColor: sub?.color || theme.colors.textFaint }]} />
                     <Text style={styles.time}>{formatTime(c.timestamp)}</Text>
-                    <Text style={styles.subName}>{sub?.name || '—'}</Text>
+                    <Text style={styles.subName} numberOfLines={1}>{sub?.name || '—'}</Text>
                     {c.dosage != null && c.dosage !== '' && (
                       <Text style={styles.dosage}>{c.dosage}</Text>
                     )}
@@ -159,7 +142,10 @@ function Pill({ label, color, active, onPress }) {
       ]}
       activeOpacity={0.7}
     >
-      <Text style={[styles.pillText, { color: active ? color : theme.colors.textMuted }]}>
+      <Text
+        style={[styles.pillText, { color: active ? color : theme.colors.textMuted }]}
+        numberOfLines={1}
+      >
         {label}
       </Text>
     </TouchableOpacity>
@@ -168,60 +154,77 @@ function Pill({ label, color, active, onPress }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  searchWrap: {
-    flexDirection: 'row', alignItems: 'center',
-    marginHorizontal: theme.spacing.lg, marginTop: theme.spacing.md,
-    paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm,
-    backgroundColor: theme.colors.surface, borderRadius: 6,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border,
-    gap: theme.spacing.sm,
-  },
-  searchInput: {
-    flex: 1, color: theme.colors.text, fontSize: theme.font.sizes.sm,
-    fontWeight: '300', padding: 0,
-  },
   pillsRow: {
     paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.sm,
-    gap: theme.spacing.xs,
+    paddingTop: theme.spacing.md,
+    paddingBottom: theme.spacing.sm,
+    alignItems: 'center',
   },
   pill: {
-    paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.xs,
-    borderRadius: 16, borderWidth: 1, borderColor: theme.colors.border,
-    marginRight: theme.spacing.xs,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    marginRight: 8,
+    height: 30,
+    justifyContent: 'center',
+    minWidth: 60,
   },
-  pillText: { fontSize: theme.font.sizes.xs, fontWeight: '300', letterSpacing: 0.5 },
+  pillText: {
+    fontSize: theme.font.sizes.xs,
+    fontWeight: '400',
+    letterSpacing: 0.5,
+  },
   listContent: { paddingHorizontal: theme.spacing.lg, paddingBottom: 60 },
   dayHeader: {
-    color: theme.colors.textMuted, fontSize: theme.font.sizes.xs,
-    fontWeight: '400', letterSpacing: 1.5, textTransform: 'uppercase',
-    marginTop: theme.spacing.lg, marginBottom: theme.spacing.sm,
+    color: theme.colors.textMuted,
+    fontSize: theme.font.sizes.xs,
+    fontWeight: '400',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginTop: theme.spacing.lg,
+    marginBottom: theme.spacing.sm,
   },
   row: {
-    flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.sm,
     paddingVertical: theme.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border,
   },
   rowPressed: { backgroundColor: theme.colors.surface },
   bullet: { width: 8, height: 8, borderRadius: 4 },
   time: {
-    color: theme.colors.textMuted, fontSize: theme.font.sizes.sm,
-    fontWeight: '300', minWidth: 50,
+    color: theme.colors.textMuted,
+    fontSize: theme.font.sizes.sm,
+    fontWeight: '300',
+    minWidth: 50,
   },
   subName: {
-    flex: 1, color: theme.colors.text, fontSize: theme.font.sizes.sm,
-    fontWeight: '300', letterSpacing: 0.5,
+    flex: 1,
+    color: theme.colors.text,
+    fontSize: theme.font.sizes.sm,
+    fontWeight: '300',
+    letterSpacing: 0.5,
   },
   dosage: {
-    color: theme.colors.textMuted, fontSize: theme.font.sizes.sm,
-    fontWeight: '300', fontVariant: ['tabular-nums'],
+    color: theme.colors.textMuted,
+    fontSize: theme.font.sizes.sm,
+    fontWeight: '300',
+    fontVariant: ['tabular-nums'],
   },
   placeholder: {
-    flex: 1, justifyContent: 'center', alignItems: 'center',
-    paddingVertical: theme.spacing.xxl,
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 80,
   },
   placeholderText: {
-    color: theme.colors.textFaint, fontSize: theme.font.sizes.sm,
-    fontWeight: '300', fontStyle: 'italic',
+    color: theme.colors.textFaint,
+    fontSize: theme.font.sizes.sm,
+    fontWeight: '300',
+    fontStyle: 'italic',
   },
 });

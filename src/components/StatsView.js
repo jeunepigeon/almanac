@@ -463,28 +463,13 @@ export default function StatsView({
               </TouchableOpacity>
             </View>
           }>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => navigation?.navigate('ActivityDetail', {
-                mode,
-                substanceId: mode === 'substance' ? substanceId : null,
-                color,
-              })}
-            >
-              <View style={styles.chartExpandWrap}>
-                {mode === 'global' && multiCurves && multiCurves.length > 0 ? (
-                  <MultiLineChart curves={multiCurves} height={140} />
-                ) : stats.timeline && stats.timeline.length > 0 && stats.total > 0 ? (
-                  <LineChart data={stats.timeline} color={dominantColor} height={140} segmentColors={segmentColors} />
-                ) : (
-                  <View style={styles.emptyChart}><Text style={styles.emptyChartText}>Pas de consommation sur la période</Text></View>
-                )}
-                <View style={styles.expandIcon}>
-                  <Ionicons name="expand-outline" size={14} color={theme.colors.textMuted} />
-                </View>
-              </View>
-              <Text style={styles.exploreHint}>Cliquer pour explorer</Text>
-            </TouchableOpacity>
+            {mode === 'global' && multiCurves && multiCurves.length > 0 ? (
+              <MultiLineChart curves={multiCurves} height={140} />
+            ) : stats.timeline && stats.timeline.length > 0 && stats.total > 0 ? (
+              <LineChart data={stats.timeline} color={dominantColor} height={140} segmentColors={segmentColors} />
+            ) : (
+              <View style={styles.emptyChart}><Text style={styles.emptyChartText}>Pas de consommation sur la période</Text></View>
+            )}
           </ChartCard>
 
           <ChartCard title="Heure de la journée">

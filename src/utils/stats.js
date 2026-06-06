@@ -325,9 +325,10 @@ export function formatInterval(ms) {
 // >= 365 jours : "1 an 2 mois"
 export function formatDaysLong(days) {
   if (days == null) return '—';
-  if (days < 30) return `${days}j`;
-  const years = Math.floor(days / 365);
-  const remAfterYear = days - years * 365;
+  const d = Math.max(0, Math.floor(days));
+  if (d < 30) return `${d} jour${d > 1 ? 's' : ''}`;
+  const years = Math.floor(d / 365);
+  const remAfterYear = d - years * 365;
   const months = Math.floor(remAfterYear / 30);
   const remDays = remAfterYear - months * 30;
 
@@ -335,6 +336,6 @@ export function formatDaysLong(days) {
     if (months > 0) return `${years} an${years > 1 ? 's' : ''}\n${months} mois`;
     return `${years} an${years > 1 ? 's' : ''}`;
   }
-  if (remDays > 0) return `${months} mois\n${remDays} j`;
+  if (remDays > 0) return `${months} mois\n${remDays} jour${remDays > 1 ? 's' : ''}`;
   return `${months} mois`;
 }

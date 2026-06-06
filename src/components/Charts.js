@@ -259,7 +259,6 @@ export function MultiLineChart({ curves, height = 140 }) {
     <View>
       <Svg width={w} height={chartH} style={{ alignSelf: 'center' }}>
         {curves.map((curve, i) => {
-          // Skip invisible curves (décochées) — mais globalMax inclut leur valeur
           if (curve.visible === false) return null;
 
           const points = curve.points.map((d, j) => ({
@@ -270,44 +269,35 @@ export function MultiLineChart({ curves, height = 140 }) {
             idx: j,
           }));
 
-          // Décompose en segments de JOURS CONSÉCUTIFS avec count > 0
-          // Deux points sont reliés seulement si idx successifs (j et j+1)
-          const segments = [];
-          let cur = [];
-          for (let j = 0; j < points.length; j++) {
-            const p = points[j];
-            if (p.v > 0) {
-              if (cur.length === 0) cur.push(p);
-              else {
-                const prev = cur[cur.length - 1];
-                if (p.idx === prev.idx + 1) cur.push(p);
-                else {
-                  segments.push(cur);
-                  cur = [p];
-                }
-              }
-            } else {
-              if (cur.length > 0) {
-                segments.push(cur);
-                cur = [];
-              }
-            }
+          // Compte les jours avec conso
+          const activePoints = points.filter((p) => p.v > 0);
+          if (activePoints.length === 0) return null;
+
+          // < 4 occurrences = points isolés, sinon courbe reliant tous les actifs
+          if (activePoints.length < 4) {
+            return (
+              <React.Fragment key={curve.id || i}>
+                {activePoints.map((p, idx) => (
+                  <Circle key={`c${idx}`} cx={p.x} cy={p.y} r={2.5} fill={curve.color} opacity={0.95} />
+                ))}
+              </React.Fragment>
+            );
           }
-          if (cur.length > 0) segments.push(cur);
 
-          if (segments.length === 0) return null;
-
+          // ≥ 4 occurrences : courbe reliant tous les points non-zéro
+          let pathD = `M ${activePoints[0].x} ${activePoints[0].y}`;
+          for (let j = 1; j < activePoints.length; j++) {
+            pathD += ` L ${activePoints[j].x} ${activePoints[j].y}`;
+          }
           return (
-            <React.Fragment key={curve.id || i}>
-              {segments.map((seg, sIdx) => {
-                if (seg.length === 1) {
-                  return <Circle key={`c${sIdx}`} cx={seg[0].x} cy={seg[0].y} r={2.5} fill={curve.color} opacity={0.95} />;
-                }
-                let pathD = `M ${seg[0].x} ${seg[0].y}`;
-                for (let j = 1; j < seg.length; j++) pathD += ` L ${seg[j].x} ${seg[j].y}`;
-                return <Path key={`l${sIdx}`} d={pathD} stroke={curve.color} strokeWidth={1.5} fill="none" opacity={0.9} />;
-              })}
-            </React.Fragment>
+            <Path
+              key={curve.id || i}
+              d={pathD}
+              stroke={curve.color}
+              strokeWidth={1.5}
+              fill="none"
+              opacity={0.9}
+            />
           );
         })}
       </Svg>
