@@ -232,7 +232,7 @@ export function MultiLineChart({ curves, height = 140, forcePoints = false, time
   }
 
   const LABEL_H = 16;
-  const chartH = height - LABEL_H;
+
   // Max global pour normaliser
   let globalMax = 1;
   for (const c of curves) {
@@ -240,10 +240,43 @@ export function MultiLineChart({ curves, height = 140, forcePoints = false, time
       if (p.count > globalMax) globalMax = p.count;
     }
   }
+
+  // Détecter TOUTES les courbes plates au sol (indépendamment du fait qu'elles soient
+  // visibles ou non, pour que le rail reste fixe même quand on décoche)
+  // Une courbe est "plate au sol" si : ≥4 occ ET max ≤ 20% du globalMax
+  // Le rail (index) est basé sur l'ordre dans le tableau `curves` (donc ordre substances)
+  const flatRailsMap = {};
+  if (!forcePoints) {
+    const flatCurves = [];
+    for (const curve of curves) {
+      const activePts = curve.points.filter((p) => p.count > 0);
+      if (activePts.length < 4) continue;
+      const localMax = Math.max(...activePts.map((p) => p.count));
+      if (localMax <= globalMax * 0.20) {
+        flatCurves.push(curve);
+      }
+    }
+    // Seulement si >= 2 courbes plates (une seule reste à la baseline normale)
+    if (flatCurves.length >= 2) {
+      flatCurves.forEach((c, idx) => {
+        flatRailsMap[c.id] = idx; // rail 0, 1, 2, ...
+      });
+    }
+  }
+  const numFlatRails = Object.keys(flatRailsMap).length;
+
+  // Zone principale (mêlée) : garde la hauteur habituelle
+  // Zone étendue en bas : ajoute de la hauteur si des courbes plates
+  const RAIL_STEP = 12; // pixels entre chaque rail plate
+  const EXTRA_TOP = numFlatRails > 0 ? 8 : 0; // padding avant la première rail
+  const extraBottomH = numFlatRails > 0 ? EXTRA_TOP + numFlatRails * RAIL_STEP : 0;
+
+  const chartH = (height - LABEL_H) + extraBottomH;
+
   const padX = 8;
   const padY = 8;
   const innerW = w - padX * 2;
-  const innerH = chartH - padY * 2;
+  const innerH = chartH - padY * 2 - extraBottomH; // zone de la mêlée, pas la zone étendue
   const dataLen = curves[0].points.length;
 
   if (dataLen === 0) {
@@ -275,31 +308,6 @@ export function MultiLineChart({ curves, height = 140, forcePoints = false, time
   // Utilise la timeline explicite si fournie, sinon fallback sur la 1re courbe
   const tsSource = timeline || curves[0].points;
   const labels = labelIndices.map((i) => ({ x: padX + i * stepX, text: fmtShort(tsSource[i]?.ts ?? curves[0].points[i]?.ts) }));
-
-  // Pré-calcul : détecter les courbes "plates au sol" (≥4 occ mais max ≤ 20% du globalMax)
-  // et leur attribuer un offset vertical (sous-lignes parallèles empilées)
-  const flatCurveOffsets = React.useMemo(() => {
-    const map = {};
-    if (forcePoints) return map;
-    const flatCurves = [];
-    for (const curve of curves) {
-      if (curve.visible === false) continue;
-      const activePts = curve.points.filter((p) => p.count > 0);
-      if (activePts.length < 4) continue;
-      const localMax = Math.max(...activePts.map((p) => p.count));
-      if (localMax <= globalMax * 0.20) {
-        flatCurves.push(curve);
-      }
-    }
-    // Attribuer offsets uniquement s'il y en a >= 2 (une seule = baseline normale)
-    if (flatCurves.length >= 2) {
-      const step = innerH * 0.06;
-      flatCurves.forEach((c, idx) => {
-        map[c.id] = idx * step;
-      });
-    }
-    return map;
-  }, [curves, globalMax, forcePoints, innerH]);
 
   return (
     <View>
@@ -351,17 +359,29 @@ export function MultiLineChart({ curves, height = 140, forcePoints = false, time
             );
           }
 
-          // ≥ 4 occurrences : courbe scalée entre 5% (min) et 100% (max)
-          // Y = padY + innerH - (5% + 95% * (count / globalMax)) * innerH
-          // Donc même pour count=1, on a au moins 5% = baseline visible
+          // ≥ 4 occurrences : deux cas selon si la courbe est "plate au sol" ou pas
+          const railIdx = flatRailsMap[curve.id];
+          if (railIdx !== undefined) {
+            // Courbe plate → dessin dans la zone étendue en bas, ligne horizontale sur son rail
+            // Rail 0 = juste sous la baseline, Rail 1 = 1 step plus bas, etc.
+            const railY = padY + innerH + EXTRA_TOP + (railIdx * RAIL_STEP) + RAIL_STEP / 2;
+            return (
+              <Path
+                key={curve.id || i}
+                d={`M ${padX} ${railY} L ${padX + innerW} ${railY}`}
+                stroke={curve.color}
+                strokeWidth={1.6}
+                fill="none"
+                opacity={0.95}
+              />
+            );
+          }
+
+          // Courbe normale (dans la mêlée) : scalée entre 5% (min) et 100% (max)
           const BASELINE = 0.05;
-          // Décalage vertical si cette courbe est "plate au sol" et qu'il y en a plusieurs
-          // Chaque courbe suivante est légèrement décalée vers le haut (au-dessus de la précédente)
-          // pour éviter que les courbes plates au sol se chevauchent
-          const flatOffset = flatCurveOffsets[curve.id] || 0;
           const curvePoints = activePoints.map((p) => ({
             x: p.x,
-            y: padY + innerH - (BASELINE + (1 - BASELINE) * (p.v / globalMax)) * innerH - flatOffset,
+            y: padY + innerH - (BASELINE + (1 - BASELINE) * (p.v / globalMax)) * innerH,
           }));
 
           let pathD = `M ${curvePoints[0].x} ${curvePoints[0].y}`;

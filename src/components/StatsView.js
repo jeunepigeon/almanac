@@ -568,7 +568,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.md,
   },
   numbersRow: { flexDirection: 'row', paddingHorizontal: theme.spacing.md, marginBottom: theme.spacing.md, gap: theme.spacing.sm },
-  metricCell: { flex: 1, backgroundColor: theme.colors.surface, paddingVertical: theme.spacing.md, paddingHorizontal: theme.spacing.sm, borderRadius: 4, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border, alignItems: 'center', minHeight: 90, justifyContent: 'center' },
+  metricCell: { flex: 1, backgroundColor: theme.colors.surface, paddingVertical: theme.spacing.md, paddingHorizontal: theme.spacing.sm, borderRadius: 4, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border, alignItems: 'center', height: 96, justifyContent: 'center' },
   metricValueAlign: { textAlign: 'center' },
   metricValue: { color: theme.colors.text, fontSize: theme.font.sizes.lg, fontWeight: '300', fontVariant: ['tabular-nums'], letterSpacing: 0.5, textAlign: 'center' },
   metricLabel: { color: theme.colors.textFaint, fontSize: theme.font.sizes.xs, fontWeight: '300', letterSpacing: 0.5, textTransform: 'lowercase', marginTop: 4, textAlign: 'center' },
