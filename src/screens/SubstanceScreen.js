@@ -12,6 +12,7 @@ import LiveCounter from '../components/LiveCounter';
 import LogConsumptionModal from '../components/LogConsumptionModal';
 import ConfirmModal from '../components/ConfirmModal';
 import MonthCalendar from '../components/MonthCalendar';
+import ScrollableCalendar from '../components/ScrollableCalendar';
 import DayDetailModal from '../components/DayDetailModal';
 import StatsView from '../components/StatsView';
 
@@ -111,14 +112,11 @@ export default function SubstanceScreen() {
       </View>
 
       {activeTab === 'calendar' && (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <MonthCalendar
-            markersByDay={markersByDay}
-            showSoberFill={true}
-            initialMonth={focusDate ? new Date(focusDate) : undefined}
-            onDayPress={(dayKey, dayTimestamp) => setDayDetail({ dayKey, dayTimestamp })}
-          />
-        </ScrollView>
+        <ScrollableCalendar
+          markersByDay={markersByDay}
+          showSoberFill={true}
+          onDayPress={(dayKey, dayTimestamp) => setDayDetail({ dayKey, dayTimestamp })}
+        />
       )}
       {activeTab === 'history' && (
         <HistoryList consumptions={consumptions} color={substance.color} onEdit={(c) => setEditing(c)} />

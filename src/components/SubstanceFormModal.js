@@ -133,11 +133,7 @@ export default function SubstanceFormModal({
             {showIcon && (
               <>
                 <Text style={styles.fieldLabel}>Icône</Text>
-                <ScrollView
-                  style={styles.iconScroll}
-                  contentContainerStyle={styles.iconGrid}
-                  showsVerticalScrollIndicator={false}
-                >
+                <View style={styles.iconGridStatic}>
                   {ICONS.map((entry) => {
                     const selected = entry.id === iconId;
                     return (
@@ -154,13 +150,13 @@ export default function SubstanceFormModal({
                       >
                         <MaterialCommunityIcons
                           name={entry.icon}
-                          size={22}
+                          size={20}
                           color={selected ? selectedColor : theme.colors.textMuted}
                         />
                       </TouchableOpacity>
                     );
                   })}
-                </ScrollView>
+                </View>
               </>
             )}
 
@@ -252,6 +248,13 @@ const styles = StyleSheet.create({
     maxHeight: 180,
     marginBottom: theme.spacing.lg,
   },
+  iconGridStatic: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: theme.spacing.lg,
+    justifyContent: 'flex-start',
+  },
   iconGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -259,8 +262,8 @@ const styles = StyleSheet.create({
     paddingBottom: theme.spacing.sm,
   },
   iconCell: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 4,

@@ -167,16 +167,18 @@ export default function ImportScreen() {
 
         {step === 'password' && (
           <>
-            <Text style={styles.intro}>Entre le mot de passe utilisé lors de l'export.</Text>
-            <Text style={styles.fieldLabel}>Mot de passe</Text>
+            <Text style={styles.intro}>Entre le code PIN utilisé lors de l'export.</Text>
+            <Text style={styles.fieldLabel}>Code PIN (6 chiffres)</Text>
             <TextInput
               value={password}
-              onChangeText={setPassword}
-              placeholder="..."
+              onChangeText={(v) => setPassword(v.replace(/\D/g, '').slice(0, 6))}
+              placeholder="••••••"
               placeholderTextColor={theme.colors.textFaint}
               style={styles.input}
               secureTextEntry
               autoFocus
+              keyboardType="number-pad"
+              maxLength={6}
               autoCapitalize="none"
               autoCorrect={false}
               textContentType="oneTimeCode"

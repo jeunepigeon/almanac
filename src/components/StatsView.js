@@ -466,7 +466,7 @@ export default function StatsView({
             </View>
           }>
             {mode === 'global' && multiCurves && multiCurves.length > 0 ? (
-              <MultiLineChart curves={multiCurves} height={140} forcePoints={windowId === '30d' || windowId === '90d'} timeline={stats.timeline} clusterGap={Math.max(1, Math.floor((stats.timeline?.length || 0) * 0.10))} />
+              <MultiLineChart curves={multiCurves} height={140} forcePoints={windowId === '30d' || windowId === '90d'} timeline={stats.timeline} clusterGap={Math.max(1, Math.floor((stats.timeline?.length || 0) * 0.15))} />
             ) : stats.timeline && stats.timeline.length > 0 && stats.total > 0 ? (
               <MultiLineChart
                 curves={[{
@@ -479,7 +479,7 @@ export default function StatsView({
                 height={140}
                 forcePoints={windowId === '30d' || windowId === '90d'}
                 timeline={stats.timeline}
-                clusterGap={Math.max(1, Math.floor(stats.timeline.length * 0.10))}
+                clusterGap={Math.max(1, Math.floor(stats.timeline.length * 0.15))}
               />
             ) : (
               <View style={styles.emptyChart}><Text style={styles.emptyChartText}>Pas de consommation sur la période</Text></View>

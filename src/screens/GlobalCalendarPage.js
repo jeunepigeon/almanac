@@ -2,12 +2,14 @@ import { useEffect, useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useCallback } from 'react';
 import { theme } from '../theme';
 import { useStore } from '../store';
 import { dbGetAllConsumptions } from '../db';
 import MonthCalendar from '../components/MonthCalendar';
+import ScrollableCalendar from '../components/ScrollableCalendar';
 import DayDetailModal from '../components/DayDetailModal';
 import SubstancePicker from '../components/SubstancePicker';
 import LogConsumptionModal from '../components/LogConsumptionModal';
@@ -105,13 +107,11 @@ export default function GlobalCalendarPage() {
       </View>
 
       {activeTab === 'calendar' && (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          <MonthCalendar
+        <View style={{ flex: 1 }}>
+          <ScrollableCalendar
             markersByDay={markersByDay}
             showSoberFill={true}
             onDayPress={(dayKey, dayTimestamp) => {
-              // Si pas de conso ce jour : on saute la modal détail vide
-              // et on ouvre directement le flow d'ajout (picker substance + log)
               const consosOfDay = (allConsumptions || []).filter(
                 (c) => dayKeyOf(c.timestamp) === dayKey
               );
@@ -123,7 +123,17 @@ export default function GlobalCalendarPage() {
               }
             }}
           />
-        </ScrollView>
+          <TouchableOpacity
+            style={styles.fab}
+            activeOpacity={0.85}
+            onPress={() => {
+              setPickerForDay(Date.now());
+              setPickerOpen(true);
+            }}
+          >
+            <Ionicons name="add" size={26} color={theme.colors.background} />
+          </TouchableOpacity>
+        </View>
       )}
       {activeTab === 'history' && (
         <GlobalHistoryView
@@ -232,6 +242,22 @@ const styles = StyleSheet.create({
   tabTextActive: { color: theme.colors.text },
   tabUnderline: { height: 2, backgroundColor: theme.colors.text, marginTop: theme.spacing.xs },
   scrollContent: { paddingBottom: 60 },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: theme.colors.text,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
+    elevation: 6,
+  },
   placeholder: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: theme.spacing.lg },
   placeholderText: { color: theme.colors.text, fontSize: theme.font.sizes.lg, fontWeight: '300', letterSpacing: 1, marginBottom: theme.spacing.sm },
   placeholderHint: { color: theme.colors.textFaint, fontSize: theme.font.sizes.sm, fontWeight: '300' },

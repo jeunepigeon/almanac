@@ -87,7 +87,7 @@ export default function SettingsScreen() {
       <Text style={styles.sectionTitle}>À propos</Text>
       <View style={styles.row}>
         <Text style={styles.rowLabel}>Version</Text>
-        <Text style={styles.rowValue}>1.1.10.1</Text>
+        <Text style={styles.rowValue}>1.1.11</Text>
       </View>
       <View style={styles.row}>
         <Text style={styles.rowLabel}>Consos enregistrées depuis</Text>
@@ -146,7 +146,7 @@ export default function SettingsScreen() {
       <ConfirmModal
         visible={pendingWipeStep === 1}
         title="Remise à zéro complète"
-        message="Toutes tes substances, archives et consommations seront effacées sans retour possible. Tu devrais avant tout faire un export. Continuer ?"
+        message="Toutes tes substances, archives et consommations seront effacées sans retour possible. Fais un export avant si tu veux garder tes données. Continuer ?"
         confirmLabel="Continuer"
         destructive
         onCancel={() => setPendingWipeStep(0)}

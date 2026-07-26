@@ -18,12 +18,12 @@ export default function ExportScreen() {
   const [busy, setBusy] = useState(false);
 
   const handleExport = async () => {
-    if (password.length < 4) {
-      Alert.alert('Mot de passe trop court', 'Au moins 4 caractères.');
+    if (password.length !== 6 || !/^\d{6}$/.test(password)) {
+      Alert.alert('Code PIN invalide', 'Le code PIN doit contenir exactement 6 chiffres.');
       return;
     }
     if (password !== confirmPassword) {
-      Alert.alert('Mots de passe différents', 'Les deux champs doivent être identiques.');
+      Alert.alert('Codes PIN différents', 'Les deux codes doivent être identiques.');
       return;
     }
 
@@ -69,20 +69,22 @@ export default function ExportScreen() {
     >
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.intro}>
-          Toutes tes données seront chiffrées avec ce mot de passe (AES-256). Tu pourras les
-          ré-importer ici, ou les déchiffrer manuellement à condition de connaître le mot de
-          passe.
+          Toutes tes données seront chiffrées avec ce code PIN (AES-256). Tu pourras les
+          ré-importer ici, ou les déchiffrer manuellement à condition de connaître le code
+          PIN.
         </Text>
 
-        <Text style={styles.fieldLabel}>Mot de passe</Text>
+        <Text style={styles.fieldLabel}>Code PIN (6 chiffres)</Text>
         <TextInput
           value={password}
-          onChangeText={setPassword}
-          placeholder="..."
+          onChangeText={(v) => setPassword(v.replace(/\D/g, '').slice(0, 6))}
+          placeholder="••••••"
           placeholderTextColor={theme.colors.textFaint}
           style={styles.input}
           secureTextEntry
           autoFocus
+          keyboardType="number-pad"
+          maxLength={6}
           autoCapitalize="none"
           autoCorrect={false}
           textContentType="oneTimeCode"
@@ -91,11 +93,13 @@ export default function ExportScreen() {
         <Text style={styles.fieldLabel}>Confirmer</Text>
         <TextInput
           value={confirmPassword}
-          onChangeText={setConfirmPassword}
-          placeholder="..."
+          onChangeText={(v) => setConfirmPassword(v.replace(/\D/g, '').slice(0, 6))}
+          placeholder="••••••"
           placeholderTextColor={theme.colors.textFaint}
           style={styles.input}
           secureTextEntry
+          keyboardType="number-pad"
+          maxLength={6}
           autoCapitalize="none"
           autoCorrect={false}
           textContentType="oneTimeCode"
@@ -104,7 +108,7 @@ export default function ExportScreen() {
         <View style={styles.warningBox}>
           <Ionicons name="warning-outline" size={16} color={theme.colors.textMuted} />
           <Text style={styles.warningText}>
-            Si tu oublies ce mot de passe, le fichier sera illisible. Note-le quelque part.
+            Si tu oublies ce code PIN, le fichier sera illisible. Note-le quelque part.
           </Text>
         </View>
 
