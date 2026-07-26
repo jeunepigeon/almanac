@@ -54,7 +54,7 @@ export function BarChart({ data, labels, color = theme.colors.text, height = 120
 // ---------- LineChart : courbe avec graduations temporelles ----------
 // data : array of { ts, count }
 // segmentColors : array de couleurs (longueur = data.length - 1), optionnel
-export function LineChart({ data, color = theme.colors.text, height = 140, segmentColors = null }) {
+export function LineChart({ data, color = theme.colors.text, height = 140, segmentColors = null, clusterGap = 1 }) {
   const w = SCREEN_W - 64;
   if (!data || data.length === 0) {
     return (
@@ -97,33 +97,45 @@ export function LineChart({ data, color = theme.colors.text, height = 140, segme
   const labels = labelIndices.map((i) => ({ x: points[i].x, text: fmtShort(data[i].ts) }));
 
   if (segmentColors && segmentColors.length >= data.length - 1) {
-    // Dessine chaque segment seulement si les 2 points ont conso > 0
+    // Détecter les clusters (tolérance clusterGap) avec segmentColors
+    const active = data
+      .map((d, i) => ({ ...d, x: points[i].x, y: points[i].y, idx: i }))
+      .filter((d) => d.count > 0);
+    const clusters = [];
+    let cur = [];
+    for (const p of active) {
+      if (cur.length === 0) cur.push(p);
+      else {
+        const last = cur[cur.length - 1];
+        if (p.idx - last.idx <= clusterGap) cur.push(p);
+        else { clusters.push(cur); cur = [p]; }
+      }
+    }
+    if (cur.length > 0) clusters.push(cur);
+
     return (
       <View>
         <Svg width={w} height={chartH} style={{ alignSelf: 'center' }}>
-          {data.slice(0, -1).map((_, i) => {
-            if (data[i].count === 0 || data[i + 1].count === 0) return null;
-            const p1 = points[i]; const p2 = points[i + 1];
-            const c = segmentColors[i] || color;
+          {clusters.map((cl, cIdx) => {
+            if (cl.length === 1) {
+              const p = cl[0];
+              return <Circle key={`p${cIdx}`} cx={p.x} cy={p.y} r={3} fill={segmentColors[Math.min(p.idx, segmentColors.length - 1)] || color} />;
+            }
+            // Dessin segment par segment entre 2 points consécutifs du cluster
             return (
-              <Path key={`a${i}`} d={`M ${p1.x} ${p1.y} L ${p2.x} ${p2.y} L ${p2.x} ${padY + innerH} L ${p1.x} ${padY + innerH} Z`} fill={c} opacity={0.15} />
+              <React.Fragment key={`s${cIdx}`}>
+                {cl.slice(0, -1).map((p1, j) => {
+                  const p2 = cl[j + 1];
+                  const c = segmentColors[p1.idx] || color;
+                  return (
+                    <React.Fragment key={`seg${cIdx}_${j}`}>
+                      <Path d={`M ${p1.x} ${p1.y} L ${p2.x} ${p2.y} L ${p2.x} ${padY + innerH} L ${p1.x} ${padY + innerH} Z`} fill={c} opacity={0.15} />
+                      <Path d={`M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`} stroke={c} strokeWidth={1.5} fill="none" />
+                    </React.Fragment>
+                  );
+                })}
+              </React.Fragment>
             );
-          })}
-          {data.slice(0, -1).map((_, i) => {
-            if (data[i].count === 0 || data[i + 1].count === 0) return null;
-            const p1 = points[i]; const p2 = points[i + 1];
-            const c = segmentColors[i] || color;
-            return (
-              <Path key={`l${i}`} d={`M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`} stroke={c} strokeWidth={1.5} fill="none" />
-            );
-          })}
-          {/* Points isolés (conso ce jour mais rien avant/après) */}
-          {data.map((_, i) => {
-            if (data[i].count === 0) return null;
-            const prevOk = i > 0 && data[i - 1].count > 0;
-            const nextOk = i < data.length - 1 && data[i + 1].count > 0;
-            if (prevOk || nextOk) return null;
-            return <Circle key={`p${i}`} cx={points[i].x} cy={points[i].y} r={3} fill={segmentColors[Math.min(i, segmentColors.length - 1)] || color} />;
           })}
         </Svg>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: padX }}>
@@ -150,7 +162,7 @@ export function LineChart({ data, color = theme.colors.text, height = 140, segme
       cur.push(p);
     } else {
       const last = cur[cur.length - 1];
-      if (p.idx === last.idx + 1) {
+      if (p.idx - last.idx <= clusterGap) {
         cur.push(p);
       } else {
         clusters.push(cur);
@@ -264,7 +276,7 @@ export function PieChart({ data, size = 160 }) {
 
 // ---------- MultiLineChart : plusieurs courbes superposées ----------
 // curves : [{ id, name, color, points: [{ts, count}] }]
-export function MultiLineChart({ curves, height = 140, forcePoints = false, timeline = null }) {
+export function MultiLineChart({ curves, height = 140, forcePoints = false, timeline = null, clusterGap = 1 }) {
   const w = SCREEN_W - 64;
   if (!curves || curves.length === 0) {
     return (
@@ -354,6 +366,59 @@ export function MultiLineChart({ curves, height = 140, forcePoints = false, time
   const tsSource = timeline || curves[0].points;
   const labels = labelIndices.map((i) => ({ x: padX + i * stepX, text: fmtShort(tsSource[i]?.ts ?? curves[0].points[i]?.ts) }));
 
+  // Pré-calcul cluster offsets par jour pour forcePoints :
+  // Pour chaque jour, on liste les substances visibles qui ont conso ce jour.
+  // Si plusieurs → on répartit en cluster géométrique centré sur position moyenne.
+  const POINT_RADIUS = 3;
+  const POINT_DIAMETER = POINT_RADIUS * 2;
+  const clusterOffsets = {}; // key = `${dayIdx}_${curveId}` → { dx, dy }
+  if (forcePoints) {
+    const dayGroups = {}; // dayIdx → [{curveId, v}]
+    for (const curve of curves) {
+      if (curve.visible === false) continue;
+      curve.points.forEach((p, dayIdx) => {
+        if (p.count > 0) {
+          if (!dayGroups[dayIdx]) dayGroups[dayIdx] = [];
+          dayGroups[dayIdx].push({ curveId: curve.id, v: p.count });
+        }
+      });
+    }
+    // Pour chaque jour, calculer positions géométriques
+    Object.entries(dayGroups).forEach(([dayIdx, items]) => {
+      const n = items.length;
+      if (n === 1) {
+        clusterOffsets[`${dayIdx}_${items[0].curveId}`] = { dx: 0, dy: 0 };
+      } else if (n === 2) {
+        // Côte à côte, écart 50% diamètre
+        const half = POINT_DIAMETER * 0.5;
+        items.forEach((it, i) => {
+          clusterOffsets[`${dayIdx}_${it.curveId}`] = { dx: (i === 0 ? -half : half), dy: 0 };
+        });
+      } else if (n === 3) {
+        // Triangle équilatéral centré
+        const r = POINT_DIAMETER * 0.65;
+        items.forEach((it, i) => {
+          const angle = -Math.PI / 2 + (i * 2 * Math.PI) / 3;
+          clusterOffsets[`${dayIdx}_${it.curveId}`] = { dx: r * Math.cos(angle), dy: r * Math.sin(angle) };
+        });
+      } else if (n === 4) {
+        // Carré centré
+        const half = POINT_DIAMETER * 0.5;
+        const pos = [[-half, -half], [half, -half], [half, half], [-half, half]];
+        items.forEach((it, i) => {
+          clusterOffsets[`${dayIdx}_${it.curveId}`] = { dx: pos[i][0], dy: pos[i][1] };
+        });
+      } else {
+        // Cercle réparti
+        const r = POINT_DIAMETER * 0.8;
+        items.forEach((it, i) => {
+          const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
+          clusterOffsets[`${dayIdx}_${it.curveId}`] = { dx: r * Math.cos(angle), dy: r * Math.sin(angle) };
+        });
+      }
+    });
+  }
+
   return (
     <View>
       <Svg width={w} height={chartH} style={{ alignSelf: 'center' }}>
@@ -370,18 +435,14 @@ export function MultiLineChart({ curves, height = 140, forcePoints = false, time
           const activePoints = points.filter((p) => p.v > 0);
           if (activePoints.length === 0) return null;
 
-          // Si forcePoints (fenêtre courte) : points avec hauteur réelle
+          // Si forcePoints (fenêtre courte) : points avec hauteur réelle, cluster géométrique
           if (forcePoints) {
-            const visibleCurves = curves.filter((c) => c.visible !== false);
-            const idx = visibleCurves.findIndex((c) => c.id === curve.id);
-            const n = visibleCurves.length || 1;
-            const jitterFactor = stepX * 0.25;
-            const jitter = n > 1 ? (idx - (n - 1) / 2) * (jitterFactor / Math.max(1, n - 1)) : 0;
             return (
               <React.Fragment key={curve.id || i}>
                 {activePoints.map((p, idx2) => {
                   const y = padY + innerH - (p.v / globalMax) * innerH;
-                  return <Circle key={`c${idx2}`} cx={p.x + jitter} cy={y} r={3} fill={curve.color} opacity={0.95} />;
+                  const off = clusterOffsets[`${p.idx}_${curve.id}`] || { dx: 0, dy: 0 };
+                  return <Circle key={`c${idx2}`} cx={p.x + off.dx} cy={y + off.dy} r={POINT_RADIUS} fill={curve.color} opacity={0.95} />;
                 })}
               </React.Fragment>
             );
@@ -415,7 +476,7 @@ export function MultiLineChart({ curves, height = 140, forcePoints = false, time
               cur.push(p);
             } else {
               const last = cur[cur.length - 1];
-              if (p.idx === last.idx + 1) {
+              if (p.idx - last.idx <= clusterGap) {
                 cur.push(p);
               } else {
                 clusters.push(cur);

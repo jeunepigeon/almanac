@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { theme } from '../theme';
 import { formatDateLong, formatTime } from '../utils/dates';
+import LiveCounter from './LiveCounter';
 
 export default function GlobalHistoryView({ consumptions, substancesById, onTapConsumption }) {
   const [selectedSet, setSelectedSet] = useState(null);
@@ -142,6 +143,7 @@ export default function GlobalHistoryView({ consumptions, substancesById, onTapC
                     {c.dosage != null && c.dosage !== '' && (
                       <Text style={styles.dosage}>{c.dosage}</Text>
                     )}
+                    <LiveCounter timestamp={c.timestamp} style={styles.timeAgo} />
                   </Pressable>
                 );
               })}
@@ -251,6 +253,15 @@ const styles = StyleSheet.create({
     fontSize: theme.font.sizes.sm,
     fontWeight: '300',
     fontVariant: ['tabular-nums'],
+  },
+  timeAgo: {
+    color: theme.colors.text,
+    fontSize: theme.font.sizes.sm,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+    marginLeft: theme.spacing.sm,
+    textAlign: 'right',
+    minWidth: 60,
   },
   placeholder: {
     flex: 1,

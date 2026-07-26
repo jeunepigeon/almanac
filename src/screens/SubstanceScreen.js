@@ -262,6 +262,7 @@ function ConsumptionRow({ consumption, color, onPress }) {
         ) : null}
         {consumption.notes ? <Text style={styles.consoNotes} numberOfLines={2}>{consumption.notes}</Text> : null}
       </View>
+      <LiveCounter timestamp={consumption.timestamp} style={styles.consoTimeAgo} />
       <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.textFaint} />
     </Pressable>
   );
@@ -324,6 +325,7 @@ const styles = StyleSheet.create({
   consoBullet: { width: 8, height: 8, borderRadius: 4 },
   consoMiddle: { flex: 1, gap: 2 },
   consoTime: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '300', fontVariant: ['tabular-nums'] },
+  consoTimeAgo: { color: theme.colors.text, fontSize: theme.font.sizes.sm, fontWeight: '600', fontVariant: ['tabular-nums'], marginRight: theme.spacing.sm, textAlign: 'right' },
   consoDosage: { color: theme.colors.textMuted, fontSize: theme.font.sizes.sm, fontWeight: '300' },
   consoNotes: { color: theme.colors.textFaint, fontSize: theme.font.sizes.sm, fontWeight: '300', fontStyle: 'italic' },
   fab: {

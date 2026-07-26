@@ -212,8 +212,8 @@ export default function StatsView({
           const v = parseFloat(c.dosage);
           dayMap[k] = (dayMap[k] || 0) + (isNaN(v) ? 0 : v);
         } else {
-          // Mode réinitialisations OU pas de dosage : compte les prises
-          dayMap[k] = (dayMap[k] || 0) + 1;
+          // Mode prises : chaque jour compte pour 1 (peu importe le nombre de prises ce jour)
+          dayMap[k] = 1;
         }
       }
 
@@ -466,9 +466,21 @@ export default function StatsView({
             </View>
           }>
             {mode === 'global' && multiCurves && multiCurves.length > 0 ? (
-              <MultiLineChart curves={multiCurves} height={140} forcePoints={windowId === '30d' || windowId === '90d'} timeline={stats.timeline} />
+              <MultiLineChart curves={multiCurves} height={140} forcePoints={windowId === '30d' || windowId === '90d'} timeline={stats.timeline} clusterGap={Math.max(1, Math.floor((stats.timeline?.length || 0) * 0.10))} />
             ) : stats.timeline && stats.timeline.length > 0 && stats.total > 0 ? (
-              <LineChart data={stats.timeline} color={dominantColor} height={140} segmentColors={segmentColors} />
+              <MultiLineChart
+                curves={[{
+                  id: 'substance',
+                  name: 'substance',
+                  color: dominantColor,
+                  points: stats.timeline,
+                  visible: true,
+                }]}
+                height={140}
+                forcePoints={windowId === '30d' || windowId === '90d'}
+                timeline={stats.timeline}
+                clusterGap={Math.max(1, Math.floor(stats.timeline.length * 0.10))}
+              />
             ) : (
               <View style={styles.emptyChart}><Text style={styles.emptyChartText}>Pas de consommation sur la période</Text></View>
             )}

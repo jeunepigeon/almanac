@@ -3,6 +3,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../theme';
 import { formatDateLong, formatTime } from '../utils/dates';
 import { getIconById } from '../icons';
+import LiveCounter from './LiveCounter';
 import BottomSheet from './BottomSheet';
 
 export default function DayDetailModal({
@@ -57,6 +58,7 @@ export default function DayDetailModal({
                     </Text>
                   ) : null}
                 </View>
+                <LiveCounter timestamp={item.timestamp} style={styles.rowTimeAgo} />
                 <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.textFaint} />
               </Pressable>
             );
@@ -104,6 +106,7 @@ const styles = StyleSheet.create({
   rowName: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '300' },
   metaRow: { flexDirection: 'row', gap: 4 },
   rowTime: { color: theme.colors.textMuted, fontSize: theme.font.sizes.sm, fontWeight: '300', fontVariant: ['tabular-nums'] },
+  rowTimeAgo: { color: theme.colors.text, fontSize: theme.font.sizes.sm, fontWeight: '600', fontVariant: ['tabular-nums'], marginRight: theme.spacing.sm, textAlign: 'right' },
   rowDosage: { color: theme.colors.textMuted, fontSize: theme.font.sizes.sm, fontWeight: '300' },
   rowNotes: { color: theme.colors.textFaint, fontSize: theme.font.sizes.sm, fontStyle: 'italic', fontWeight: '300' },
   addBtn: {
