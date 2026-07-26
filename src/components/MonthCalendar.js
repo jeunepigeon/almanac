@@ -235,7 +235,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   dayCellToday: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: 'rgba(1, 200, 83, 0.15)',
   },
   dayCellSober: {
     // Plus utilisé : on utilise dayNumberWrapSober à la place

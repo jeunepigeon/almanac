@@ -161,7 +161,7 @@ export default function SubstanceScreen() {
 
       <ConfirmModal
         visible={!!pendingDelete}
-        title="Supprimer cette consommation ?"
+        title="Supprimer ?"
         message="Cette entrée sera retirée de l'historique."
         confirmLabel="Supprimer"
         destructive

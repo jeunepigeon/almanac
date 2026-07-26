@@ -18,7 +18,7 @@ export default function ConfirmModal({
       <Pressable style={styles.backdrop} onPress={onCancel}>
         <View style={styles.center}>
           <Pressable style={styles.card} onPress={() => {}}>
-            {title ? <Text style={styles.title}>{title}</Text> : null}
+            {title ? <Text style={styles.title} numberOfLines={1} adjustsFontSizeToFit>{title}</Text> : null}
             {message ? <Text style={styles.message}>{message}</Text> : null}
 
             {extraActions ? (
@@ -82,9 +82,9 @@ const styles = StyleSheet.create({
   },
   title: {
     color: theme.colors.text,
-    fontSize: theme.font.sizes.lg,
-    fontWeight: '300',
-    letterSpacing: 1,
+    fontSize: theme.font.sizes.md,
+    fontWeight: '400',
+    letterSpacing: 0.5,
     marginBottom: theme.spacing.sm,
   },
   message: {

@@ -324,8 +324,8 @@ export function MultiLineChart({ curves, height = 140, forcePoints = false, time
 
   // Zone principale (mêlée) : garde la hauteur habituelle
   // Zone étendue en bas : ajoute de la hauteur si des courbes plates
-  const RAIL_STEP = 8; // pixels entre chaque rail plate
-  const EXTRA_TOP = numFlatRails > 0 ? 3 : 0; // padding avant la première rail (mêlée→rails)
+  const RAIL_STEP = 6;
+  const EXTRA_TOP = numFlatRails > 0 ? RAIL_STEP : 0;
   const extraBottomH = numFlatRails > 0 ? EXTRA_TOP + numFlatRails * RAIL_STEP : 0;
 
   const chartH = (height - LABEL_H) + extraBottomH;
@@ -389,28 +389,28 @@ export function MultiLineChart({ curves, height = 140, forcePoints = false, time
       if (n === 1) {
         clusterOffsets[`${dayIdx}_${items[0].curveId}`] = { dx: 0, dy: 0 };
       } else if (n === 2) {
-        // Côte à côte, écart 50% diamètre
-        const half = POINT_DIAMETER * 0.5;
+        // Côte à côte, écart = rayon (léger overlap)
+        const off = POINT_RADIUS * 0.5;
         items.forEach((it, i) => {
-          clusterOffsets[`${dayIdx}_${it.curveId}`] = { dx: (i === 0 ? -half : half), dy: 0 };
+          clusterOffsets[`${dayIdx}_${it.curveId}`] = { dx: (i === 0 ? -off : off), dy: 0 };
         });
       } else if (n === 3) {
-        // Triangle équilatéral centré
-        const r = POINT_DIAMETER * 0.65;
+        // Triangle équilatéral centré, distance = rayon
+        const r = POINT_RADIUS * 0.6;
         items.forEach((it, i) => {
           const angle = -Math.PI / 2 + (i * 2 * Math.PI) / 3;
           clusterOffsets[`${dayIdx}_${it.curveId}`] = { dx: r * Math.cos(angle), dy: r * Math.sin(angle) };
         });
       } else if (n === 4) {
         // Carré centré
-        const half = POINT_DIAMETER * 0.5;
-        const pos = [[-half, -half], [half, -half], [half, half], [-half, half]];
+        const off = POINT_RADIUS * 0.5;
+        const pos = [[-off, -off], [off, -off], [off, off], [-off, off]];
         items.forEach((it, i) => {
           clusterOffsets[`${dayIdx}_${it.curveId}`] = { dx: pos[i][0], dy: pos[i][1] };
         });
       } else {
         // Cercle réparti
-        const r = POINT_DIAMETER * 0.8;
+        const r = POINT_RADIUS * 0.7;
         items.forEach((it, i) => {
           const angle = -Math.PI / 2 + (i * 2 * Math.PI) / n;
           clusterOffsets[`${dayIdx}_${it.curveId}`] = { dx: r * Math.cos(angle), dy: r * Math.sin(angle) };

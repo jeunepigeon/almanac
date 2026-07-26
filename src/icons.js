@@ -61,6 +61,7 @@ export const ICONS = [
   { id: 'lightning-bolt', icon: 'lightning-bolt' },
   { id: 'water', icon: 'water' },
   { id: 'snowflake', icon: 'snowflake' },
+  { id: 'fire', icon: 'fire' },
 ];
 
 export const DEFAULT_ICON_ID = 'circle';
