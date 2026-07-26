@@ -2,7 +2,7 @@
   "expo": {
     "name": "Almanac",
     "slug": "almanac",
-    "version": "1.1.8",
+    "version": "1.1.9",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -24,7 +24,7 @@
         "backgroundColor": "#0E0E0E"
       },
       "package": "com.jeunepigeon.almanac",
-      "versionCode": 108
+      "versionCode": 109
     },
     "web": {
       "favicon": "./assets/favicon.png"

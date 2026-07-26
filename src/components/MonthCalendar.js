@@ -81,6 +81,13 @@ export default function MonthCalendar({ markersByDay = {}, onDayPress, initialMo
     setViewedMonth(d);
   };
 
+  // Bloquer navigation vers un mois futur
+  const currentMonth = new Date();
+  currentMonth.setDate(1);
+  currentMonth.setHours(0, 0, 0, 0);
+  const canGoNext = viewedMonth.getFullYear() < currentMonth.getFullYear() ||
+    (viewedMonth.getFullYear() === currentMonth.getFullYear() && viewedMonth.getMonth() < currentMonth.getMonth());
+
   const monthLabel = `${MONTHS_FR[viewedMonth.getMonth()]} ${viewedMonth.getFullYear()}`;
 
   return (
@@ -100,14 +107,15 @@ export default function MonthCalendar({ markersByDay = {}, onDayPress, initialMo
         </TouchableOpacity>
         <Text style={styles.monthLabel}>{monthLabel}</Text>
         <TouchableOpacity
-          onPress={goNext}
+          onPress={canGoNext ? goNext : undefined}
           style={styles.navBtn}
+          disabled={!canGoNext}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <MaterialCommunityIcons
             name="chevron-right"
             size={22}
-            color={theme.colors.text}
+            color={canGoNext ? theme.colors.text : theme.colors.textFaint}
           />
         </TouchableOpacity>
       </View>
@@ -131,7 +139,7 @@ export default function MonthCalendar({ markersByDay = {}, onDayPress, initialMo
           const markers = markersByDay[key] || [];
           const isToday = date.getTime() === today.getTime();
           const isFuture = date.getTime() > today.getTime();
-          const isSober = showSoberFill && !isFuture && markers.length === 0;
+          const isSober = showSoberFill && !isFuture && !isToday && markers.length === 0;
 
           return (
             <TouchableOpacity

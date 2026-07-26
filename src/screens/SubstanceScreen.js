@@ -74,7 +74,9 @@ export default function SubstanceScreen() {
 
   const consosForDay = useMemo(() => {
     if (!dayDetail || !consumptions) return [];
-    return consumptions.filter((c) => dayKeyOf(c.timestamp) === dayDetail.dayKey);
+    return consumptions
+      .filter((c) => dayKeyOf(c.timestamp) === dayDetail.dayKey)
+      .sort((a, b) => a.timestamp - b.timestamp);
   }, [dayDetail, consumptions]);
 
   if (!substance) {
@@ -93,7 +95,7 @@ export default function SubstanceScreen() {
         <View style={[styles.heroIcon, { borderColor: substance.color }]}>
           <MaterialCommunityIcons name={iconEntry.icon} size={28} color={substance.color} />
         </View>
-        <Text style={styles.heroLabel}>Temps depuis la dernière</Text>
+        <Text style={styles.heroLabel}>Sobre depuis</Text>
         <View style={styles.counterWrap}>
           <LiveCounter
             timestamp={lastTimestamp}
@@ -104,7 +106,7 @@ export default function SubstanceScreen() {
 
       <View style={styles.tabs}>
         <Tab label="Calendrier" active={activeTab === 'calendar'} onPress={() => setActiveTab('calendar')} />
-        <Tab label="Historique" active={activeTab === 'history'} onPress={() => setActiveTab('history')} />
+        <Tab label="Recherche" active={activeTab === 'history'} onPress={() => setActiveTab('history')} />
         <Tab label="Stats" active={activeTab === 'stats'} onPress={() => setActiveTab('stats')} />
       </View>
 
@@ -112,6 +114,7 @@ export default function SubstanceScreen() {
         <ScrollView contentContainerStyle={styles.scrollContent}>
           <MonthCalendar
             markersByDay={markersByDay}
+            showSoberFill={true}
             initialMonth={focusDate ? new Date(focusDate) : undefined}
             onDayPress={(dayKey, dayTimestamp) => setDayDetail({ dayKey, dayTimestamp })}
           />
@@ -212,7 +215,12 @@ function HistoryList({ consumptions, color, onEdit }) {
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(c);
     }
-    return Array.from(map.entries()).sort((a, b) => b[0] - a[0]).map(([k, items]) => ({ dayTs: k, items }));
+    return Array.from(map.entries())
+      .sort((a, b) => b[0] - a[0])
+      .map(([k, items]) => ({
+        dayTs: k,
+        items: items.slice().sort((a, b) => a.timestamp - b.timestamp),
+      }));
   }, [consumptions]);
 
   if (consumptions === null) return <View style={styles.listWrap} />;

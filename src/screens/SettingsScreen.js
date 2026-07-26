@@ -35,7 +35,29 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.sectionTitle}>Sauvegardes archivées</Text>
+      <Text style={styles.sectionTitle}>Soutenir le projet</Text>
+      <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('Donations')}>
+        <Text style={styles.rowLabel}>Soutenir le développement</Text>
+        <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
+      </TouchableOpacity>
+
+      <Text style={styles.sectionTitle}>Données</Text>
+      <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('Export')}>
+        <Text style={styles.rowLabel}>Exporter</Text>
+        <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('Import')}>
+        <Text style={styles.rowLabel}>Importer</Text>
+        <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
+      </TouchableOpacity>
+
+      <Text style={styles.sectionTitle}>Zone de danger</Text>
+      <TouchableOpacity style={styles.row} onPress={() => setPendingWipeStep(1)}>
+        <Text style={styles.rowLabelDanger}>Remise à zéro complète</Text>
+        <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.danger} />
+      </TouchableOpacity>
+
+      <Text style={styles.subsectionTitle}>Sauvegardes archivées</Text>
       {archivedSubstances.length === 0 ? (
         <View style={styles.row}>
           <Text style={styles.rowValueFaint}>Aucune sauvegarde</Text>
@@ -62,32 +84,10 @@ export default function SettingsScreen() {
         })
       )}
 
-      <Text style={styles.sectionTitle}>Soutenir le projet</Text>
-      <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('Donations')}>
-        <Text style={styles.rowLabel}>Soutenir le développement</Text>
-        <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
-      </TouchableOpacity>
-
-      <Text style={styles.sectionTitle}>Données</Text>
-      <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('Export')}>
-        <Text style={styles.rowLabel}>Exporter</Text>
-        <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('Import')}>
-        <Text style={styles.rowLabel}>Importer</Text>
-        <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
-      </TouchableOpacity>
-
-      <Text style={styles.sectionTitle}>Zone de danger</Text>
-      <TouchableOpacity style={styles.row} onPress={() => setPendingWipeStep(1)}>
-        <Text style={styles.rowLabelDanger}>Remise à zéro complète</Text>
-        <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.danger} />
-      </TouchableOpacity>
-
       <Text style={styles.sectionTitle}>À propos</Text>
       <View style={styles.row}>
         <Text style={styles.rowLabel}>Version</Text>
-        <Text style={styles.rowValue}>1.1.8</Text>
+        <Text style={styles.rowValue}>1.1.9</Text>
       </View>
       <View style={styles.row}>
         <Text style={styles.rowLabel}>Consos enregistrées depuis</Text>
@@ -182,6 +182,16 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     paddingHorizontal: theme.spacing.lg,
     marginTop: theme.spacing.lg,
+    marginBottom: theme.spacing.sm,
+  },
+  subsectionTitle: {
+    color: theme.colors.textFaint,
+    fontSize: theme.font.sizes.xs,
+    fontWeight: '400',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    paddingHorizontal: theme.spacing.lg,
+    marginTop: theme.spacing.md,
     marginBottom: theme.spacing.sm,
   },
   row: {

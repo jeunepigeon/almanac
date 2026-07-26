@@ -100,7 +100,7 @@ export default function GlobalCalendarPage() {
     <View style={styles.container}>
       <View style={styles.tabs}>
         <Tab label="Calendrier" active={activeTab === 'calendar'} onPress={() => setActiveTab('calendar')} />
-        <Tab label="Historique" active={activeTab === 'history'} onPress={() => setActiveTab('history')} />
+        <Tab label="Recherche" active={activeTab === 'history'} onPress={() => setActiveTab('history')} />
         <Tab label="Stats" active={activeTab === 'stats'} onPress={() => setActiveTab('stats')} />
       </View>
 

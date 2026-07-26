@@ -70,7 +70,7 @@ export default function GlobalHistoryView({ consumptions, substancesById, onTapC
       .sort((a, b) => b[0] - a[0])
       .map(([k, items]) => ({
         dayTs: k,
-        items: items.sort((a, b) => b.timestamp - a.timestamp),
+        items: items.sort((a, b) => a.timestamp - b.timestamp),
       }));
   }, [filtered]);
 
@@ -154,17 +154,30 @@ export default function GlobalHistoryView({ consumptions, substancesById, onTapC
 }
 
 function Pill({ label, color, active, onPress }) {
+  // Convert hex to rgba with alpha for semi-transparent bg
+  const hexToRgba = (hex, alpha) => {
+    const h = hex.replace('#', '');
+    const r = parseInt(h.substring(0, 2), 16);
+    const g = parseInt(h.substring(2, 4), 16);
+    const b = parseInt(h.substring(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  };
+
   return (
     <TouchableOpacity
       onPress={onPress}
       style={[
         styles.pill,
-        active && { borderColor: color, backgroundColor: theme.colors.surfaceAlt },
+        { borderColor: color },
+        active && { backgroundColor: hexToRgba(color, 0.4) },
       ]}
       activeOpacity={0.7}
     >
       <Text
-        style={[styles.pillText, { color: active ? color : theme.colors.textMuted }]}
+        style={[
+          styles.pillText,
+          { color: active ? '#FFFFFF' : color },
+        ]}
         numberOfLines={1}
       >
         {label}

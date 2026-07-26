@@ -150,11 +150,14 @@ export function LineChart({ data, color = theme.colors.text, height = 140, segme
 // ---------- PieChart : camembert ----------
 // data : array of { label, value, color }
 export function PieChart({ data, size = 160 }) {
+  const containerStyle = { width: size, height: size, justifyContent: 'center', alignItems: 'center' };
+
+  // Aucune donnée : afficher "Aucune sélection" en gardant la même taille (pas de shift UI)
   if (!data || data.length === 0) {
     return (
-      <View style={{ height: size, justifyContent: 'center', alignItems: 'center' }}>
-        <Text style={{ color: theme.colors.textFaint, fontSize: theme.font.sizes.sm }}>
-          Aucune donnée
+      <View style={containerStyle}>
+        <Text style={{ color: theme.colors.textFaint, fontSize: theme.font.sizes.sm, fontStyle: 'italic' }}>
+          Aucune sélection
         </Text>
       </View>
     );
@@ -162,8 +165,8 @@ export function PieChart({ data, size = 160 }) {
   const total = data.reduce((s, d) => s + d.value, 0);
   if (total === 0) {
     return (
-      <View style={{ height: size, justifyContent: 'center', alignItems: 'center' }}>
-        <Text style={{ color: theme.colors.textFaint, fontSize: theme.font.sizes.sm }}>
+      <View style={containerStyle}>
+        <Text style={{ color: theme.colors.textFaint, fontSize: theme.font.sizes.sm, fontStyle: 'italic' }}>
           Aucune donnée
         </Text>
       </View>
@@ -173,6 +176,22 @@ export function PieChart({ data, size = 160 }) {
   const cx = size / 2;
   const cy = size / 2;
   const r = size / 2 - 4;
+
+  // Une seule tranche visible = cercle plein (pas de path d'arc pour éviter le bug 360°)
+  if (data.length === 1) {
+    return (
+      <View style={{ width: size, height: size, position: 'relative' }}>
+        <Svg width={size} height={size} style={{ alignSelf: 'center' }}>
+          <Circle cx={cx} cy={cy} r={r} fill={data[0].color} />
+        </Svg>
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ color: '#FFFFFF', fontSize: theme.font.sizes.md, fontWeight: '600' }}>
+            100%
+          </Text>
+        </View>
+      </View>
+    );
+  }
 
   let startAngle = -Math.PI / 2; // commence en haut
   const slices = data.map((d) => {
@@ -200,7 +219,7 @@ export function PieChart({ data, size = 160 }) {
 
 // ---------- MultiLineChart : plusieurs courbes superposées ----------
 // curves : [{ id, name, color, points: [{ts, count}] }]
-export function MultiLineChart({ curves, height = 140, forcePoints = false }) {
+export function MultiLineChart({ curves, height = 140, forcePoints = false, timeline = null }) {
   const w = SCREEN_W - 64;
   if (!curves || curves.length === 0) {
     return (
@@ -253,7 +272,34 @@ export function MultiLineChart({ curves, height = 140, forcePoints = false }) {
     return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
   };
   const labelIndices = [0, Math.floor((dataLen - 1) / 2), dataLen - 1];
-  const labels = labelIndices.map((i) => ({ x: padX + i * stepX, text: fmtShort(curves[0].points[i].ts) }));
+  // Utilise la timeline explicite si fournie, sinon fallback sur la 1re courbe
+  const tsSource = timeline || curves[0].points;
+  const labels = labelIndices.map((i) => ({ x: padX + i * stepX, text: fmtShort(tsSource[i]?.ts ?? curves[0].points[i]?.ts) }));
+
+  // Pré-calcul : détecter les courbes "plates au sol" (≥4 occ mais max ≤ 20% du globalMax)
+  // et leur attribuer un offset vertical (sous-lignes parallèles empilées)
+  const flatCurveOffsets = React.useMemo(() => {
+    const map = {};
+    if (forcePoints) return map;
+    const flatCurves = [];
+    for (const curve of curves) {
+      if (curve.visible === false) continue;
+      const activePts = curve.points.filter((p) => p.count > 0);
+      if (activePts.length < 4) continue;
+      const localMax = Math.max(...activePts.map((p) => p.count));
+      if (localMax <= globalMax * 0.20) {
+        flatCurves.push(curve);
+      }
+    }
+    // Attribuer offsets uniquement s'il y en a >= 2 (une seule = baseline normale)
+    if (flatCurves.length >= 2) {
+      const step = innerH * 0.06;
+      flatCurves.forEach((c, idx) => {
+        map[c.id] = idx * step;
+      });
+    }
+    return map;
+  }, [curves, globalMax, forcePoints, innerH]);
 
   return (
     <View>
@@ -309,9 +355,13 @@ export function MultiLineChart({ curves, height = 140, forcePoints = false }) {
           // Y = padY + innerH - (5% + 95% * (count / globalMax)) * innerH
           // Donc même pour count=1, on a au moins 5% = baseline visible
           const BASELINE = 0.05;
+          // Décalage vertical si cette courbe est "plate au sol" et qu'il y en a plusieurs
+          // Chaque courbe suivante est légèrement décalée vers le haut (au-dessus de la précédente)
+          // pour éviter que les courbes plates au sol se chevauchent
+          const flatOffset = flatCurveOffsets[curve.id] || 0;
           const curvePoints = activePoints.map((p) => ({
             x: p.x,
-            y: padY + innerH - (BASELINE + (1 - BASELINE) * (p.v / globalMax)) * innerH,
+            y: padY + innerH - (BASELINE + (1 - BASELINE) * (p.v / globalMax)) * innerH - flatOffset,
           }));
 
           let pathD = `M ${curvePoints[0].x} ${curvePoints[0].y}`;

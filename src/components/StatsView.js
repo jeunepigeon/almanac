@@ -100,16 +100,18 @@ export default function StatsView({
   }, [mode, globalStats]);
 
   useEffect(() => {
-    if (mode !== 'global' || !globalStats) return;
+    if (mode !== 'global' || !substancesById) return;
     setPieSelection((prev) => {
       const next = { sobres: prev?.sobres ?? true };
-      for (const b of globalStats.breakdown) {
-        // Garde l'état existant, init à true seulement si nouveau
-        next[b.substance.id] = prev?.[b.substance.id] ?? true;
+      // Init à partir de TOUTES les substances actives (non archivées), pas seulement de la fenêtre
+      for (const subId of Object.keys(substancesById)) {
+        const sub = substancesById[subId];
+        if (!sub || sub.archived) continue;
+        next[subId] = prev?.[subId] ?? true;
       }
       return next;
     });
-  }, [mode, globalStats]);
+  }, [mode, substancesById]);
 
   const pieData = useMemo(() => {
     if (!globalStats || !pieSelection) return [];
@@ -464,7 +466,7 @@ export default function StatsView({
             </View>
           }>
             {mode === 'global' && multiCurves && multiCurves.length > 0 ? (
-              <MultiLineChart curves={multiCurves} height={140} forcePoints={windowId === '30d'} />
+              <MultiLineChart curves={multiCurves} height={140} forcePoints={windowId === '30d' || windowId === '90d'} timeline={stats.timeline} />
             ) : stats.timeline && stats.timeline.length > 0 && stats.total > 0 ? (
               <LineChart data={stats.timeline} color={dominantColor} height={140} segmentColors={segmentColors} />
             ) : (
