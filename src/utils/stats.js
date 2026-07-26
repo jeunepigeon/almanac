@@ -183,7 +183,7 @@ export function computeStats(consumptions, windowId, options = {}) {
     while (cur.getTime() <= endDay.getTime()) {
       const k = dayKeyOf(cur.getTime());
       const raw = dayCount[k] || 0;
-      timeline.push({ ts: cur.getTime(), count: modeJours ? (raw > 0 ? 0.5 : 0) : (raw > 0 ? 1 : 0) });
+      timeline.push({ ts: cur.getTime(), count: modeJours ? (raw > 0 ? 0.5 : 0) : raw });
       cur.setDate(cur.getDate() + 1);
     }
   }

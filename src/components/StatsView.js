@@ -212,8 +212,8 @@ export default function StatsView({
           const v = parseFloat(c.dosage);
           dayMap[k] = (dayMap[k] || 0) + (isNaN(v) ? 0 : v);
         } else {
-          // Mode prises : chaque jour compte pour 1 (peu importe le nombre de prises ce jour)
-          dayMap[k] = 1;
+          // Mode réinitialisations OU pas de dosage : compte les prises
+          dayMap[k] = (dayMap[k] || 0) + 1;
         }
       }
 
