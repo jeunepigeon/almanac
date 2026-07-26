@@ -97,10 +97,12 @@ export function LineChart({ data, color = theme.colors.text, height = 140, segme
   const labels = labelIndices.map((i) => ({ x: points[i].x, text: fmtShort(data[i].ts) }));
 
   if (segmentColors && segmentColors.length >= data.length - 1) {
+    // Dessine chaque segment seulement si les 2 points ont conso > 0
     return (
       <View>
         <Svg width={w} height={chartH} style={{ alignSelf: 'center' }}>
           {data.slice(0, -1).map((_, i) => {
+            if (data[i].count === 0 || data[i + 1].count === 0) return null;
             const p1 = points[i]; const p2 = points[i + 1];
             const c = segmentColors[i] || color;
             return (
@@ -108,11 +110,20 @@ export function LineChart({ data, color = theme.colors.text, height = 140, segme
             );
           })}
           {data.slice(0, -1).map((_, i) => {
+            if (data[i].count === 0 || data[i + 1].count === 0) return null;
             const p1 = points[i]; const p2 = points[i + 1];
             const c = segmentColors[i] || color;
             return (
               <Path key={`l${i}`} d={`M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`} stroke={c} strokeWidth={1.5} fill="none" />
             );
+          })}
+          {/* Points isolés (conso ce jour mais rien avant/après) */}
+          {data.map((_, i) => {
+            if (data[i].count === 0) return null;
+            const prevOk = i > 0 && data[i - 1].count > 0;
+            const nextOk = i < data.length - 1 && data[i + 1].count > 0;
+            if (prevOk || nextOk) return null;
+            return <Circle key={`p${i}`} cx={points[i].x} cy={points[i].y} r={3} fill={segmentColors[Math.min(i, segmentColors.length - 1)] || color} />;
           })}
         </Svg>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: padX }}>
@@ -126,15 +137,49 @@ export function LineChart({ data, color = theme.colors.text, height = 140, segme
     );
   }
 
-  let pathD = `M ${points[0].x} ${points[0].y}`;
-  for (let i = 1; i < points.length; i++) pathD += ` L ${points[i].x} ${points[i].y}`;
-  let areaD = pathD + ` L ${points[points.length - 1].x} ${padY + innerH} L ${points[0].x} ${padY + innerH} Z`;
+  // Détecter les clusters de jours CONSÉCUTIFS avec conso > 0
+  // Chaque cluster ≥ 2 = segment, cluster 1 pt = cercle isolé.
+  const activePoints = points
+    .map((p, idx) => ({ ...p, v: data[idx].count, idx }))
+    .filter((p) => p.v > 0);
+
+  const clusters = [];
+  let cur = [];
+  for (const p of activePoints) {
+    if (cur.length === 0) {
+      cur.push(p);
+    } else {
+      const last = cur[cur.length - 1];
+      if (p.idx === last.idx + 1) {
+        cur.push(p);
+      } else {
+        clusters.push(cur);
+        cur = [p];
+      }
+    }
+  }
+  if (cur.length > 0) clusters.push(cur);
 
   return (
     <View>
       <Svg width={w} height={chartH} style={{ alignSelf: 'center' }}>
-        <Path d={areaD} fill={color} opacity={0.15} />
-        <Path d={pathD} stroke={color} strokeWidth={1.5} fill="none" />
+        {clusters.map((cl, cIdx) => {
+          if (cl.length === 1) {
+            return <Circle key={`p${cIdx}`} cx={cl[0].x} cy={cl[0].y} r={3} fill={color} />;
+          }
+          let pathD = `M ${cl[0].x} ${cl[0].y}`;
+          for (let j = 1; j < cl.length; j++) pathD += ` L ${cl[j].x} ${cl[j].y}`;
+          // Area sous le segment (garde le style visuel)
+          const areaD = pathD +
+            ` L ${cl[cl.length - 1].x} ${padY + innerH}` +
+            ` L ${cl[0].x} ${padY + innerH} Z`;
+          return (
+            <React.Fragment key={`s${cIdx}`}>
+              <Path d={areaD} fill={color} opacity={0.15} />
+              <Path d={pathD} stroke={color} strokeWidth={1.5} fill="none" />
+            </React.Fragment>
+          );
+        })}
       </Svg>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: padX }}>
         {labels.map((l, i) => (
@@ -267,8 +312,8 @@ export function MultiLineChart({ curves, height = 140, forcePoints = false, time
 
   // Zone principale (mêlée) : garde la hauteur habituelle
   // Zone étendue en bas : ajoute de la hauteur si des courbes plates
-  const RAIL_STEP = 12; // pixels entre chaque rail plate
-  const EXTRA_TOP = numFlatRails > 0 ? 8 : 0; // padding avant la première rail
+  const RAIL_STEP = 8; // pixels entre chaque rail plate
+  const EXTRA_TOP = numFlatRails > 0 ? 3 : 0; // padding avant la première rail (mêlée→rails)
   const extraBottomH = numFlatRails > 0 ? EXTRA_TOP + numFlatRails * RAIL_STEP : 0;
 
   const chartH = (height - LABEL_H) + extraBottomH;
@@ -359,44 +404,71 @@ export function MultiLineChart({ curves, height = 140, forcePoints = false, time
             );
           }
 
-          // ≥ 4 occurrences : deux cas selon si la courbe est "plate au sol" ou pas
+          // ≥ 4 occurrences : détecter les clusters de jours CONSÉCUTIFS
+          // Chaque cluster ≥ 2 pts = segment de courbe reliant ces pts
+          // Cluster 1 pt = point isolé
+          // Entre clusters : rien
+          const clusters = [];
+          let cur = [];
+          for (const p of activePoints) {
+            if (cur.length === 0) {
+              cur.push(p);
+            } else {
+              const last = cur[cur.length - 1];
+              if (p.idx === last.idx + 1) {
+                cur.push(p);
+              } else {
+                clusters.push(cur);
+                cur = [p];
+              }
+            }
+          }
+          if (cur.length > 0) clusters.push(cur);
+
           const railIdx = flatRailsMap[curve.id];
           if (railIdx !== undefined) {
-            // Courbe plate → dessin dans la zone étendue en bas, ligne horizontale sur son rail
-            // Rail 0 = juste sous la baseline, Rail 1 = 1 step plus bas, etc.
+            // Courbe plate → dessin dans la zone étendue en bas, sur son rail Y fixe
+            // Les clusters sont dessinés comme des segments horizontaux à la Y du rail,
+            // les points isolés comme cercles à la Y du rail.
             const railY = padY + innerH + EXTRA_TOP + (railIdx * RAIL_STEP) + RAIL_STEP / 2;
             return (
-              <Path
-                key={curve.id || i}
-                d={`M ${padX} ${railY} L ${padX + innerW} ${railY}`}
-                stroke={curve.color}
-                strokeWidth={1.6}
-                fill="none"
-                opacity={0.95}
-              />
+              <React.Fragment key={curve.id || i}>
+                {clusters.map((cl, cIdx) => {
+                  if (cl.length === 1) {
+                    return <Circle key={`p${cIdx}`} cx={cl[0].x} cy={railY} r={2.5} fill={curve.color} opacity={0.95} />;
+                  }
+                  return (
+                    <Path
+                      key={`s${cIdx}`}
+                      d={`M ${cl[0].x} ${railY} L ${cl[cl.length - 1].x} ${railY}`}
+                      stroke={curve.color}
+                      strokeWidth={1.6}
+                      fill="none"
+                      opacity={0.95}
+                    />
+                  );
+                })}
+              </React.Fragment>
             );
           }
 
-          // Courbe normale (dans la mêlée) : scalée entre 5% (min) et 100% (max)
+          // Courbe normale (dans la mêlée) : scalée entre 5% et 100%, avec clusters
           const BASELINE = 0.05;
-          const curvePoints = activePoints.map((p) => ({
-            x: p.x,
-            y: padY + innerH - (BASELINE + (1 - BASELINE) * (p.v / globalMax)) * innerH,
-          }));
+          const yFor = (v) => padY + innerH - (BASELINE + (1 - BASELINE) * (v / globalMax)) * innerH;
 
-          let pathD = `M ${curvePoints[0].x} ${curvePoints[0].y}`;
-          for (let j = 1; j < curvePoints.length; j++) {
-            pathD += ` L ${curvePoints[j].x} ${curvePoints[j].y}`;
-          }
           return (
-            <Path
-              key={curve.id || i}
-              d={pathD}
-              stroke={curve.color}
-              strokeWidth={1.5}
-              fill="none"
-              opacity={0.9}
-            />
+            <React.Fragment key={curve.id || i}>
+              {clusters.map((cl, cIdx) => {
+                if (cl.length === 1) {
+                  return <Circle key={`p${cIdx}`} cx={cl[0].x} cy={yFor(cl[0].v)} r={2.5} fill={curve.color} opacity={0.95} />;
+                }
+                let pathD = `M ${cl[0].x} ${yFor(cl[0].v)}`;
+                for (let j = 1; j < cl.length; j++) pathD += ` L ${cl[j].x} ${yFor(cl[j].v)}`;
+                return (
+                  <Path key={`s${cIdx}`} d={pathD} stroke={curve.color} strokeWidth={1.5} fill="none" opacity={0.9} />
+                );
+              })}
+            </React.Fragment>
           );
         })}
       </Svg>
