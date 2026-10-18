@@ -115,6 +115,7 @@ export default function SubstanceScreen() {
         <ScrollableCalendar
           markersByDay={markersByDay}
           showSoberFill={true}
+          showJumpButtons={true}
           onDayPress={(dayKey, dayTimestamp) => setDayDetail({ dayKey, dayTimestamp })}
         />
       )}

@@ -248,30 +248,17 @@ export default function SubstancesPage() {
         title="Supprimer cette substance"
         message={
           pendingDelete
-            ? `"${pendingDelete.name}" — choisis ce qui doit se passer avec son historique :`
+            ? `"${pendingDelete.name}" sera retirée de la liste. Une sauvegarde est créée automatiquement. Vous pourrez la restaurer ou la supprimer définitivement via Paramètres > Gestionnaire de sauvegarde.`
             : ''
         }
         cancelLabel="Annuler"
+        confirmLabel="Supprimer"
+        destructive
         onCancel={() => setPendingDelete(null)}
-        extraActions={[
-          {
-            label: 'Archiver',
-            hint: "Disparaît de la liste, l'historique reste visible dans le calendrier global",
-            onPress: async () => {
-              if (pendingDelete) await archiveSubstance(pendingDelete.id);
-              setPendingDelete(null);
-            },
-          },
-          {
-            label: 'Effacer définitivement',
-            hint: 'La substance et tout son historique sont supprimés',
-            destructive: true,
-            onPress: async () => {
-              if (pendingDelete) await deleteSubstance(pendingDelete.id);
-              setPendingDelete(null);
-            },
-          },
-        ]}
+        onConfirm={async () => {
+          if (pendingDelete) await deleteSubstance(pendingDelete.id);
+          setPendingDelete(null);
+        }}
       />
     </View>
   );

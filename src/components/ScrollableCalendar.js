@@ -44,40 +44,49 @@ function MarkersGrid({ markers }) {
   const n = Math.min(markers.length, 10);
   if (n === 0) return null;
 
-  // Rangée 1 : min(n, 5) points centrés
-  const row1Count = Math.min(n, 5);
-  const row1 = markers.slice(0, row1Count);
-
-  // Rangée 2 : positions calculées selon n
-  // Référence : positions des 5 points de la rangée 1 (-2 PITCH .. +2 PITCH)
-  // On exprime les positions comme multiples de PITCH/2 (demi-pas) depuis le centre
-  // Row 1 positions = [-2, -1, 0, 1, 2] × PITCH (en indices "demi-pas" = [-4, -2, 0, 2, 4])
-  // Row 2 selon n :
+  // Toujours centré sur l'axe vertical du jour.
+  // Row 1 : min(n, 5) points, positions en "demi-pas" (halfPitch = PITCH/2) depuis le centre.
+  //   n=1 : [0]
+  //   n=2 : [-1, 1]
+  //   n=3 : [-2, 0, 2]
+  //   n=4 : [-3, -1, 1, 3]
+  //   n=5 : [-4, -2, 0, 2, 4]
+  // Row 2 (si n>=6) : positions aussi en demi-pas, référence = row1 à 5 points
   //   n=6 : [0]
-  //   n=7 : [-1, 1]  (entre 2-3 et 3-4)
-  //   n=8 : [-2, 0, 2] (sous 2, 3, 4) → indices demi-pas [-2, 0, 2]
-  //   n=9 : [-3, -1, 1, 3] (entre toutes paires)
-  //   n=10 : [-4, -2, 0, 2, 4] (sous 1,2,3,4,5)
-  const row2Config = {
+  //   n=7 : [-1, 1] (entre pts 2-3 et 3-4)
+  //   n=8 : [-2, 0, 2] (sous pts 2, 3, 4)
+  //   n=9 : [-3, -1, 1, 3] (quinconce entre toutes les paires)
+  //   n=10 : [-4, -2, 0, 2, 4] (sous tous les 5 pts)
+  const ROW1_HALF = {
+    1: [0],
+    2: [-1, 1],
+    3: [-2, 0, 2],
+    4: [-3, -1, 1, 3],
+    5: [-4, -2, 0, 2, 4],
+  };
+  const ROW2_HALF = {
     6: [0],
     7: [-1, 1],
     8: [-2, 0, 2],
     9: [-3, -1, 1, 3],
     10: [-4, -2, 0, 2, 4],
   };
-  const row2Half = row2Config[n] || [];
-  const row2 = markers.slice(5, 5 + row2Half.length);
+
+  const row1Count = Math.min(n, 5);
+  const row1Half = ROW1_HALF[row1Count];
+  const row2Half = ROW2_HALF[n] || [];
+  const row1 = markers.slice(0, row1Count);
+  const row2 = markers.slice(row1Count, row1Count + row2Half.length);
 
   const halfPitch = PITCH / 2;
-  const containerW = 5 * PITCH; // largeur fixe pour centrer
+  // Container : largeur fixe pour accueillir 5 points + marges
+  const containerW = 5 * PITCH;
 
   return (
     <View style={[styles.markersGrid, { width: containerW }]}>
       <View style={styles.markersRow2}>
         {row1.map((color, idx) => {
-          // indices demi-pas pour row1 : [-4, -2, 0, 2, 4]
-          // position pixel depuis centre : halfIdx * halfPitch
-          const halfIdx = -4 + idx * 2;
+          const halfIdx = row1Half[idx];
           const left = containerW / 2 + halfIdx * halfPitch - DOT_SIZE / 2;
           return (
             <View
@@ -175,7 +184,7 @@ const MonthGrid = memo(function MonthGrid({ year, month, markersByDay, onDayPres
   );
 });
 
-export default function ScrollableCalendar({ markersByDay = {}, onDayPress, showSoberFill = false }) {
+export default function ScrollableCalendar({ markersByDay = {}, onDayPress, showSoberFill = false, showJumpButtons = false }) {
   const now = new Date();
   const currentMonth = now.getMonth();
   const currentYear = now.getFullYear();
@@ -195,6 +204,25 @@ export default function ScrollableCalendar({ markersByDay = {}, onDayPress, show
     return arr;
   }, [currentYear, currentMonth]);
 
+  // Set des idx de mois contenant au moins une prise (pour les boutons jump)
+  const monthsWithLogs = useMemo(() => {
+    const set = new Set();
+    for (const dayKey of Object.keys(markersByDay)) {
+      // dayKey format : "YYYY-MM-DD"
+      const [y, m] = dayKey.split('-');
+      const yearN = parseInt(y, 10);
+      const monthN = parseInt(m, 10) - 1;
+      // Trouver l'idx dans months
+      for (let i = 0; i < months.length; i++) {
+        if (months[i].year === yearN && months[i].month === monthN) {
+          set.add(i);
+          break;
+        }
+      }
+    }
+    return set;
+  }, [markersByDay, months]);
+
   const currentIdx = months.length - 1;
   const [visibleIdx, setVisibleIdx] = useState(currentIdx);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -209,27 +237,52 @@ export default function ScrollableCalendar({ markersByDay = {}, onDayPress, show
     return () => clearTimeout(t);
   }, [currentIdx]);
 
-  const scrollToIdx = useCallback((idx) => {
+  const scrollToIdx = useCallback((idx, animated = true) => {
     if (!flatListRef.current) return;
-    flatListRef.current.scrollToIndex({ index: idx, animated: true });
+    flatListRef.current.scrollToIndex({ index: idx, animated });
+    setVisibleIdx(idx);
+  }, []);
+
+  // Navigation instantanée (pour spam de chevrons) : pas d'animation = pas de cooldown
+  const scrollToIdxFast = useCallback((idx) => {
+    if (!flatListRef.current) return;
+    flatListRef.current.scrollToIndex({ index: idx, animated: false });
     setVisibleIdx(idx);
   }, []);
 
   // Mois précédent = passé = plus haut dans la liste = idx DIMINUE
+  // scrollToIdxFast (animated: false) = pas de cooldown, spam OK
   const goPrev = () => {
     if (visibleIdx > 0) {
-      scrollToIdx(visibleIdx - 1);
+      scrollToIdxFast(visibleIdx - 1);
     }
   };
   // Mois suivant = présent = plus bas dans la liste = idx AUGMENTE
   const goNext = () => {
     if (visibleIdx < currentIdx) {
-      scrollToIdx(visibleIdx + 1);
+      scrollToIdxFast(visibleIdx + 1);
     }
   };
   const goToday = () => {
     if (visibleIdx < currentIdx) scrollToIdx(currentIdx);
   };
+
+  // Saute au mois précédent qui contient au moins une prise
+  const goPrevLog = () => {
+    const sortedIdxs = [...monthsWithLogs].sort((a, b) => a - b);
+    const prev = sortedIdxs.filter((i) => i < visibleIdx).pop();
+    if (prev != null) scrollToIdxFast(prev);
+  };
+
+  // Saute au mois suivant qui contient au moins une prise
+  const goNextLog = () => {
+    const sortedIdxs = [...monthsWithLogs].sort((a, b) => a - b);
+    const next = sortedIdxs.find((i) => i > visibleIdx);
+    if (next != null) scrollToIdxFast(next);
+  };
+
+  const canGoPrevLog = showJumpButtons && [...monthsWithLogs].some((i) => i < visibleIdx);
+  const canGoNextLog = showJumpButtons && [...monthsWithLogs].some((i) => i > visibleIdx);
 
   const canGoPrev = visibleIdx > 0;
   const canGoNext = visibleIdx < currentIdx;
@@ -270,6 +323,7 @@ export default function ScrollableCalendar({ markersByDay = {}, onDayPress, show
   return (
     <View style={styles.container}>
       <View style={styles.navBar}>
+        {/* Chevron haut : mois précédent */}
         <TouchableOpacity
           onPress={goPrev}
           style={styles.navBtn}
@@ -278,6 +332,21 @@ export default function ScrollableCalendar({ markersByDay = {}, onDayPress, show
           <Ionicons name="chevron-up" size={20} color={canGoPrev ? theme.colors.text : theme.colors.textFaint} />
         </TouchableOpacity>
 
+        {/* Chevron + point : prise précédente (uniquement calendrier substance) */}
+        {showJumpButtons && (
+          <TouchableOpacity
+            onPress={goPrevLog}
+            style={styles.navBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <View style={{ alignItems: 'center' }}>
+              <View style={[styles.jumpDot, { backgroundColor: canGoPrevLog ? theme.colors.text : theme.colors.textFaint }]} />
+              <Ionicons name="chevron-up" size={16} color={canGoPrevLog ? theme.colors.text : theme.colors.textFaint} style={{ marginTop: 0 }} />
+            </View>
+          </TouchableOpacity>
+        )}
+
+        {/* Double chevron bas : aller à aujourd'hui */}
         <TouchableOpacity
           onPress={goToday}
           style={styles.todayBtn}
@@ -287,6 +356,21 @@ export default function ScrollableCalendar({ markersByDay = {}, onDayPress, show
           <Ionicons name="chevron-down" size={12} color={canGoToday ? '#01C853' : theme.colors.textFaint} style={{ marginTop: -6 }} />
         </TouchableOpacity>
 
+        {/* Chevron + point : prise suivante (uniquement calendrier substance) */}
+        {showJumpButtons && (
+          <TouchableOpacity
+            onPress={goNextLog}
+            style={styles.navBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <View style={{ alignItems: 'center' }}>
+              <Ionicons name="chevron-down" size={16} color={canGoNextLog ? theme.colors.text : theme.colors.textFaint} />
+              <View style={[styles.jumpDot, { backgroundColor: canGoNextLog ? theme.colors.text : theme.colors.textFaint, marginTop: 0 }]} />
+            </View>
+          </TouchableOpacity>
+        )}
+
+        {/* Chevron bas : mois suivant */}
         <TouchableOpacity
           onPress={goNext}
           style={styles.navBtn}
@@ -392,6 +476,8 @@ const styles = StyleSheet.create({
     width: 36, height: 36, justifyContent: 'center', alignItems: 'center',
     borderRadius: 6, borderWidth: 1, borderColor: theme.colors.border,
   },
+  // Point à côté du chevron pour "prise précédente/suivante" (A1 collé)
+  jumpDot: { width: 5, height: 5, borderRadius: 2.5 },
   btnDisabled: { opacity: 0.4 },
   todayBtn: {
     width: 44, height: 36, justifyContent: 'center', alignItems: 'center',

@@ -69,7 +69,7 @@ export default function MainScreen() {
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={styles.settingText}>setting</Text>
+              <Text style={styles.settingText}>settings</Text>
               {hasUnconsulted && <View style={styles.redDot} />}
             </View>
           </TouchableOpacity>

@@ -21,6 +21,11 @@ import {
   dbInsertConsumptionRaw,
 } from '../db';
 import { createSnapshot, makeUniqueSnapshotName, fmtDateTiret, parseSnapshot } from '../utils/snapshots';
+
+// Normalise un nom de substance pour matching lors de la fusion (trim + lowercase)
+function normalizeName(name) {
+  return (name || '').trim().toLowerCase();
+}
 import { dbGetSnapshotData } from '../db';
 import * as Crypto from 'expo-crypto';
 
@@ -93,8 +98,12 @@ export const useStore = create((set, get) => ({
   },
 
   // Fusion d'un snapshot dans les données live.
-  // Ajoute les substances/consos qui manquent, ne touche pas aux existantes (données actives gagnent).
-  // Dédup consos par (timestamp exact, substanceId).
+  // Clé de matching : NOM (case-insensitive, trim) uniquement.
+  // Si une substance du snapshot a le même nom qu'une substance active :
+  //   → les consos manquantes sont ajoutées à la substance ACTIVE (son id est utilisé)
+  //   → couleur/icône/dosage de l'actif sont CONSERVÉS
+  // Si pas de match par nom → la substance du snapshot est créée (nouvelle entrée)
+  // Dédup consos par timestamp exact (sur la substance de destination).
   fusionSnapshot: async (snapshotId, substanceIds = null) => {
     const state = get();
     const jsonStr = await dbGetSnapshotData(snapshotId);
@@ -105,28 +114,43 @@ export const useStore = create((set, get) => ({
     await get().createSnapshotFromLive(`avant-fusion-${fmtDateTiret()}`);
 
     const activeSubs = [...state.substances, ...state.archivedSubstances];
-    const activeSubIds = new Set(activeSubs.map((s) => s.id));
-
-    // 1. Substances : ajouter celles qui n'existent pas déjà (INSERT OR IGNORE = safe)
-    const subsToAdd = snap.substances.filter((s) =>
-      (!substanceIds || substanceIds.includes(s.id))
-    );
-    for (const s of subsToAdd) {
-      await dbInsertSubstanceRaw({
-        id: s.id, name: s.name, color: s.color, icon: s.icon,
-        createdAt: s.createdAt, archived: !!s.archived, position: s.position ?? 0,
-      });
+    // Map : nom normalisé → substance active
+    const activeByName = new Map();
+    for (const s of activeSubs) {
+      activeByName.set(normalizeName(s.name), s);
     }
 
-    // 2. Consos : ajouter celles qui n'existent pas déjà (dedup par timestamp+substanceId)
+    // Pour chaque substance du snapshot : trouver son équivalent actif par nom, ou créer
+    // Map : snapshot_substance_id → active_substance_id (pour rerouter les consos)
+    const idMap = {};
+    for (const s of snap.substances) {
+      if (substanceIds && !substanceIds.includes(s.id)) continue;
+      const key = normalizeName(s.name);
+      const matched = activeByName.get(key);
+      if (matched) {
+        // Match par nom → on garde l'actif, on route les consos vers lui
+        idMap[s.id] = matched.id;
+      } else {
+        // Pas de match → créer avec les propriétés du snapshot
+        await dbInsertSubstanceRaw({
+          id: s.id, name: s.name, color: s.color, icon: s.icon,
+          createdAt: s.createdAt, archived: !!s.archived, position: s.position ?? 0,
+        });
+        idMap[s.id] = s.id;
+      }
+    }
+
+    // Consos : ajouter celles qui n'existent pas déjà (dedup par timestamp exact sur dest)
     let added = 0;
     for (const c of snap.consumptions) {
       if (substanceIds && !substanceIds.includes(c.substanceId)) continue;
-      const existingList = await dbGetConsumptionsBySubstance(c.substanceId);
+      const destSubId = idMap[c.substanceId];
+      if (!destSubId) continue; // substance ignorée (non cochée)
+      const existingList = await dbGetConsumptionsBySubstance(destSubId);
       const dup = existingList.some((ec) => ec.timestamp === c.timestamp);
       if (dup) continue;
       await dbInsertConsumptionRaw({
-        id: c.id, substanceId: c.substanceId, timestamp: c.timestamp,
+        id: c.id, substanceId: destSubId, timestamp: c.timestamp,
         dosage: c.dosage, notes: c.notes, createdAt: c.createdAt,
       });
       added++;
@@ -192,7 +216,15 @@ export const useStore = create((set, get) => ({
     }));
   },
 
+  // Suppression d'une substance = archivage via snapshot + wipe de la DB
+  // Snapshot nommé "archivage-<nom>-DD-MM-YYYY" contenant uniquement cette substance et ses consos
   deleteSubstance: async (id) => {
+    const sub = [...get().substances, ...get().archivedSubstances].find((s) => s.id === id);
+    if (sub) {
+      // Nom du snapshot : slug depuis le nom de la substance
+      const slug = sub.name.trim().replace(/\s+/g, '-').toLowerCase();
+      await get().createSnapshotFromLive(`archivage-${slug}-${fmtDateTiret()}`, [id]);
+    }
     await dbDeleteSubstance(id);
     const newCons = { ...get().consumptionsBySubstance };
     delete newCons[id];

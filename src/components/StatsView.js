@@ -100,19 +100,20 @@ export default function StatsView({
   }, [mode, globalStats]);
 
   useEffect(() => {
-    if (mode !== 'global' || !globalStats) return;
+    if (mode !== 'global' || !substancesById) return;
     setPieSelection((prev) => {
       const next = { sobres: prev?.sobres ?? true };
-      // Init UNIQUEMENT à partir des substances présentes dans la fenêtre courante.
-      // Les substances absentes de la fenêtre voient leur état oublié.
-      // Si elles réapparaissent plus tard, elles seront cochées par défaut.
-      for (const b of globalStats.breakdown) {
-        const subId = b.substance.id;
+      // Mémorisation persistante : on garde l'état de TOUTES les substances actives
+      // (même celles absentes de la fenêtre courante), pour que décocher cannabis en 30j
+      // reste décoché quand cannabis réapparaît dans une autre fenêtre.
+      for (const subId of Object.keys(substancesById)) {
+        const sub = substancesById[subId];
+        if (!sub || sub.archived) continue;
         next[subId] = prev?.[subId] ?? true;
       }
       return next;
     });
-  }, [mode, globalStats]);
+  }, [mode, substancesById]);
 
   const pieData = useMemo(() => {
     if (!globalStats || !pieSelection) return [];
@@ -557,7 +558,7 @@ const styles = StyleSheet.create({
     color: theme.colors.text, fontSize: 56, fontWeight: '200',
     fontVariant: ['tabular-nums'], letterSpacing: 1,
   },
-  windowSelector: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.md, marginBottom: theme.spacing.xs },
+  windowSelector: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.md, marginBottom: theme.spacing.xs, justifyContent: 'center' },
   windowChip: { paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs, borderRadius: 4, borderWidth: 1, borderColor: theme.colors.border },
   windowChipText: { color: theme.colors.textMuted, fontSize: theme.font.sizes.sm, fontWeight: '300', letterSpacing: 0.5 },
   customRangeRow: {

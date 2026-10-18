@@ -11,6 +11,7 @@ import { getIconById } from '../icons';
 import { dbGetFirstConsumptionTimestamp, dbGetSnapshotData } from '../db';
 import ConfirmModal from '../components/ConfirmModal';
 import ActionSheet from '../components/ActionSheet';
+import DiskIcon from '../components/DiskIcon';
 import { fmtDateTiret, fmtSize, parseSnapshot } from '../utils/snapshots';
 
 function formatDateLongFR(ts) {
@@ -119,14 +120,9 @@ export default function SettingsScreen() {
         <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
       </TouchableOpacity>
 
-      <Text style={styles.sectionTitle}>Données</Text>
-      <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('Export')}>
-        <View style={styles.rowLeft}>
-          <Ionicons name="arrow-up-outline" size={18} color={theme.colors.text} style={styles.rowIcon} />
-          <Text style={styles.rowLabel}>Exporter</Text>
-        </View>
-        <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
-      </TouchableOpacity>
+      {/* ===== GESTIONNAIRE DE SAUVEGARDE ET ARCHIVES ===== */}
+      <Text style={styles.sectionTitle}>Gestionnaire de sauvegarde et archives</Text>
+
       <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('Import')}>
         <View style={styles.rowLeft}>
           <Ionicons name="arrow-down-outline" size={18} color={theme.colors.text} style={styles.rowIcon} />
@@ -135,13 +131,16 @@ export default function SettingsScreen() {
         <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
       </TouchableOpacity>
 
-      <Text style={styles.sectionTitle}>Zone de danger</Text>
-      <TouchableOpacity style={styles.row} onPress={() => setPendingWipeStep(1)}>
-        <Text style={styles.rowLabelDanger}>Remise à zéro complète</Text>
-        <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.danger} />
+      <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('Export')}>
+        <View style={styles.rowLeft}>
+          <View style={styles.rowIcon}>
+            <DiskIcon size={18} color={theme.colors.text} />
+          </View>
+          <Text style={styles.rowLabel}>Exporter</Text>
+        </View>
+        <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
       </TouchableOpacity>
 
-      <Text style={styles.subsectionTitle}>Sauvegardes archivées</Text>
       <TouchableOpacity style={styles.row} onPress={openCreateSnapshotModal}>
         <View style={styles.rowLeft}>
           <Ionicons name="add" size={20} color={theme.colors.text} style={styles.rowIcon} />
@@ -182,10 +181,11 @@ export default function SettingsScreen() {
         })
       )}
 
+      {/* ===== À PROPOS ===== */}
       <Text style={styles.sectionTitle}>À propos</Text>
       <View style={styles.row}>
         <Text style={styles.rowLabel}>Version</Text>
-        <Text style={styles.rowValue}>1.1.13</Text>
+        <Text style={styles.rowValue}>1.1.14</Text>
       </View>
       <View style={styles.row}>
         <Text style={styles.rowLabel}>Consos enregistrées depuis</Text>
@@ -193,6 +193,13 @@ export default function SettingsScreen() {
           {firstConsoTs ? formatDateLongFR(firstConsoTs) : '—'}
         </Text>
       </View>
+
+      {/* ===== ZONE DE DANGER (tout en bas) ===== */}
+      <Text style={styles.sectionTitle}>Zone de danger</Text>
+      <TouchableOpacity style={styles.row} onPress={() => setPendingWipeStep(1)}>
+        <Text style={styles.rowLabelDanger}>Remise à zéro complète</Text>
+        <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.danger} />
+      </TouchableOpacity>
 
       <View style={styles.creditWrap}>
         <Text style={styles.creditText}>almanac — développé par pigeon</Text>
@@ -214,9 +221,19 @@ export default function SettingsScreen() {
                 {
                   id: 'export',
                   label: 'Exporter',
-                  icon: 'upload',
+                  icon: 'floppy',
                   onPress: () => {
                     navigation.navigate('Export', { snapshotId: snapshotAction.snap.id });
+                    setSnapshotAction(null);
+                  },
+                },
+                {
+                  id: 'download',
+                  label: 'Télécharger',
+                  icon: 'download-outline',
+                  onPress: () => {
+                    // Même flow qu'Exporter mais via le même ExportScreen (chiffré PIN)
+                    navigation.navigate('Export', { snapshotId: snapshotAction.snap.id, downloadMode: true });
                     setSnapshotAction(null);
                   },
                 },
@@ -454,7 +471,7 @@ const styles = StyleSheet.create({
   snapNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   redDotSmall: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FF3B30' },
   snapName: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '300' },
-  snapInfo: { color: theme.colors.textFaint, fontSize: theme.font.sizes.xs, marginTop: 2 },
+  snapInfo: { color: theme.colors.textMuted, fontSize: theme.font.sizes.sm, marginTop: 3, fontWeight: '300' },
   creditWrap: {
     alignItems: 'center',
     paddingTop: theme.spacing.xl,
