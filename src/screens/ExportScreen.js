@@ -6,20 +6,23 @@ import {
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { theme } from '../theme';
-import { dbGetSubstances, dbGetAllConsumptions } from '../db';
+import { dbGetSubstances, dbGetAllConsumptions, dbGetSnapshotData } from '../db';
 import { buildExportFile } from '../utils/exportImport';
+import { parseSnapshot, fmtDateTiret } from '../utils/snapshots';
 
 export default function ExportScreen() {
   const navigation = useNavigation();
+  const route = useRoute();
+  const snapshotId = route.params?.snapshotId ?? null;
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [busy, setBusy] = useState(false);
 
   const handleExport = async () => {
-    if (password.length !== 6 || !/^\d{6}$/.test(password)) {
-      Alert.alert('Code PIN invalide', 'Le code PIN doit contenir exactement 6 chiffres.');
+    if (password.length !== 4 || !/^\d{4}$/.test(password)) {
+      Alert.alert('Code PIN invalide', 'Le code PIN doit contenir exactement 4 chiffres.');
       return;
     }
     if (password !== confirmPassword) {
@@ -29,13 +32,32 @@ export default function ExportScreen() {
 
     setBusy(true);
     try {
-      const substances = await dbGetSubstances({ includeArchived: true });
-      const consumptions = await dbGetAllConsumptions();
-      const fileContent = await buildExportFile(substances, consumptions, password);
+      let substances, consumptions, filenameBase;
 
-      const now = new Date();
-      const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
-      const filename = `almanac_export_${stamp}`;
+      if (snapshotId) {
+        // Export d'un snapshot existant
+        const data = await dbGetSnapshotData(snapshotId);
+        if (!data) throw new Error('Snapshot introuvable');
+        const parsed = parseSnapshot(data);
+        substances = parsed.substances.map((s) => ({
+          id: s.id, name: s.name, color: s.color, icon: s.icon,
+          created_at: s.createdAt, archived: s.archived ? 1 : 0,
+          position: s.position ?? 0,
+        }));
+        consumptions = parsed.consumptions.map((c) => ({
+          id: c.id, substance_id: c.substanceId, timestamp: c.timestamp,
+          dosage: c.dosage, notes: c.notes, created_at: c.createdAt,
+        }));
+        filenameBase = `snapshot-${fmtDateTiret()}`;
+      } else {
+        // Export live normal
+        substances = await dbGetSubstances({ includeArchived: true });
+        consumptions = await dbGetAllConsumptions();
+        filenameBase = `almanac-export-${fmtDateTiret()}`;
+      }
+
+      const fileContent = await buildExportFile(substances, consumptions, password);
+      const filename = `${filenameBase}.almanac`;
       const path = `${FileSystem.cacheDirectory}${filename}`;
 
       await FileSystem.writeAsStringAsync(path, fileContent, {
@@ -74,17 +96,17 @@ export default function ExportScreen() {
           PIN.
         </Text>
 
-        <Text style={styles.fieldLabel}>Code PIN (6 chiffres)</Text>
+        <Text style={styles.fieldLabel}>Code PIN (4 chiffres)</Text>
         <TextInput
           value={password}
-          onChangeText={(v) => setPassword(v.replace(/\D/g, '').slice(0, 6))}
-          placeholder="••••••"
+          onChangeText={(v) => setPassword(v.replace(/\D/g, '').slice(0, 4))}
+          placeholder="••••"
           placeholderTextColor={theme.colors.textFaint}
           style={styles.input}
           secureTextEntry
           autoFocus
           keyboardType="number-pad"
-          maxLength={6}
+          maxLength={4}
           autoCapitalize="none"
           autoCorrect={false}
           textContentType="oneTimeCode"
@@ -93,13 +115,13 @@ export default function ExportScreen() {
         <Text style={styles.fieldLabel}>Confirmer</Text>
         <TextInput
           value={confirmPassword}
-          onChangeText={(v) => setConfirmPassword(v.replace(/\D/g, '').slice(0, 6))}
-          placeholder="••••••"
+          onChangeText={(v) => setConfirmPassword(v.replace(/\D/g, '').slice(0, 4))}
+          placeholder="••••"
           placeholderTextColor={theme.colors.textFaint}
           style={styles.input}
           secureTextEntry
           keyboardType="number-pad"
-          maxLength={6}
+          maxLength={4}
           autoCapitalize="none"
           autoCorrect={false}
           textContentType="oneTimeCode"

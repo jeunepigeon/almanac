@@ -116,15 +116,16 @@ export default function SubstanceFormModal({
                 <Text style={styles.fieldLabel}>Couleur</Text>
                 <View style={styles.colorRow}>
                   {theme.substanceColors.map((c, i) => (
-                    <TouchableOpacity
-                      key={c + i}
-                      onPress={() => setColorIndex(i)}
-                      style={[
-                        styles.colorDot,
-                        { backgroundColor: c },
-                        colorIndex === i && styles.colorDotSelected,
-                      ]}
-                    />
+                    <View key={c + i} style={styles.colorCell}>
+                      <TouchableOpacity
+                        onPress={() => setColorIndex(i)}
+                        style={[
+                          styles.colorDot,
+                          { backgroundColor: c },
+                          colorIndex === i && styles.colorDotSelected,
+                        ]}
+                      />
+                    </View>
                   ))}
                 </View>
               </>
@@ -137,23 +138,24 @@ export default function SubstanceFormModal({
                   {ICONS.map((entry) => {
                     const selected = entry.id === iconId;
                     return (
-                      <TouchableOpacity
-                        key={entry.id}
-                        onPress={() => setIconId(entry.id)}
-                        style={[
-                          styles.iconCell,
-                          selected && {
-                            borderColor: selectedColor,
-                            backgroundColor: theme.colors.surfaceAlt,
-                          },
-                        ]}
-                      >
-                        <MaterialCommunityIcons
-                          name={entry.icon}
-                          size={20}
-                          color={selected ? selectedColor : theme.colors.textMuted}
-                        />
-                      </TouchableOpacity>
+                      <View key={entry.id} style={styles.iconCell}>
+                        <TouchableOpacity
+                          onPress={() => setIconId(entry.id)}
+                          style={[
+                            styles.iconCellInner,
+                            selected && {
+                              borderColor: selectedColor,
+                              backgroundColor: theme.colors.surfaceAlt,
+                            },
+                          ]}
+                        >
+                          <MaterialCommunityIcons
+                            name={entry.icon}
+                            size={18}
+                            color={selected ? selectedColor : theme.colors.textMuted}
+                          />
+                        </TouchableOpacity>
+                      </View>
                     );
                   })}
                 </View>
@@ -228,11 +230,19 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: theme.spacing.sm,
   },
+  // Grille couleurs 2×6 : chaque pastille prend 1/6 de la largeur (centrée dans sa case)
+  // écart vertical identique à l'écart horizontal
   colorRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
     marginBottom: theme.spacing.lg,
+    justifyContent: 'center',
+  },
+  colorCell: {
+    width: '16.666%', // 100/6
+    aspectRatio: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   colorDot: {
     width: 28,
@@ -248,22 +258,29 @@ const styles = StyleSheet.create({
     maxHeight: 180,
     marginBottom: theme.spacing.lg,
   },
+  // Grille icônes 8×5 : chaque cellule prend 1/8 de la largeur, carrée.
+  // Pas de gap (sinon flex-wrap casse en 7 par ligne), le padding interne de iconCellInner fait l'espacement.
   iconGridStatic: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 6,
     marginBottom: theme.spacing.lg,
     justifyContent: 'flex-start',
   },
   iconGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
     paddingBottom: theme.spacing.sm,
   },
   iconCell: {
-    width: 36,
-    height: 36,
+    width: '12.5%',
+    aspectRatio: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 3,
+  },
+  iconCellInner: {
+    width: '100%',
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 4,

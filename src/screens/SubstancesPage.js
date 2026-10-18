@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, Pressable, Alert,
 } from 'react-native';
@@ -12,12 +12,47 @@ import SubstanceFormModal from '../components/SubstanceFormModal';
 import ActionSheet from '../components/ActionSheet';
 import ConfirmModal from '../components/ConfirmModal';
 
+// Bannière "Sobre de tout depuis" en haut de la liste des substances.
+// Clique → ouvre l'onglet Stats de Global.
+function SobreBanner({ lastGlobalTimestamp, onPress }) {
+  return (
+    <Pressable onPress={onPress} style={styles.bannerPress}>
+      <View style={styles.banner}>
+        <Text style={styles.bannerLabel}>SOBRE DE TOUT DEPUIS</Text>
+        {lastGlobalTimestamp ? (
+          <View style={styles.bannerCounterWrap}>
+            <LiveCounter
+              timestamp={lastGlobalTimestamp}
+              style={styles.bannerCounter}
+            />
+          </View>
+        ) : (
+          <>
+            <Text style={styles.bannerCounter}>—</Text>
+            <Text style={styles.bannerEmptyHint}>
+              renseignez votre première consommation
+            </Text>
+          </>
+        )}
+      </View>
+    </Pressable>
+  );
+}
+
 export default function SubstancesPage() {
   const navigation = useNavigation();
   const substances = useStore((s) => s.substances);
   const archivedSubstances = useStore((s) => s.archivedSubstances);
   const ready = useStore((s) => s.ready);
   const lastTimestamps = useStore((s) => s.lastTimestamps);
+
+  // Max timestamp sur TOUTES les substances (actives + archivées) = dernière conso globale
+  const lastGlobalTimestamp = useMemo(() => {
+    const vals = Object.values(lastTimestamps || {});
+    if (vals.length === 0) return null;
+    const max = Math.max(...vals);
+    return max > 0 ? max : null;
+  }, [lastTimestamps]);
 
   const createSubstance = useStore((s) => s.createSubstance);
   const updateSubstance = useStore((s) => s.updateSubstance);
@@ -144,6 +179,14 @@ export default function SubstancesPage() {
           data={displayedSubstances}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
+          ListHeaderComponent={
+            !reorderMode ? (
+              <SobreBanner
+                lastGlobalTimestamp={lastGlobalTimestamp}
+                onPress={() => useStore.getState().requestGotoGlobalStats()}
+              />
+            ) : null
+          }
           renderItem={({ item, index }) => (
             <SubstanceRow
               substance={item}
@@ -298,6 +341,44 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   emptyWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: theme.spacing.lg },
   emptyText: { color: theme.colors.textFaint, fontSize: theme.font.sizes.md, fontWeight: '300', textAlign: 'center', letterSpacing: 0.5 },
+
+  // Bannière "Sobre de tout depuis" en haut de la liste
+  bannerPress: {},
+  banner: {
+    alignItems: 'center',
+    paddingVertical: theme.spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border,
+    marginBottom: theme.spacing.md,
+  },
+  bannerLabel: {
+    color: theme.colors.textMuted,
+    fontSize: theme.font.sizes.xs,
+    fontWeight: '300',
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+    marginBottom: theme.spacing.xs,
+  },
+  bannerCounterWrap: {
+    minHeight: 36, justifyContent: 'center', alignItems: 'center',
+    paddingHorizontal: theme.spacing.md, width: '100%',
+  },
+  bannerCounter: {
+    color: theme.colors.text,
+    fontSize: theme.font.sizes.xl,
+    fontWeight: '300',
+    letterSpacing: 0.5,
+    fontVariant: ['tabular-nums'],
+    textAlign: 'center',
+  },
+  bannerEmptyHint: {
+    color: theme.colors.textFaint,
+    fontSize: theme.font.sizes.xs,
+    fontWeight: '300',
+    letterSpacing: 0.5,
+    fontStyle: 'italic',
+    marginTop: theme.spacing.xs,
+  },
 
   reorderBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

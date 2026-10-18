@@ -57,7 +57,7 @@ export default function App() {
       >
         <Stack.Screen name="Main" component={MainScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Substance" component={SubstanceScreen} options={{ title: '' }} />
-        <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Paramètres' }} />
+        <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Paramètres', animation: 'slide_from_right' }} />
         <Stack.Screen name="Export" component={ExportScreen} options={{ title: 'Exporter' }} />
         <Stack.Screen name="Import" component={ImportScreen} options={{ title: 'Importer' }} />
         <Stack.Screen name="Donations" component={DonationsScreen} options={{ title: 'Soutenir le projet' }} />

@@ -12,6 +12,7 @@ export default function ConfirmModal({
   destructive = false,
   // Si on veut afficher 2 boutons d'action en plus d'annuler (ex: archiver / effacer).
   extraActions = null,
+  hideCancel = false,
 }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
@@ -46,9 +47,11 @@ export default function ConfirmModal({
               </View>
             ) : (
               <View style={styles.actions}>
-                <TouchableOpacity onPress={onCancel} style={styles.actionBtn}>
-                  <Text style={styles.actionMuted}>{cancelLabel}</Text>
-                </TouchableOpacity>
+                {!hideCancel && (
+                  <TouchableOpacity onPress={onCancel} style={styles.actionBtn}>
+                    <Text style={styles.actionMuted}>{cancelLabel}</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity onPress={onConfirm} style={styles.actionBtn}>
                   <Text style={destructive ? styles.actionDanger : styles.actionPrimary}>
                     {confirmLabel}

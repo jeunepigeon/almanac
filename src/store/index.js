@@ -14,25 +14,127 @@ import {
   dbGetConsumptionsBySubstance,
   dbWipeAll,
   dbReorderSubstances,
+  dbGetAllSnapshots,
+  dbDeleteSnapshot,
+  dbMarkSnapshotsConsulted,
+  dbInsertSubstanceRaw,
+  dbInsertConsumptionRaw,
 } from '../db';
+import { createSnapshot, makeUniqueSnapshotName, fmtDateTiret, parseSnapshot } from '../utils/snapshots';
+import { dbGetSnapshotData } from '../db';
+import * as Crypto from 'expo-crypto';
 
 export const useStore = create((set, get) => ({
   substances: [],
   archivedSubstances: [],
   lastTimestamps: {},
   consumptionsBySubstance: {},
+  snapshots: [],
+  hasUnconsultedSnapshots: false,
+  // Signal pour switcher vers Global > Stats depuis n'importe quel écran
+  // (incrément d'un tick pour déclencher useEffect)
+  gotoGlobalStatsTick: 0,
+  requestGotoGlobalStats: () => set((s) => ({ gotoGlobalStatsTick: s.gotoGlobalStatsTick + 1 })),
   ready: false,
 
   loadAll: async () => {
     const all = await dbGetSubstances({ includeArchived: true });
     const lastTimestamps = await dbGetLastTimestampBySubstance();
+    const snapshots = await dbGetAllSnapshots();
+    const hasUnconsulted = snapshots.some((s) => !s.consulted);
     set({
       substances: all.filter((s) => !s.archived),
       archivedSubstances: all.filter((s) => s.archived),
       lastTimestamps,
       consumptionsBySubstance: {},
+      snapshots,
+      hasUnconsultedSnapshots: hasUnconsulted,
       ready: true,
     });
+  },
+
+  loadSnapshots: async () => {
+    const snapshots = await dbGetAllSnapshots();
+    const hasUnconsulted = snapshots.some((s) => !s.consulted);
+    set({ snapshots, hasUnconsultedSnapshots: hasUnconsulted });
+  },
+
+  markSnapshotsConsulted: async () => {
+    await dbMarkSnapshotsConsulted();
+    const snapshots = await dbGetAllSnapshots();
+    set({ snapshots, hasUnconsultedSnapshots: false });
+  },
+
+  deleteSnapshot: async (id) => {
+    await dbDeleteSnapshot(id);
+    const snapshots = await dbGetAllSnapshots();
+    const hasUnconsulted = snapshots.some((s) => !s.consulted);
+    set({ snapshots, hasUnconsultedSnapshots: hasUnconsulted });
+  },
+
+  createSnapshotFromLive: async (baseName, substanceIds = null) => {
+    const state = get();
+    // On récupère TOUTES les consos (pas seulement celles en mémoire)
+    const dbAllCons = [];
+    for (const s of [...state.substances, ...state.archivedSubstances]) {
+      const list = state.consumptionsBySubstance[s.id]
+        ?? (await dbGetConsumptionsBySubstance(s.id));
+      dbAllCons.push(...list);
+    }
+    const uniqueName = await makeUniqueSnapshotName(baseName);
+    const snap = await createSnapshot(
+      { substances: state.substances, archivedSubstances: state.archivedSubstances, consumptions: dbAllCons },
+      uniqueName,
+      substanceIds
+    );
+    const snapshots = await dbGetAllSnapshots();
+    set({ snapshots, hasUnconsultedSnapshots: true });
+    return snap;
+  },
+
+  // Fusion d'un snapshot dans les données live.
+  // Ajoute les substances/consos qui manquent, ne touche pas aux existantes (données actives gagnent).
+  // Dédup consos par (timestamp exact, substanceId).
+  fusionSnapshot: async (snapshotId, substanceIds = null) => {
+    const state = get();
+    const jsonStr = await dbGetSnapshotData(snapshotId);
+    if (!jsonStr) return { added: 0 };
+    const snap = parseSnapshot(jsonStr);
+
+    // Auto-snapshot AVANT la fusion
+    await get().createSnapshotFromLive(`avant-fusion-${fmtDateTiret()}`);
+
+    const activeSubs = [...state.substances, ...state.archivedSubstances];
+    const activeSubIds = new Set(activeSubs.map((s) => s.id));
+
+    // 1. Substances : ajouter celles qui n'existent pas déjà (INSERT OR IGNORE = safe)
+    const subsToAdd = snap.substances.filter((s) =>
+      (!substanceIds || substanceIds.includes(s.id))
+    );
+    for (const s of subsToAdd) {
+      await dbInsertSubstanceRaw({
+        id: s.id, name: s.name, color: s.color, icon: s.icon,
+        createdAt: s.createdAt, archived: !!s.archived, position: s.position ?? 0,
+      });
+    }
+
+    // 2. Consos : ajouter celles qui n'existent pas déjà (dedup par timestamp+substanceId)
+    let added = 0;
+    for (const c of snap.consumptions) {
+      if (substanceIds && !substanceIds.includes(c.substanceId)) continue;
+      const existingList = await dbGetConsumptionsBySubstance(c.substanceId);
+      const dup = existingList.some((ec) => ec.timestamp === c.timestamp);
+      if (dup) continue;
+      await dbInsertConsumptionRaw({
+        id: c.id, substanceId: c.substanceId, timestamp: c.timestamp,
+        dosage: c.dosage, notes: c.notes, createdAt: c.createdAt,
+      });
+      added++;
+    }
+
+    // Reload tout
+    await get().loadAll();
+    return { added };
   },
 
   refreshLastTimestamps: async () => {
@@ -192,6 +294,8 @@ export const useStore = create((set, get) => ({
   // ---- Wipe ----
 
   wipeAll: async () => {
+    // Auto-snapshot AVANT wipe
+    await get().createSnapshotFromLive(`remise-a-zero-${fmtDateTiret()}`);
     await dbWipeAll();
     set({
       substances: [],

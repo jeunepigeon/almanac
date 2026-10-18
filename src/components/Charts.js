@@ -309,7 +309,12 @@ export function MultiLineChart({ curves, height = 140, forcePoints = false, time
       const activePts = curve.points.filter((p) => p.count > 0);
       if (activePts.length < 4) continue;
       const localMax = Math.max(...activePts.map((p) => p.count));
-      if (localMax <= globalMax * 0.20) {
+      // Option D : médiane ≤ 20% globalMax ET max ≤ 60% globalMax
+      const sorted = [...activePts.map((p) => p.count)].sort((a, b) => a - b);
+      const median = sorted.length % 2 === 0
+        ? (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+        : sorted[Math.floor(sorted.length / 2)];
+      if (median <= globalMax * 0.20 && localMax <= globalMax * 0.60) {
         flatCurves.push(curve);
       }
     }
@@ -322,11 +327,10 @@ export function MultiLineChart({ curves, height = 140, forcePoints = false, time
   }
   const numFlatRails = Object.keys(flatRailsMap).length;
 
-  // Zone principale (mêlée) : garde la hauteur habituelle
-  // Zone étendue en bas : ajoute de la hauteur si des courbes plates
-  const RAIL_STEP = 6;
-  const EXTRA_TOP = numFlatRails > 0 ? RAIL_STEP : 0;
-  const extraBottomH = numFlatRails > 0 ? EXTRA_TOP + numFlatRails * RAIL_STEP : 0;
+  // Zone étendue en bas : hauteur suffisante pour accueillir les rails à espacement uniforme
+  // depuis le plancher mêlée (5% du bas). numFlatRails rails × RAIL_STEP + 5% du innerH.
+  const RAIL_STEP = 7;
+  const extraBottomH = numFlatRails > 0 ? numFlatRails * RAIL_STEP + 4 : 0;
 
   const chartH = (height - LABEL_H) + extraBottomH;
 
@@ -491,7 +495,9 @@ export function MultiLineChart({ curves, height = 140, forcePoints = false, time
             // Courbe plate → dessin dans la zone étendue en bas, sur son rail Y fixe
             // Les clusters sont dessinés comme des segments horizontaux à la Y du rail,
             // les points isolés comme cercles à la Y du rail.
-            const railY = padY + innerH + EXTRA_TOP + (railIdx * RAIL_STEP) + RAIL_STEP / 2;
+            // Position rail : partir du plancher mêlée (baseline 5%) puis descendre par pas de RAIL_STEP uniformes
+            const baselineY = padY + innerH - 0.05 * innerH; // plancher réel des courbes mêlée
+            const railY = baselineY + (railIdx + 1) * RAIL_STEP;
             return (
               <React.Fragment key={curve.id || i}>
                 {clusters.map((cl, cIdx) => {

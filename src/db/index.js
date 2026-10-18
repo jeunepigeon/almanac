@@ -40,6 +40,16 @@ export async function initDb() {
 
     CREATE INDEX IF NOT EXISTS idx_consumptions_substance ON consumptions(substance_id);
     CREATE INDEX IF NOT EXISTS idx_consumptions_timestamp ON consumptions(timestamp);
+
+    CREATE TABLE IF NOT EXISTS snapshots (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      data TEXT NOT NULL,
+      consulted INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_snapshots_created ON snapshots(created_at);
   `);
 
   // Migration : ajoute la colonne position si elle n'existe pas
@@ -285,4 +295,59 @@ export async function dbWipeAll() {
     DELETE FROM consumptions;
     DELETE FROM substances;
   `);
+}
+
+// ============ SNAPSHOTS ============
+
+export async function dbGetAllSnapshots() {
+  const db = await getDb();
+  const rows = await db.getAllAsync('SELECT id, name, created_at, consulted FROM snapshots ORDER BY created_at DESC');
+  return rows || [];
+}
+
+export async function dbGetSnapshotData(id) {
+  const db = await getDb();
+  const row = await db.getFirstAsync('SELECT data FROM snapshots WHERE id = ?', [id]);
+  return row?.data ?? null;
+}
+
+export async function dbInsertSnapshot(snapshot) {
+  const db = await getDb();
+  await db.runAsync(
+    'INSERT INTO snapshots (id, name, created_at, data, consulted) VALUES (?, ?, ?, ?, 0)',
+    [snapshot.id, snapshot.name, snapshot.created_at, snapshot.data]
+  );
+}
+
+export async function dbDeleteSnapshot(id) {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM snapshots WHERE id = ?', [id]);
+}
+
+export async function dbMarkSnapshotsConsulted() {
+  const db = await getDb();
+  await db.runAsync('UPDATE snapshots SET consulted = 1 WHERE consulted = 0');
+}
+
+export async function dbGetSnapshotSize(id) {
+  const db = await getDb();
+  const row = await db.getFirstAsync('SELECT LENGTH(data) as size FROM snapshots WHERE id = ?', [id]);
+  return row?.size ?? 0;
+}
+
+// Version pour restauration snapshot : accepte tous les champs
+export async function dbInsertSubstanceRaw({ id, name, color, icon, createdAt, archived, position }) {
+  const db = await getDb();
+  await db.runAsync(
+    'INSERT OR IGNORE INTO substances (id, name, color, icon, created_at, archived, position) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [id, name, color, icon, createdAt ?? Date.now(), archived ? 1 : 0, position ?? 0]
+  );
+}
+
+export async function dbInsertConsumptionRaw({ id, substanceId, timestamp, dosage, notes, createdAt }) {
+  const db = await getDb();
+  await db.runAsync(
+    'INSERT OR IGNORE INTO consumptions (id, substance_id, timestamp, dosage, notes, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [id, substanceId, timestamp, dosage ?? null, notes ?? null, createdAt ?? Date.now()]
+  );
 }

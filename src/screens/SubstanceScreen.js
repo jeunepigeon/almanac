@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
     fontSize: theme.font.sizes.xl, fontWeight: '300', letterSpacing: 0.5,
     fontVariant: ['tabular-nums'], textAlign: 'center', flexShrink: 1,
   },
-  tabs: { flexDirection: 'row', paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, gap: theme.spacing.lg },
+  tabs: { flexDirection: 'row', paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, gap: theme.spacing.lg, justifyContent: 'center' },
   tab: { paddingBottom: theme.spacing.sm },
   tabText: { color: theme.colors.textFaint, fontSize: theme.font.sizes.md, fontWeight: '300', letterSpacing: 1 },
   tabTextActive: { color: theme.colors.text },

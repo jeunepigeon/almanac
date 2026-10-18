@@ -100,18 +100,19 @@ export default function StatsView({
   }, [mode, globalStats]);
 
   useEffect(() => {
-    if (mode !== 'global' || !substancesById) return;
+    if (mode !== 'global' || !globalStats) return;
     setPieSelection((prev) => {
       const next = { sobres: prev?.sobres ?? true };
-      // Init à partir de TOUTES les substances actives (non archivées), pas seulement de la fenêtre
-      for (const subId of Object.keys(substancesById)) {
-        const sub = substancesById[subId];
-        if (!sub || sub.archived) continue;
+      // Init UNIQUEMENT à partir des substances présentes dans la fenêtre courante.
+      // Les substances absentes de la fenêtre voient leur état oublié.
+      // Si elles réapparaissent plus tard, elles seront cochées par défaut.
+      for (const b of globalStats.breakdown) {
+        const subId = b.substance.id;
         next[subId] = prev?.[subId] ?? true;
       }
       return next;
     });
-  }, [mode, substancesById]);
+  }, [mode, globalStats]);
 
   const pieData = useMemo(() => {
     if (!globalStats || !pieSelection) return [];
@@ -304,9 +305,6 @@ export default function StatsView({
               style={styles.globalHeroCounter}
             />
           </View>
-          <Text style={styles.globalHeroSubLabel}>
-            {globalCurrentSoberDays} jour{globalCurrentSoberDays > 1 ? 's' : ''} sobre{globalCurrentSoberDays > 1 ? 's' : ''} consécutif{globalCurrentSoberDays > 1 ? 's' : ''}
-          </Text>
         </View>
       )}
 
@@ -349,7 +347,8 @@ export default function StatsView({
           mode="date"
           display="default"
           onChange={onPickerChange}
-          maximumDate={new Date()}
+          maximumDate={pickerTarget === 'start' ? new Date(customEnd) : new Date()}
+          minimumDate={pickerTarget === 'end' ? new Date(customStart) : undefined}
         />
       )}
 

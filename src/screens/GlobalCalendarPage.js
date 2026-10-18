@@ -32,6 +32,12 @@ export default function GlobalCalendarPage() {
 
   const [allConsumptions, setAllConsumptions] = useState(null);
   const [activeTab, setActiveTab] = useState('calendar');
+  const gotoGlobalStatsTick = useStore((s) => s.gotoGlobalStatsTick);
+
+  // Switcher sur Stats quand bannière cliquée
+  useEffect(() => {
+    if (gotoGlobalStatsTick > 0) setActiveTab('stats');
+  }, [gotoGlobalStatsTick]);
   const [dayDetail, setDayDetail] = useState(null);
 
   // Flow ajout : 1) picker substance 2) modal log
@@ -62,20 +68,31 @@ export default function GlobalCalendarPage() {
 
   const markersByDay = useMemo(() => {
     if (!allConsumptions) return {};
-    const map = {};
+    // Groupe par jour. Pour chaque jour : liste des substances UNIQUES consommées,
+    // ordonnées par premier timestamp de la journée (chronologique).
+    // Chaque substance → sa couleur. Deux substances différentes de même couleur = 2 points.
+    const byDay = {};
     for (const c of allConsumptions) {
       const k = dayKeyOf(c.timestamp);
-      if (!map[k]) map[k] = new Set();
-      map[k].add(c.substanceId);
+      if (!byDay[k]) byDay[k] = { firstTsBySub: {} };
+      const subId = c.substanceId;
+      // Garder le premier timestamp (minimum) de chaque substance ce jour-là
+      if (byDay[k].firstTsBySub[subId] == null || c.timestamp < byDay[k].firstTsBySub[subId]) {
+        byDay[k].firstTsBySub[subId] = c.timestamp;
+      }
     }
     const result = {};
-    for (const k of Object.keys(map)) {
-      const colorSet = new Set();
-      for (const subId of map[k]) {
+    for (const k of Object.keys(byDay)) {
+      // Trier les subIds par leur premier timestamp dans la journée (ascendant)
+      const sortedSubIds = Object.keys(byDay[k].firstTsBySub)
+        .sort((a, b) => byDay[k].firstTsBySub[a] - byDay[k].firstTsBySub[b]);
+      const colors = [];
+      for (const subId of sortedSubIds) {
         const sub = substancesById[subId];
-        if (sub) colorSet.add(sub.color);
+        if (sub) colors.push(sub.color);
       }
-      result[k] = Array.from(colorSet);
+      // Max 10 points affichés (le reste est ignoré pour le calendrier)
+      result[k] = colors.slice(0, 10);
     }
     return result;
   }, [allConsumptions, substancesById]);
@@ -236,7 +253,7 @@ function Tab({ label, active, onPress }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
-  tabs: { flexDirection: 'row', paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, gap: theme.spacing.lg },
+  tabs: { flexDirection: 'row', paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, gap: theme.spacing.lg, justifyContent: 'center' },
   tab: { paddingBottom: theme.spacing.sm },
   tabText: { color: theme.colors.textFaint, fontSize: theme.font.sizes.md, fontWeight: '300', letterSpacing: 1 },
   tabTextActive: { color: theme.colors.text },

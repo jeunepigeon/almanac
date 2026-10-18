@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useCallback, memo } from 'react';
+import { useMemo, useState, useRef, useCallback, memo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,12 +12,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme';
 
-// Calendrier scrollable vertical avec mois empilés, optimisé perf.
-// - Mois courant EN HAUT, chevron-DOWN = mois précédent (descendre dans le passé)
-// - chevron-UP = mois suivant (remonter vers le présent)
-// - double chevron-up = aller à aujourd'hui
-// - Rebond visuel si on essaie d'aller dans le futur
-// - Dropdown vraiment ancrée sous le bouton
+// Calendrier scrollable vertical inversé (v1.1.12).
+// - Mois courant EN BAS, on remonte vers le passé EN HAUT
+// - chevron-UP = mois précédent (car passé est en haut)
+// - chevron-DOWN = mois suivant (car présent est en bas)
+// - double chevron-DOWN = aller au présent (en bas)
+// - Rebond du contenu quand on scrolle au-delà des bornes (iOS/Instagram like)
 
 const DAYS_FR_SHORT = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 const MONTHS_FR = [
@@ -32,7 +32,79 @@ function dayKeyOf(date) {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
-// --- Cellule jour mémoïsée ---
+// Grille 1 à 10 points dans une cellule.
+// 1-5 = 1 ligne centrée. 6-10 = 2 lignes (5 en haut, N-5 en bas selon disposition symétrique).
+// Écart vertical = écart horizontal. Max 10 points affichés.
+// Les markers sont déjà triés chronologiquement par le parent.
+const DOT_SIZE = 5;
+const DOT_GAP = 3;
+const PITCH = DOT_SIZE + DOT_GAP; // 8px entre centres
+
+function MarkersGrid({ markers }) {
+  const n = Math.min(markers.length, 10);
+  if (n === 0) return null;
+
+  // Rangée 1 : min(n, 5) points centrés
+  const row1Count = Math.min(n, 5);
+  const row1 = markers.slice(0, row1Count);
+
+  // Rangée 2 : positions calculées selon n
+  // Référence : positions des 5 points de la rangée 1 (-2 PITCH .. +2 PITCH)
+  // On exprime les positions comme multiples de PITCH/2 (demi-pas) depuis le centre
+  // Row 1 positions = [-2, -1, 0, 1, 2] × PITCH (en indices "demi-pas" = [-4, -2, 0, 2, 4])
+  // Row 2 selon n :
+  //   n=6 : [0]
+  //   n=7 : [-1, 1]  (entre 2-3 et 3-4)
+  //   n=8 : [-2, 0, 2] (sous 2, 3, 4) → indices demi-pas [-2, 0, 2]
+  //   n=9 : [-3, -1, 1, 3] (entre toutes paires)
+  //   n=10 : [-4, -2, 0, 2, 4] (sous 1,2,3,4,5)
+  const row2Config = {
+    6: [0],
+    7: [-1, 1],
+    8: [-2, 0, 2],
+    9: [-3, -1, 1, 3],
+    10: [-4, -2, 0, 2, 4],
+  };
+  const row2Half = row2Config[n] || [];
+  const row2 = markers.slice(5, 5 + row2Half.length);
+
+  const halfPitch = PITCH / 2;
+  const containerW = 5 * PITCH; // largeur fixe pour centrer
+
+  return (
+    <View style={[styles.markersGrid, { width: containerW }]}>
+      <View style={styles.markersRow2}>
+        {row1.map((color, idx) => {
+          // indices demi-pas pour row1 : [-4, -2, 0, 2, 4]
+          // position pixel depuis centre : halfIdx * halfPitch
+          const halfIdx = -4 + idx * 2;
+          const left = containerW / 2 + halfIdx * halfPitch - DOT_SIZE / 2;
+          return (
+            <View
+              key={`r1-${idx}`}
+              style={[styles.markerAbs, { left, top: 0, backgroundColor: color }]}
+            />
+          );
+        })}
+      </View>
+      {row2.length > 0 && (
+        <View style={styles.markersRow2}>
+          {row2.map((color, idx) => {
+            const halfIdx = row2Half[idx];
+            const left = containerW / 2 + halfIdx * halfPitch - DOT_SIZE / 2;
+            return (
+              <View
+                key={`r2-${idx}`}
+                style={[styles.markerAbs, { left, top: 0, backgroundColor: color }]}
+              />
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
 const DayCell = memo(function DayCell({ date, markers, isToday, isFuture, isSober, onPress }) {
   if (!date) return <View style={styles.dayCell} />;
   return (
@@ -51,18 +123,11 @@ const DayCell = memo(function DayCell({ date, markers, isToday, isFuture, isSobe
           {date.getDate()}
         </Text>
       </View>
-      {markers.length > 0 && (
-        <View style={styles.markersRow}>
-          {markers.slice(0, 5).map((color, idx) => (
-            <View key={idx} style={[styles.marker, { backgroundColor: color }]} />
-          ))}
-        </View>
-      )}
+      <MarkersGrid markers={markers} />
     </TouchableOpacity>
   );
 });
 
-// --- Grille mensuelle mémoïsée ---
 const MonthGrid = memo(function MonthGrid({ year, month, markersByDay, onDayPress, showSoberFill, todayTime }) {
   const firstDay = new Date(year, month, 1);
   const startWeekday = (firstDay.getDay() + 6) % 7;
@@ -120,31 +185,29 @@ export default function ScrollableCalendar({ markersByDay = {}, onDayPress, show
     return t.getTime();
   }, []);
 
-  // Liste des mois : index 0 = mois courant, index +N = N mois plus ancien
+  // Liste des mois : ordre INVERSÉ. idx 0 = plus ancien (haut), dernier idx = mois courant (bas)
   const months = useMemo(() => {
     const arr = [];
     for (let i = 0; i < MONTHS_TO_SHOW; i++) {
-      const d = new Date(currentYear, currentMonth - i, 1);
+      const d = new Date(currentYear, currentMonth - (MONTHS_TO_SHOW - 1 - i), 1);
       arr.push({ year: d.getFullYear(), month: d.getMonth() });
     }
     return arr;
   }, [currentYear, currentMonth]);
 
-  const [visibleIdx, setVisibleIdx] = useState(0);
+  const currentIdx = months.length - 1;
+  const [visibleIdx, setVisibleIdx] = useState(currentIdx);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [dropdownLayout, setDropdownLayout] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const flatListRef = useRef(null);
 
-  // Anim rebond pour bouton "futur"
-  const shakeAnim = useRef(new Animated.Value(0)).current;
-  const runShake = useCallback(() => {
-    Animated.sequence([
-      Animated.timing(shakeAnim, { toValue: 6, duration: 60, useNativeDriver: true }),
-      Animated.timing(shakeAnim, { toValue: -6, duration: 60, useNativeDriver: true }),
-      Animated.timing(shakeAnim, { toValue: 4, duration: 50, useNativeDriver: true }),
-      Animated.timing(shakeAnim, { toValue: 0, duration: 50, useNativeDriver: true }),
-    ]).start();
-  }, [shakeAnim]);
+  // Scroll initial vers le mois courant (en bas)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      flatListRef.current?.scrollToIndex({ index: currentIdx, animated: false });
+    }, 50);
+    return () => clearTimeout(t);
+  }, [currentIdx]);
 
   const scrollToIdx = useCallback((idx) => {
     if (!flatListRef.current) return;
@@ -152,27 +215,25 @@ export default function ScrollableCalendar({ markersByDay = {}, onDayPress, show
     setVisibleIdx(idx);
   }, []);
 
-  // Down = passé = idx augmente
+  // Mois précédent = passé = plus haut dans la liste = idx DIMINUE
   const goPrev = () => {
-    if (visibleIdx < months.length - 1) {
+    if (visibleIdx > 0) {
+      scrollToIdx(visibleIdx - 1);
+    }
+  };
+  // Mois suivant = présent = plus bas dans la liste = idx AUGMENTE
+  const goNext = () => {
+    if (visibleIdx < currentIdx) {
       scrollToIdx(visibleIdx + 1);
     }
   };
-  // Up = présent = idx diminue
-  const goNext = () => {
-    if (visibleIdx > 0) {
-      scrollToIdx(visibleIdx - 1);
-    } else {
-      runShake();
-    }
-  };
   const goToday = () => {
-    if (visibleIdx > 0) scrollToIdx(0);
-    else runShake();
+    if (visibleIdx < currentIdx) scrollToIdx(currentIdx);
   };
 
-  const canGoPrev = visibleIdx < months.length - 1;
-  const canGoNext = visibleIdx > 0;
+  const canGoPrev = visibleIdx > 0;
+  const canGoNext = visibleIdx < currentIdx;
+  const canGoToday = visibleIdx !== currentIdx;
 
   const visibleLabel = months[visibleIdx]
     ? `${MONTHS_FR[months[visibleIdx].month]} ${months[visibleIdx].year}`
@@ -197,8 +258,8 @@ export default function ScrollableCalendar({ markersByDay = {}, onDayPress, show
 
   const onViewableItemsChanged = useCallback(({ viewableItems }) => {
     if (viewableItems.length > 0) {
-      const first = viewableItems[0];
-      if (first.index != null) setVisibleIdx(first.index);
+      const last = viewableItems[viewableItems.length - 1];
+      if (last.index != null) setVisibleIdx(last.index);
     }
   }, []);
 
@@ -211,11 +272,10 @@ export default function ScrollableCalendar({ markersByDay = {}, onDayPress, show
       <View style={styles.navBar}>
         <TouchableOpacity
           onPress={goPrev}
-          style={[styles.navBtn, !canGoPrev && styles.btnDisabled]}
-          disabled={!canGoPrev}
+          style={styles.navBtn}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Ionicons name="chevron-down" size={20} color={canGoPrev ? theme.colors.text : theme.colors.textFaint} />
+          <Ionicons name="chevron-up" size={20} color={canGoPrev ? theme.colors.text : theme.colors.textFaint} />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -223,20 +283,17 @@ export default function ScrollableCalendar({ markersByDay = {}, onDayPress, show
           style={styles.todayBtn}
           activeOpacity={0.7}
         >
-          <Ionicons name="chevron-up" size={12} color="#01C853" />
-          <Ionicons name="chevron-up" size={12} color="#01C853" style={{ marginTop: -6 }} />
+          <Ionicons name="chevron-down" size={12} color={canGoToday ? '#01C853' : theme.colors.textFaint} />
+          <Ionicons name="chevron-down" size={12} color={canGoToday ? '#01C853' : theme.colors.textFaint} style={{ marginTop: -6 }} />
         </TouchableOpacity>
 
-        <Animated.View style={{ transform: [{ translateX: shakeAnim }] }}>
-          <TouchableOpacity
-            onPress={goNext}
-            style={styles.navBtn}
-            activeOpacity={0.7}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons name="chevron-up" size={20} color={canGoNext ? theme.colors.text : theme.colors.textFaint} />
-          </TouchableOpacity>
-        </Animated.View>
+        <TouchableOpacity
+          onPress={goNext}
+          style={styles.navBtn}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Ionicons name="chevron-down" size={20} color={canGoNext ? theme.colors.text : theme.colors.textFaint} />
+        </TouchableOpacity>
 
         <TouchableOpacity
           onPress={() => setPickerOpen(true)}
@@ -266,9 +323,10 @@ export default function ScrollableCalendar({ markersByDay = {}, onDayPress, show
         removeClippedSubviews
         contentContainerStyle={{ paddingBottom: 80 }}
         showsVerticalScrollIndicator={false}
+        bounces={true}
+        overScrollMode="always"
       />
 
-      {/* Dropdown ancrée sous le bouton */}
       <Modal
         visible={pickerOpen}
         transparent
@@ -285,27 +343,30 @@ export default function ScrollableCalendar({ markersByDay = {}, onDayPress, show
             },
           ]}>
             <FlatList
-              data={months}
+              data={[...months].reverse()}
               keyExtractor={(m) => `p-${m.year}-${m.month}`}
-              renderItem={({ item, index }) => (
-                <TouchableOpacity
-                  style={[
-                    styles.dropdownRow,
-                    index === visibleIdx && styles.dropdownRowActive,
-                  ]}
-                  onPress={() => {
-                    scrollToIdx(index);
-                    setPickerOpen(false);
-                  }}
-                >
-                  <Text style={[
-                    styles.dropdownRowText,
-                    index === visibleIdx && styles.dropdownRowTextActive,
-                  ]}>
-                    {MONTHS_FR[item.month]} {item.year}
-                  </Text>
-                </TouchableOpacity>
-              )}
+              renderItem={({ item }) => {
+                const actualIdx = months.findIndex((m) => m.year === item.year && m.month === item.month);
+                return (
+                  <TouchableOpacity
+                    style={[
+                      styles.dropdownRow,
+                      actualIdx === visibleIdx && styles.dropdownRowActive,
+                    ]}
+                    onPress={() => {
+                      scrollToIdx(actualIdx);
+                      setPickerOpen(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.dropdownRowText,
+                      actualIdx === visibleIdx && styles.dropdownRowTextActive,
+                    ]}>
+                      {MONTHS_FR[item.month]} {item.year}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }}
               style={{ maxHeight: 360 }}
               showsVerticalScrollIndicator
             />
@@ -392,16 +453,16 @@ const styles = StyleSheet.create({
   dayCell: {
     width: `${100 / 7}%`,
     aspectRatio: 1,
-    paddingVertical: 2,
+    paddingVertical: 1,
     alignItems: 'center',
     justifyContent: 'flex-start',
     borderRadius: 4,
   },
   dayCellToday: { backgroundColor: 'rgba(1, 200, 83, 0.15)' },
   dayNumberWrap: {
-    width: 30, height: 30, borderRadius: 15,
+    width: 28, height: 28, borderRadius: 14,
     justifyContent: 'center', alignItems: 'center',
-    marginTop: 2, marginBottom: 2,
+    marginTop: 1, marginBottom: 0,
   },
   dayNumberWrapSober: {
     borderWidth: 1.2,
@@ -415,6 +476,23 @@ const styles = StyleSheet.create({
   },
   dayNumberFuture: { color: theme.colors.textFaint },
   dayNumberToday: { fontWeight: '500' },
+  markersGrid: {
+    marginTop: 1,
+    alignItems: 'center',
+  },
+  markersRow2: {
+    position: 'relative',
+    width: '100%',
+    height: DOT_SIZE,
+    marginBottom: DOT_GAP,
+  },
+  markerAbs: {
+    position: 'absolute',
+    width: DOT_SIZE,
+    height: DOT_SIZE,
+    borderRadius: DOT_SIZE / 2,
+  },
+  // Styles legacy (gardés au cas où MonthCalendar les utilise)
   markersRow: {
     flexDirection: 'row',
     gap: 3,
