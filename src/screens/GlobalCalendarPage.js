@@ -29,6 +29,8 @@ export default function GlobalCalendarPage() {
   const consumptionsBySubstance = useStore((s) => s.consumptionsBySubstance);
   const lastTimestamps = useStore((s) => s.lastTimestamps);
   const createConsumption = useStore((s) => s.createConsumption);
+  const updateConsumption = useStore((s) => s.updateConsumption);
+  const deleteConsumption = useStore((s) => s.deleteConsumption);
 
   const [allConsumptions, setAllConsumptions] = useState(null);
   const [activeTab, setActiveTab] = useState('calendar');
@@ -44,6 +46,7 @@ export default function GlobalCalendarPage() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerForDay, setPickerForDay] = useState(null);
   const [logFlow, setLogFlow] = useState(null); // { substance, prefilledDate }
+  const [editingConso, setEditingConso] = useState(null); // { consumption, substance }
 
   const substancesById = useMemo(() => {
     const map = {};
@@ -178,25 +181,42 @@ export default function GlobalCalendarPage() {
         consumptions={consosForDay}
         substancesById={substancesById}
         onTapConsumption={(c) => {
-          // Navigation directe vers la page substance avec calendrier sur ce jour
-          // Pas d'ouverture de modal édition.
-          const targetTs = c.timestamp;
-          setDayDetail(null);
-          setTimeout(() => {
-            navigation.navigate('Substance', {
-              substanceId: c.substanceId,
-              focusDate: targetTs,
-            });
-          }, 100);
+          // Ouvre la modal d'édition directement, SANS quitter le calendrier global
+          const sub = substancesById[c.substanceId ?? c.substance_id];
+          if (sub) {
+            setEditingConso({ consumption: c, substance: sub });
+          }
         }}
         onAddPress={() => {
-          // Stocke le jour, ferme la modal détail et ouvre le picker substance
           const dt = dayDetail?.dayTimestamp;
           setDayDetail(null);
           setPickerForDay(dt);
           setTimeout(() => setPickerOpen(true), 100);
         }}
         onClose={() => setDayDetail(null)}
+      />
+
+      {/* Modal d'édition d'une conso cliquée depuis le détail du jour */}
+      <LogConsumptionModal
+        visible={!!editingConso}
+        mode="edit"
+        substance={editingConso?.substance}
+        initial={editingConso?.consumption}
+        onSubmit={async (payload) => {
+          if (editingConso?.consumption) {
+            await updateConsumption(editingConso.consumption.id, editingConso.consumption.substanceId, payload);
+          }
+          setEditingConso(null);
+          reload();
+        }}
+        onDelete={async () => {
+          if (editingConso?.consumption) {
+            await deleteConsumption(editingConso.consumption.id, editingConso.consumption.substanceId);
+          }
+          setEditingConso(null);
+          reload();
+        }}
+        onClose={() => setEditingConso(null)}
       />
 
       {/* Picker substance */}

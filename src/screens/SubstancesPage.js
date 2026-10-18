@@ -254,6 +254,7 @@ export default function SubstancesPage() {
         cancelLabel="Annuler"
         confirmLabel="Supprimer"
         destructive
+        allRed
         onCancel={() => setPendingDelete(null)}
         onConfirm={async () => {
           if (pendingDelete) await deleteSubstance(pendingDelete.id);

@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: theme.colors.border,
   },
-  inner: { paddingBottom: theme.spacing.lg },
+  inner: { paddingBottom: theme.spacing.lg, flexShrink: 1 },
   dragArea: { paddingVertical: theme.spacing.sm, alignItems: 'center' },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: theme.colors.textFaint, opacity: 0.6 },
   header: {
@@ -127,5 +127,5 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   closeBtn: { padding: theme.spacing.xs },
-  body: { paddingTop: theme.spacing.xs },
+  body: { paddingTop: theme.spacing.xs, flexShrink: 1 },
 });

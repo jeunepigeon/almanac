@@ -17,6 +17,7 @@
     "expo-crypto": "^15.0.9",
     "expo-document-picker": "~14.0.8",
     "expo-iap": "^4.2.3",
+    "expo-keep-awake": "~15.0.8",
     "expo-sharing": "~14.0.8",
     "expo-sqlite": "~16.0.10",
     "expo-status-bar": "~3.0.9",

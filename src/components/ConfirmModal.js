@@ -13,14 +13,16 @@ export default function ConfirmModal({
   // Si on veut afficher 2 boutons d'action en plus d'annuler (ex: archiver / effacer).
   extraActions = null,
   hideCancel = false,
+  // Si true, tout le texte du modal est en rouge sur fond gris (confirmation ULTRA destructive)
+  allRed = false,
 }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <Pressable style={styles.backdrop} onPress={onCancel}>
         <View style={styles.center}>
-          <Pressable style={styles.card} onPress={() => {}}>
-            {title ? <Text style={styles.title} numberOfLines={1} adjustsFontSizeToFit>{title}</Text> : null}
-            {message ? <Text style={styles.message}>{message}</Text> : null}
+          <Pressable style={[styles.card, allRed && styles.cardRed]} onPress={() => {}}>
+            {title ? <Text style={[styles.title, allRed && styles.titleRed]} numberOfLines={1} adjustsFontSizeToFit>{title}</Text> : null}
+            {message ? <Text style={[styles.message, allRed && styles.messageRed]}>{message}</Text> : null}
 
             {extraActions ? (
               <View style={styles.actionsCol}>
@@ -83,6 +85,12 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
   },
+  cardRed: {
+    backgroundColor: '#2a1a1a',
+    borderColor: theme.colors.danger,
+  },
+  titleRed: { color: theme.colors.danger },
+  messageRed: { color: theme.colors.danger },
   title: {
     color: theme.colors.text,
     fontSize: theme.font.sizes.md,

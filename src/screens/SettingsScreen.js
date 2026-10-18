@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, TextInput, Modal, Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -13,6 +14,9 @@ import ConfirmModal from '../components/ConfirmModal';
 import ActionSheet from '../components/ActionSheet';
 import DiskIcon from '../components/DiskIcon';
 import { fmtDateTiret, fmtSize, parseSnapshot } from '../utils/snapshots';
+import { performFusion } from '../utils/fusion';
+import { useKeepAwake } from '../utils/keepAwake';
+import SubstanceSelectModal from '../components/SubstanceSelectModal';
 
 function formatDateLongFR(ts) {
   const d = new Date(ts);
@@ -22,6 +26,7 @@ function formatDateLongFR(ts) {
 
 export default function SettingsScreen() {
   const navigation = useNavigation();
+  useKeepAwake('settings-screen');
   const substances = useStore((s) => s.substances);
   const archivedSubstances = useStore((s) => s.archivedSubstances);
   const snapshots = useStore((s) => s.snapshots);
@@ -41,6 +46,8 @@ export default function SettingsScreen() {
   const [snapshotAction, setSnapshotAction] = useState(null); // { snap }
   const [pendingSnapDelete, setPendingSnapDelete] = useState(null);
   const [fusionModal, setFusionModal] = useState(null); // { snap, subIds: [ids cochés] }
+  const [fusionBusy, setFusionBusy] = useState(false);
+  const [conflictModal, setConflictModal] = useState(null); // { parsedSub, resolve }
   const [createSnapshotModal, setCreateSnapshotModal] = useState(false);
   const [newSnapName, setNewSnapName] = useState('');
   const [newSnapSubIds, setNewSnapSubIds] = useState([]);
@@ -104,12 +111,41 @@ export default function SettingsScreen() {
     })();
   };
 
-  const handleFusion = async () => {
+  const handleFusionWithIds = async (ids) => {
     if (!fusionModal) return;
-    const { snap, subIds } = fusionModal;
-    await fusionSnapshot(snap.id, subIds);
+    const { parsed } = fusionModal;
     setFusionModal(null);
-    Alert.alert('Fusion terminée', 'Les données du snapshot ont été fusionnées.');
+    setFusionBusy(true);
+    try {
+      await useStore.getState().createSnapshotFromLive(`avant-fusion-${fmtDateTiret()}`);
+      const activeSubs = [...useStore.getState().substances, ...useStore.getState().archivedSubstances];
+      const result = await performFusion({
+        parsed,
+        activeSubs,
+        substanceIds: new Set(ids),
+        onConflict: askConflictChoice,
+      });
+      await useStore.getState().loadAll();
+      Alert.alert(
+        'Fusion terminée',
+        `${result.added} ajoutée(s), ${result.merged} fusionnée(s), ${result.numbered} numérotée(s), ${result.ignored} ignorée(s).\n${result.consosAdded} conso(s) importée(s).`
+      );
+    } catch (e) {
+      Alert.alert('Erreur fusion', e.message || String(e));
+    } finally {
+      setFusionBusy(false);
+    }
+  };
+
+  const askConflictChoice = (parsedSub) => new Promise((resolve) => {
+    setConflictModal({ parsedSub, resolve });
+  });
+
+  const resolveConflict = (choice) => {
+    if (conflictModal) {
+      conflictModal.resolve(choice);
+      setConflictModal(null);
+    }
   };
 
   return (
@@ -121,7 +157,7 @@ export default function SettingsScreen() {
       </TouchableOpacity>
 
       {/* ===== GESTIONNAIRE DE SAUVEGARDE ET ARCHIVES ===== */}
-      <Text style={styles.sectionTitle}>Gestionnaire de sauvegarde et archives</Text>
+      <Text style={styles.sectionTitle}>Gestionnaire de sauvegarde</Text>
 
       <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('Import')}>
         <View style={styles.rowLeft}>
@@ -181,11 +217,21 @@ export default function SettingsScreen() {
         })
       )}
 
+      {/* ===== ZONE DE DANGER (au-dessus de À propos) ===== */}
+      <Text style={styles.sectionTitle}>Zone de danger</Text>
+      <TouchableOpacity style={styles.row} onPress={() => setPendingWipeStep(1)}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.rowLabelDanger}>Remise à zéro complète</Text>
+          <Text style={styles.rowDangerHint}>sauf données restaurables depuis Gestionnaire de sauvegarde</Text>
+        </View>
+        <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.danger} />
+      </TouchableOpacity>
+
       {/* ===== À PROPOS ===== */}
       <Text style={styles.sectionTitle}>À propos</Text>
       <View style={styles.row}>
         <Text style={styles.rowLabel}>Version</Text>
-        <Text style={styles.rowValue}>1.1.14</Text>
+        <Text style={styles.rowValue}>1.1.15.1</Text>
       </View>
       <View style={styles.row}>
         <Text style={styles.rowLabel}>Consos enregistrées depuis</Text>
@@ -193,13 +239,6 @@ export default function SettingsScreen() {
           {firstConsoTs ? formatDateLongFR(firstConsoTs) : '—'}
         </Text>
       </View>
-
-      {/* ===== ZONE DE DANGER (tout en bas) ===== */}
-      <Text style={styles.sectionTitle}>Zone de danger</Text>
-      <TouchableOpacity style={styles.row} onPress={() => setPendingWipeStep(1)}>
-        <Text style={styles.rowLabelDanger}>Remise à zéro complète</Text>
-        <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.danger} />
-      </TouchableOpacity>
 
       <View style={styles.creditWrap}>
         <Text style={styles.creditText}>almanac — développé par pigeon</Text>
@@ -213,27 +252,17 @@ export default function SettingsScreen() {
           snapshotAction
             ? [
                 {
-                  id: 'fusion',
-                  label: 'Fusionner',
+                  id: 'restore',
+                  label: 'Restaurer / Fusionner',
                   icon: 'set-merge',
                   onPress: () => openFusionModal(snapshotAction.snap),
-                },
-                {
-                  id: 'export',
-                  label: 'Exporter',
-                  icon: 'floppy',
-                  onPress: () => {
-                    navigation.navigate('Export', { snapshotId: snapshotAction.snap.id });
-                    setSnapshotAction(null);
-                  },
                 },
                 {
                   id: 'download',
                   label: 'Télécharger',
                   icon: 'download-outline',
                   onPress: () => {
-                    // Même flow qu'Exporter mais via le même ExportScreen (chiffré PIN)
-                    navigation.navigate('Export', { snapshotId: snapshotAction.snap.id, downloadMode: true });
+                    navigation.navigate('Export', { snapshotId: snapshotAction.snap.id });
                     setSnapshotAction(null);
                   },
                 },
@@ -308,119 +337,73 @@ export default function SettingsScreen() {
         }}
       />
 
-      {/* Modal Créer une sauvegarde */}
-      <Modal visible={createSnapshotModal} transparent animationType="fade" onRequestClose={() => setCreateSnapshotModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Créer une sauvegarde</Text>
-            <Text style={styles.modalLabel}>Nom (optionnel)</Text>
-            <TextInput
-              value={newSnapName}
-              onChangeText={setNewSnapName}
-              placeholder="sauvegarde"
-              placeholderTextColor={theme.colors.textFaint}
-              style={styles.modalInput}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <Text style={styles.modalHint}>
-              → {(newSnapName || 'sauvegarde').trim().replace(/\s+/g, '-').toLowerCase()}-{fmtDateTiret()}
-            </Text>
+      {/* Modal Créer une sauvegarde (UI unifiée SubstanceSelectModal) */}
+      <SubstanceSelectModal
+        visible={createSnapshotModal}
+        title="Créer une sauvegarde"
+        showNameField
+        nameFieldLabel="Nom (optionnel)"
+        nameFieldPlaceholder="sauvegarde"
+        nameHint={(n) => `→ ${(n || 'sauvegarde').trim().replace(/\s+/g, '-').toLowerCase()}-${fmtDateTiret()}`}
+        substances={[...substances, ...archivedSubstances].map((s) => ({ id: s.id, name: s.name, color: s.color }))}
+        confirmLabel="Créer"
+        onCancel={() => setCreateSnapshotModal(false)}
+        onConfirm={async (ids, nameInput) => {
+          const base = (nameInput || 'sauvegarde').trim().replace(/\s+/g, '-').toLowerCase();
+          const fullName = `${base}-${fmtDateTiret()}`;
+          await createSnapshotFromLive(fullName, ids);
+          setCreateSnapshotModal(false);
+        }}
+      />
 
-            <Text style={styles.modalLabel}>Substances à inclure</Text>
-            <ScrollView style={{ maxHeight: 300 }}>
-              {[...substances, ...archivedSubstances].map((sub) => {
-                const checked = newSnapSubIds.includes(sub.id);
-                return (
-                  <Pressable
-                    key={sub.id}
-                    onPress={() => {
-                      setNewSnapSubIds((prev) =>
-                        prev.includes(sub.id)
-                          ? prev.filter((id) => id !== sub.id)
-                          : [...prev, sub.id]
-                      );
-                    }}
-                    style={styles.checkboxRow}
-                  >
-                    <View style={[
-                      styles.checkbox,
-                      { borderColor: sub.color },
-                      checked && { backgroundColor: sub.color },
-                    ]}>
-                      {checked && <MaterialCommunityIcons name="check" size={14} color="#fff" />}
-                    </View>
-                    <Text style={[styles.checkboxLabel, sub.archived && { fontStyle: 'italic' }]}>
-                      {sub.name}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
+      {/* Modal Restaurer / Fusionner (UI unifiée) */}
+      <SubstanceSelectModal
+        visible={!!fusionModal}
+        title="Restaurer / Fusionner"
+        intro="Les substances cochées seront ajoutées aux données actives. Les doublons (même heure exacte) sont ignorés."
+        substances={fusionModal?.parsed?.substances?.map((s) => ({ id: s.id, name: s.name, color: s.color })) || []}
+        initialSelectedIds={fusionModal?.subIds || null}
+        confirmLabel="Restaurer"
+        onCancel={() => setFusionModal(null)}
+        onConfirm={(ids) => {
+          setFusionModal((prev) => prev ? { ...prev, subIds: ids } : null);
+          // Launch fusion via next tick with ids set
+          setTimeout(() => {
+            handleFusionWithIds(ids);
+          }, 50);
+        }}
+      />
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setCreateSnapshotModal(false)}>
-                <Text style={styles.modalCancelText}>Annuler</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleCreateSnapshot} disabled={newSnapSubIds.length === 0}>
-                <Text style={[styles.modalOkText, newSnapSubIds.length === 0 && { opacity: 0.4 }]}>
-                  Créer
-                </Text>
-              </TouchableOpacity>
-            </View>
+      {/* Overlay spinner fusion */}
+      <Modal visible={fusionBusy && !conflictModal} transparent animationType="fade">
+        <View style={styles.spinnerOverlay}>
+          <View style={styles.spinnerCard}>
+            <ActivityIndicator size="large" color={theme.colors.text} />
+            <Text style={styles.spinnerText}>Fusion en cours…</Text>
           </View>
         </View>
       </Modal>
 
-      {/* Modal Fusion */}
-      <Modal visible={!!fusionModal} transparent animationType="fade" onRequestClose={() => setFusionModal(null)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Fusionner</Text>
-            <Text style={styles.modalHint}>
-              Les substances cochées seront ajoutées aux données actives. Les doublons (même heure exacte) sont ignorés.
+      {/* Modal conflit de nom */}
+      <Modal visible={!!conflictModal} transparent animationType="fade">
+        <View style={styles.spinnerOverlay}>
+          <View style={styles.conflictCard}>
+            <Text style={styles.conflictTitle}>Nom déjà existant</Text>
+            <Text style={styles.conflictMessage}>
+              Une substance nommée "{conflictModal?.parsedSub?.name}" existe déjà. Que veux-tu faire ?
             </Text>
-
-            <Text style={styles.modalLabel}>Substances à fusionner</Text>
-            <ScrollView style={{ maxHeight: 300 }}>
-              {fusionModal?.parsed?.substances.map((sub) => {
-                const checked = fusionModal.subIds.includes(sub.id);
-                return (
-                  <Pressable
-                    key={sub.id}
-                    onPress={() => {
-                      setFusionModal((prev) => ({
-                        ...prev,
-                        subIds: prev.subIds.includes(sub.id)
-                          ? prev.subIds.filter((id) => id !== sub.id)
-                          : [...prev.subIds, sub.id],
-                      }));
-                    }}
-                    style={styles.checkboxRow}
-                  >
-                    <View style={[
-                      styles.checkbox,
-                      { borderColor: sub.color },
-                      checked && { backgroundColor: sub.color },
-                    ]}>
-                      {checked && <MaterialCommunityIcons name="check" size={14} color="#fff" />}
-                    </View>
-                    <Text style={styles.checkboxLabel}>{sub.name}</Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity onPress={() => setFusionModal(null)}>
-                <Text style={styles.modalCancelText}>Annuler</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleFusion} disabled={!fusionModal?.subIds?.length}>
-                <Text style={[styles.modalOkText, !fusionModal?.subIds?.length && { opacity: 0.4 }]}>
-                  Fusionner
-                </Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity onPress={() => resolveConflict('merge')} style={styles.conflictBtn}>
+              <Text style={styles.conflictBtnText}>Fusionner</Text>
+              <Text style={styles.conflictBtnHint}>Ajouter les consos à la substance existante</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => resolveConflict('number')} style={styles.conflictBtn}>
+              <Text style={styles.conflictBtnText}>Numéroter</Text>
+              <Text style={styles.conflictBtnHint}>Créer "{conflictModal?.parsedSub?.name} (2)"</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => resolveConflict('ignore')} style={styles.conflictBtn}>
+              <Text style={styles.conflictBtnText}>Ignorer</Text>
+              <Text style={styles.conflictBtnHint}>Ne pas importer cette substance</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -460,6 +443,7 @@ const styles = StyleSheet.create({
   rowIcon: { marginRight: theme.spacing.md },
   rowLabel: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '300' },
   rowLabelDanger: { color: theme.colors.danger, fontSize: theme.font.sizes.md, fontWeight: '300' },
+  rowDangerHint: { color: theme.colors.textFaint, fontSize: theme.font.sizes.xs, fontWeight: '300', marginTop: 2, fontStyle: 'italic' },
   rowValue: { color: theme.colors.textMuted, fontSize: theme.font.sizes.md, fontWeight: '300' },
   rowValueFaint: { color: theme.colors.textFaint, fontSize: theme.font.sizes.sm, fontStyle: 'italic' },
   snapRow: {
@@ -519,4 +503,36 @@ const styles = StyleSheet.create({
   },
   modalCancelText: { color: theme.colors.textMuted, fontSize: theme.font.sizes.md, fontWeight: '300' },
   modalOkText: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '500' },
+
+  spinnerOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.8)',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  spinnerCard: {
+    backgroundColor: theme.colors.surface, padding: theme.spacing.xl,
+    borderRadius: 8, alignItems: 'center', gap: theme.spacing.md,
+    minWidth: 180,
+  },
+  spinnerText: {
+    color: theme.colors.text, fontSize: theme.font.sizes.sm, fontWeight: '300',
+  },
+  conflictCard: {
+    backgroundColor: theme.colors.surface, padding: theme.spacing.lg,
+    borderRadius: 8, width: '85%', borderWidth: StyleSheet.hairlineWidth,
+    borderColor: theme.colors.border,
+  },
+  conflictTitle: {
+    color: theme.colors.text, fontSize: theme.font.sizes.md,
+    fontWeight: '400', textAlign: 'center', marginBottom: theme.spacing.sm,
+  },
+  conflictMessage: {
+    color: theme.colors.textMuted, fontSize: theme.font.sizes.sm,
+    fontWeight: '300', textAlign: 'center', marginBottom: theme.spacing.md, lineHeight: 20,
+  },
+  conflictBtn: {
+    paddingVertical: theme.spacing.md, paddingHorizontal: theme.spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border,
+  },
+  conflictBtnText: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '400' },
+  conflictBtnHint: { color: theme.colors.textFaint, fontSize: theme.font.sizes.xs, marginTop: 2, fontStyle: 'italic' },
 });
