@@ -57,14 +57,20 @@ function buildCsvPayload(substances, consumptions) {
   const subHeader = 'id,name,color,icon,created_at,archived,position';
   const subRows = substances.map((s) => [
     csvEscape(s.id), csvEscape(s.name), csvEscape(s.color), csvEscape(s.icon),
-    csvEscape(s.createdAt), csvEscape(s.archived ? 1 : 0),
+    csvEscape(s.createdAt ?? s.created_at), csvEscape(s.archived ? 1 : 0),
     csvEscape(s.position ?? 0),
   ].join(','));
 
   const consHeader = 'id,substance_id,timestamp,dosage,notes,created_at';
+  // Accepte à la fois camelCase (c.substanceId, c.createdAt) et snake_case (c.substance_id, c.created_at)
+  // → fix du bug où l'export sortait un bloc CONSUMPTIONS vide depuis 1.1.15.2.
   const consRows = consumptions.map((c) => [
-    csvEscape(c.id), csvEscape(c.substanceId), csvEscape(c.timestamp),
-    csvEscape(c.dosage), csvEscape(c.notes), csvEscape(c.createdAt),
+    csvEscape(c.id),
+    csvEscape(c.substanceId ?? c.substance_id),
+    csvEscape(c.timestamp),
+    csvEscape(c.dosage),
+    csvEscape(c.notes),
+    csvEscape(c.createdAt ?? c.created_at),
   ].join(','));
 
   return [

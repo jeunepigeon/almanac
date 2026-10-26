@@ -120,15 +120,16 @@ const DayCell = memo(function DayCell({ date, markers, isToday, isFuture, isSobe
   useEffect(() => {
     if (flashColor) {
       Animated.sequence([
-        Animated.timing(flash, { toValue: 1, duration: 100, useNativeDriver: false }),
-        Animated.timing(flash, { toValue: 0, duration: 400, useNativeDriver: false }),
+        Animated.timing(flash, { toValue: 1, duration: 120, useNativeDriver: false }),
+        Animated.timing(flash, { toValue: 0, duration: 500, useNativeDriver: false }),
       ]).start();
     }
   }, [flashColor]);
   if (!date) return <View style={styles.dayCell} />;
-  const borderInterp = flash.interpolate({
+  // Flash en overlay carré pleine case (pas de cercle)
+  const overlayBg = flash.interpolate({
     inputRange: [0, 1],
-    outputRange: ['rgba(0,0,0,0)', flashColor || 'rgba(0,0,0,0)'],
+    outputRange: ['rgba(0,0,0,0)', flashColor ? flashColor + 'CC' : 'rgba(0,0,0,0)'],
   });
   return (
     <TouchableOpacity
@@ -137,11 +138,7 @@ const DayCell = memo(function DayCell({ date, markers, isToday, isFuture, isSobe
       disabled={isFuture}
       activeOpacity={0.6}
     >
-      <Animated.View style={[
-        styles.dayNumberWrap,
-        isSober && styles.dayNumberWrapSober,
-        flashColor && { borderWidth: 2, borderColor: borderInterp },
-      ]}>
+      <View style={[styles.dayNumberWrap, isSober && styles.dayNumberWrapSober]}>
         <Text style={[
           styles.dayNumber,
           isFuture && styles.dayNumberFuture,
@@ -149,8 +146,14 @@ const DayCell = memo(function DayCell({ date, markers, isToday, isFuture, isSobe
         ]}>
           {date.getDate()}
         </Text>
-      </Animated.View>
+      </View>
       <MarkersGrid markers={markers} />
+      {flashColor && (
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.flashOverlay, { backgroundColor: overlayBg }]}
+        />
+      )}
     </TouchableOpacity>
   );
 });
@@ -288,48 +291,58 @@ export default function ScrollableCalendar({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [dropdownLayout, setDropdownLayout] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const flatListRef = useRef(null);
+  const visibleIdxRef = useRef(currentIdx);
+  useEffect(() => { visibleIdxRef.current = visibleIdx; }, [visibleIdx]);
 
-  // Scroll initial vers le mois courant (en bas)
+  // Scroll initial vers le mois courant (en bas).
+  // Tant que l'utilisateur n'a PAS scrollé manuellement, on re-scrolle vers le présent
+  // à chaque changement de months.length (nécessaire si markersByDay arrive après le mount).
+  const userTouchedRef = useRef(false);
   useEffect(() => {
+    if (userTouchedRef.current) return;
     const t = setTimeout(() => {
-      flatListRef.current?.scrollToIndex({ index: currentIdx, animated: false });
-    }, 50);
+      try {
+        flatListRef.current?.scrollToIndex({ index: currentIdx, animated: false });
+        setVisibleIdx(currentIdx);
+      } catch {}
+    }, 80);
     return () => clearTimeout(t);
-  }, [currentIdx]);
+  }, [currentIdx, months.length]);
 
+  // Scroll animé (pour toutes les navigations)
   const scrollToIdx = useCallback((idx, animated = true) => {
     if (!flatListRef.current) return;
-    flatListRef.current.scrollToIndex({ index: idx, animated });
-    setVisibleIdx(idx);
-  }, []);
-
-  // Navigation instantanée (pour spam de chevrons) : pas d'animation = pas de cooldown
-  const scrollToIdxFast = useCallback((idx) => {
-    if (!flatListRef.current) return;
-    flatListRef.current.scrollToIndex({ index: idx, animated: false });
+    try {
+      flatListRef.current.scrollToIndex({ index: idx, animated });
+    } catch {}
     setVisibleIdx(idx);
   }, []);
 
   const goPrev = () => {
-    if (visibleIdx > 0) {
+    const cur = visibleIdxRef.current;
+    if (cur > 0) {
       haptics.light();
-      scrollToIdxFast(visibleIdx - 1);
+      scrollToIdx(cur - 1);
     } else {
       triggerBounce();
     }
   };
   const goNext = () => {
-    if (visibleIdx < currentIdx) {
+    const cur = visibleIdxRef.current;
+    if (cur < currentIdx) {
       haptics.light();
-      scrollToIdxFast(visibleIdx + 1);
+      scrollToIdx(cur + 1);
     } else {
       triggerBounce();
     }
   };
   const goToday = () => {
-    if (visibleIdx < currentIdx) {
+    const cur = visibleIdxRef.current;
+    if (cur < currentIdx) {
       haptics.light();
       scrollToIdx(currentIdx);
+    } else {
+      triggerBounce();
     }
   };
 
@@ -361,13 +374,21 @@ export default function ScrollableCalendar({
     return sortedPriseDays.length - 1;
   };
 
+  // Jump sur un jour : scroll animé puis flash après l'arrivée (300-500ms selon la distance).
   const jumpToDay = (dayKey, dayTs) => {
-    // Scroll au mois contenant ce jour
     const d = new Date(dayTs);
     const idx = months.findIndex((m) => m.year === d.getFullYear() && m.month === d.getMonth());
-    if (idx >= 0) scrollToIdxFast(idx);
-    triggerFlash(dayKey);
-    priseCursorRef.current = dayKey;
+    if (idx >= 0) {
+      scrollToIdx(idx, true);
+      priseCursorRef.current = dayKey;
+      // Flash après que le scroll ait eu le temps d'arriver (on ne peut pas écouter la fin du scrollToIndex de FlatList)
+      const dist = Math.abs(idx - visibleIdxRef.current);
+      const delay = Math.min(600, 150 + dist * 60);
+      setTimeout(() => triggerFlash(dayKey), delay);
+    } else {
+      triggerFlash(dayKey);
+      priseCursorRef.current = dayKey;
+    }
   };
 
   const goPrevLog = () => {
@@ -522,6 +543,7 @@ export default function ScrollableCalendar({
         showsVerticalScrollIndicator={false}
         bounces={true}
         overScrollMode="always"
+        onScrollBeginDrag={() => { userTouchedRef.current = true; }}
         onScroll={(e) => {
           const y = e.nativeEvent.contentOffset.y;
           const h = e.nativeEvent.layoutMeasurement.height;
@@ -665,6 +687,13 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
     alignItems: 'center',
     justifyContent: 'flex-start',
+    borderRadius: 4,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  flashOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
     borderRadius: 4,
   },
   dayCellToday: { backgroundColor: 'rgba(1, 200, 83, 0.15)' },

@@ -131,6 +131,7 @@ export default function GlobalCalendarPage() {
           <ScrollableCalendar
             markersByDay={markersByDay}
             showSoberFill={true}
+            showJumpButtons={true}
             onDayPress={(dayKey, dayTimestamp) => {
               const consosOfDay = (allConsumptions || []).filter(
                 (c) => dayKeyOf(c.timestamp) === dayKey

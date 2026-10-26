@@ -1,76 +1,20 @@
-// Modal unifiée de sélection de substances (import, fusion, export, création snapshot).
-// Layout V2b : cards compactes avec icône + nom bold + stats, check C3 à droite,
-// cadre couleur quand coché / gris dim quand décoché.
-// Animation bubble (scale) au tap. Haptic light.
+// Modal unifiée de sélection de substances. V2b compact, bubble, haptic.
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  Modal, View, Text, StyleSheet, TouchableOpacity, Pressable, ScrollView, TextInput,
-  Animated,
+  Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput,
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../theme';
-import { getIconById } from '../icons';
 import haptics from '../utils/haptics';
-
-const DIM_BORDER = '#2F2F2F';
-const DIM_TEXT = '#3A3A3A';
-
-function SubCard({ sub, isChecked, onToggle, stats }) {
-  const scale = useRef(new Animated.Value(1)).current;
-
-  const triggerBubble = () => {
-    scale.setValue(0.95);
-    Animated.sequence([
-      Animated.spring(scale, { toValue: 1.05, useNativeDriver: true, speed: 20, bounciness: 10 }),
-      Animated.spring(scale, { toValue: 1.02, useNativeDriver: true, speed: 20, bounciness: 8 }),
-      Animated.spring(scale, { toValue: 1.0, useNativeDriver: true, speed: 20, bounciness: 6 }),
-    ]).start();
-  };
-
-  const handlePress = () => {
-    haptics.light();
-    triggerBubble();
-    onToggle();
-  };
-
-  const borderColor = isChecked ? sub.color : DIM_BORDER;
-  const nameColor = isChecked ? theme.colors.text : DIM_TEXT;
-  const statsColor = isChecked ? theme.colors.textMuted : DIM_TEXT;
-  const iconColor = isChecked ? sub.color : DIM_TEXT;
-
-  const consCount = stats?.consCount ?? 0;
-  const days = stats?.days ?? 0;
-  const statsText = `${consCount} prise${consCount > 1 ? 's' : ''} · ${days}j`;
-
-  return (
-    <Animated.View style={{ transform: [{ scale }], marginBottom: 8 }}>
-      <Pressable
-        onPress={handlePress}
-        style={[styles.subCard, { borderColor }]}
-      >
-        <View style={[styles.iconWrap, { borderColor: iconColor }]}>
-          <View style={[styles.iconDot, { backgroundColor: iconColor }]} />
-        </View>
-        <View style={styles.cardMiddle}>
-          <Text style={[styles.cardName, { color: nameColor }]} numberOfLines={1}>{sub.name}</Text>
-          <Text style={[styles.cardStats, { color: statsColor }]}>{statsText}</Text>
-        </View>
-        {isChecked && (
-          <MaterialCommunityIcons name="check" size={22} color={sub.color} style={styles.check} />
-        )}
-      </Pressable>
-    </Animated.View>
-  );
-}
+import SubCard from './SubCard';
 
 export default function SubstanceSelectModal({
   visible,
   title = 'Substances',
   intro = null,
   hint = null,
-  substances = [], // [{id, name, color}]
-  statsById = {},  // {id: {consCount, days}} optionnel
+  substances = [],
+  statsById = {},
   initialSelectedIds = null,
   confirmLabel = 'Confirmer',
   cancelLabel = 'Annuler',
@@ -93,16 +37,12 @@ export default function SubstanceSelectModal({
     setName('');
   }, [visible, substances, initialSelectedIds]);
 
-  const toggleSub = (id) => {
-    setSelected((prev) => ({ ...prev, [id]: !prev[id] }));
-  };
-
+  const toggleSub = (id) => setSelected((p) => ({ ...p, [id]: !p[id] }));
   const allSelected = substances.length > 0 && substances.every((s) => selected[s.id]);
   const noneSelected = substances.length > 0 && substances.every((s) => !selected[s.id]);
   const toggleAll = () => {
     haptics.light();
-    const next = {};
-    for (const s of substances) next[s.id] = !allSelected;
+    const next = {}; for (const s of substances) next[s.id] = !allSelected;
     setSelected(next);
   };
 
@@ -183,7 +123,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: theme.colors.surface,
-    borderRadius: 8,
+    borderRadius: 10,
     padding: theme.spacing.lg,
     width: '100%',
     maxHeight: '85%',
@@ -192,17 +132,17 @@ const styles = StyleSheet.create({
   },
   title: {
     color: theme.colors.text, fontSize: theme.font.sizes.md,
-    fontWeight: '400', textAlign: 'center', marginBottom: theme.spacing.sm,
+    fontWeight: '600', textAlign: 'center', marginBottom: theme.spacing.sm,
+    letterSpacing: 0.3,
   },
   intro: {
     color: theme.colors.textMuted, fontSize: theme.font.sizes.sm,
-    fontWeight: '300', lineHeight: 20,
+    fontWeight: '400', lineHeight: 20,
     marginBottom: theme.spacing.md, textAlign: 'center',
   },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: theme.spacing.sm,
-    marginTop: theme.spacing.sm,
+    marginBottom: theme.spacing.sm, marginTop: theme.spacing.sm,
   },
   fieldLabel: {
     color: theme.colors.textMuted, fontSize: theme.font.sizes.xs,
@@ -226,50 +166,8 @@ const styles = StyleSheet.create({
     color: theme.colors.text, fontSize: theme.font.sizes.sm, fontWeight: '400',
     textDecorationLine: 'underline',
   },
-  list: {
-    maxHeight: 440,
-  },
-  listContent: {
-    paddingVertical: 4,
-  },
-  subCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderRadius: 8,
-    gap: 12,
-  },
-  iconWrap: {
-    width: 32, height: 32, borderRadius: 16,
-    borderWidth: 1.5,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  iconDot: {
-    width: 12, height: 12, borderRadius: 6,
-  },
-  cardMiddle: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  cardName: {
-    fontSize: 16,
-    fontWeight: '700',
-    textAlign: 'center',
-    letterSpacing: 0.3,
-  },
-  cardStats: {
-    fontSize: 11,
-    fontWeight: '400',
-    marginTop: 2,
-    letterSpacing: 0.5,
-    textAlign: 'center',
-  },
-  check: {
-    marginLeft: 4,
-  },
+  list: { maxHeight: 440 },
+  listContent: { paddingVertical: 4 },
   hint: {
     color: theme.colors.textFaint, fontSize: theme.font.sizes.xs,
     fontStyle: 'italic', marginTop: theme.spacing.md, textAlign: 'center',
@@ -279,9 +177,9 @@ const styles = StyleSheet.create({
     gap: theme.spacing.lg, marginTop: theme.spacing.md,
   },
   cancelText: {
-    color: theme.colors.textMuted, fontSize: theme.font.sizes.md, fontWeight: '300',
+    color: theme.colors.textMuted, fontSize: theme.font.sizes.md, fontWeight: '400',
   },
   confirmText: {
-    color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '500',
+    color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '600',
   },
 });

@@ -106,20 +106,22 @@ const styles = StyleSheet.create({
   title: {
     color: theme.colors.text,
     fontSize: theme.font.sizes.md,
-    fontWeight: '400',
-    letterSpacing: 0.5,
+    fontWeight: '600',
+    letterSpacing: 0.3,
     marginBottom: theme.spacing.sm,
+    textAlign: 'center',
   },
   message: {
     color: theme.colors.textMuted,
     fontSize: theme.font.sizes.md,
-    fontWeight: '300',
-    lineHeight: 20,
+    fontWeight: '400',
+    lineHeight: 22,
     marginBottom: theme.spacing.lg,
+    textAlign: 'center',
   },
   actions: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
     gap: theme.spacing.lg,
   },
   actionsCol: {

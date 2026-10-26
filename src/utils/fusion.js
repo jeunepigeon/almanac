@@ -1,5 +1,9 @@
 // Logique de fusion partagée entre fusion snapshot et import fichier.
-// Prend un callback onConflict(parsedSub) qui retourne une Promise résolvant à 'merge' | 'number' | 'ignore'.
+// v1.1.17 : SIMPLIFIÉE — plus de pop-up conflits. Fusion automatique par nom
+// (même nom → fusion dans la substance active, dédoublonnage par timestamp exact).
+// Les timestamps déjà présents sont ignorés silencieusement.
+//
+// `onProgress(current, total)` optionnel pour afficher une barre de progression.
 
 import {
   dbInsertSubstanceRaw,
@@ -12,82 +16,82 @@ function normalizeName(name) {
   return (name || '').trim().toLowerCase();
 }
 
-function makeNumberedName(baseName, takenNames) {
-  let n = 2;
-  while (takenNames.has(normalizeName(`${baseName} (${n})`))) n++;
-  return `${baseName} (${n})`;
-}
-
 /**
- * Fusionne un objet parsé (substances + consumptions) avec les données actives.
+ * Fusion automatique :
+ *   - Substance avec un nom qui existe déjà en actif → les consos sont ajoutées
+ *     à la substance active, en ignorant celles dont le timestamp existe déjà.
+ *   - Substance avec un nom qui n'existe pas → créée normalement.
+ *   - Aucun pop-up, aucun choix à faire. Doublons par timestamp = ignorés.
+ *
  * @param {object} parsed - { substances: [], consumptions: [] }
- * @param {array} activeSubs - liste des substances actives (de n'importe où)
- * @param {Set} substanceIds - set des substance IDs à inclure (du parsed)
- * @param {function} onConflict - callback(parsedSub) → Promise<'merge'|'number'|'ignore'>
- * @returns {Promise<{added, merged, numbered, ignored, consosAdded}>}
+ * @param {array} activeSubs - substances actives (toutes)
+ * @param {Set|null} substanceIds - IDs du parsed à inclure (null = tout)
+ * @param {function} onProgress - (current, total) → void (optionnel)
+ * @returns {Promise<{added, merged, consosAdded, consosSkipped}>}
  */
-export async function performFusion({ parsed, activeSubs, substanceIds, onConflict }) {
+export async function performFusion({ parsed, activeSubs, substanceIds, onProgress }) {
   const activeByName = new Map();
-  const takenNames = new Set();
   for (const s of activeSubs) {
     activeByName.set(normalizeName(s.name), s);
-    takenNames.add(normalizeName(s.name));
   }
 
-  const idMap = {};
-  let added = 0, merged = 0, numbered = 0, ignored = 0;
+  const idMap = {}; // parsed substance id → active (ou nouvellement créée) substance id
+  let added = 0, merged = 0;
 
+  // Pass 1 : substances
   for (const sub of parsed.substances) {
     if (substanceIds && !substanceIds.has(sub.id)) continue;
     const key = normalizeName(sub.name);
     const existing = activeByName.get(key);
-
-    if (!existing) {
-      // Pas de conflit
+    if (existing) {
+      // Même nom → fusion
+      idMap[sub.id] = existing.id;
+      merged++;
+    } else {
+      // Nouveau
       const newId = sub.id || uuid();
       await dbInsertSubstanceRaw({
         id: newId, name: sub.name, color: sub.color, icon: sub.icon,
         createdAt: sub.createdAt, archived: !!sub.archived, position: sub.position ?? 9999,
       });
       idMap[sub.id] = newId;
-      takenNames.add(key);
       added++;
-    } else {
-      // Conflit : demander choix
-      const choice = await onConflict(sub);
-      if (choice === 'merge') {
-        idMap[sub.id] = existing.id;
-        merged++;
-      } else if (choice === 'number') {
-        const newName = makeNumberedName(sub.name, takenNames);
-        const newId = uuid();
-        await dbInsertSubstanceRaw({
-          id: newId, name: newName, color: sub.color, icon: sub.icon,
-          createdAt: sub.createdAt, archived: !!sub.archived, position: sub.position ?? 9999,
-        });
-        idMap[sub.id] = newId;
-        takenNames.add(normalizeName(newName));
-        numbered++;
-      } else {
-        ignored++;
-      }
     }
   }
 
-  let consosAdded = 0;
-  for (const c of parsed.consumptions) {
-    if (substanceIds && !substanceIds.has(c.substanceId)) continue;
-    const destSubId = idMap[c.substanceId];
-    if (!destSubId) continue;
-    const existingList = await dbGetConsumptionsBySubstance(destSubId);
-    const dup = existingList.some((ec) => ec.timestamp === c.timestamp);
-    if (dup) continue;
-    await dbInsertConsumptionRaw({
-      id: uuid(), substanceId: destSubId, timestamp: c.timestamp,
-      dosage: c.dosage, notes: c.notes, createdAt: c.createdAt || c.timestamp,
-    });
-    consosAdded++;
+  // Pass 2 : consumptions, dedup par timestamp exact
+  // Pré-charge les timestamps existants par substance (optimisation : évite N queries)
+  const existingTsBySub = {}; // destId → Set<timestamp>
+  for (const destId of new Set(Object.values(idMap))) {
+    const list = await dbGetConsumptionsBySubstance(destId);
+    existingTsBySub[destId] = new Set(list.map((c) => c.timestamp));
   }
 
-  return { added, merged, numbered, ignored, consosAdded };
+  const consosToImport = parsed.consumptions.filter((c) => {
+    if (substanceIds && !substanceIds.has(c.substanceId)) return false;
+    return !!idMap[c.substanceId];
+  });
+
+  let consosAdded = 0, consosSkipped = 0;
+  const total = consosToImport.length;
+  for (let i = 0; i < total; i++) {
+    const c = consosToImport[i];
+    const destSubId = idMap[c.substanceId];
+    const seen = existingTsBySub[destSubId];
+    if (seen.has(c.timestamp)) {
+      consosSkipped++;
+    } else {
+      await dbInsertConsumptionRaw({
+        id: uuid(), substanceId: destSubId, timestamp: c.timestamp,
+        dosage: c.dosage, notes: c.notes, createdAt: c.createdAt || c.timestamp,
+      });
+      seen.add(c.timestamp);
+      consosAdded++;
+    }
+    if (onProgress && (i % 25 === 0 || i === total - 1)) {
+      onProgress(i + 1, total);
+    }
+  }
+
+  return { added, merged, consosAdded, consosSkipped };
 }

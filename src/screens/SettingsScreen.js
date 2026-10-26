@@ -46,14 +46,16 @@ export default function SettingsScreen() {
   const [restoreSnapId, setRestoreSnapId] = useState(null);
   const [importWizardVisible, setImportWizardVisible] = useState(false);
   const [createSnapshotModal, setCreateSnapshotModal] = useState(false);
-  const [infoModal, setInfoModal] = useState(null);
   const [snapshotStats, setSnapshotStats] = useState({});
+  const [infoModal, setInfoModal] = useState(null);
 
-  // ExportWizard : source peut être live ou snapshot
-  // exportSource = { subs: [{id,name,color,icon,archived,createdAt,position}], consos: [...], statsById: {} } | null
+  // ExportWizard source : live ou snapshot
   const [exportSource, setExportSource] = useState(null);
-  // Pour SubstanceSelectModal (créer sauvegarde)
   const [liveStatsById, setLiveStatsById] = useState({});
+
+  // Debug button : liste de modals textuelles à parcourir
+  const [debugModals, setDebugModals] = useState([]);
+  const [debugIdx, setDebugIdx] = useState(0);
 
   useFocusEffect(
     useCallback(() => { markSnapshotsConsulted(); }, [markSnapshotsConsulted])
@@ -64,7 +66,6 @@ export default function SettingsScreen() {
     loadSnapshots();
   }, []);
 
-  // Charger stats snapshots
   useEffect(() => {
     (async () => {
       const stats = {};
@@ -87,7 +88,6 @@ export default function SettingsScreen() {
     })();
   }, [snapshots]);
 
-  // Calcule stats par sub (consCount, days)
   const statsFromConsos = (consos) => {
     const byId = {};
     const now = Date.now();
@@ -138,6 +138,22 @@ export default function SettingsScreen() {
     setCreateSnapshotModal(true);
   };
 
+  // Debug : enchaîne toutes les modals textuelles de l'app
+  const openDebugModals = () => {
+    const list = [
+      { title: 'InfoModal — exemple', message: 'Message info classique sur une ligne.' },
+      { title: 'InfoModal — multi-ligne', message: 'Première ligne.\nDeuxième ligne.\nTroisième ligne de test pour vérifier le centrage.' },
+      { title: 'Sauvegarde enregistrée', message: 'almanac-export-26-10-2026-2254.almanac\n1714 prise(s) · 26 substance(s)' },
+      { title: "La sauvegarde n'a pas pu aboutir", message: "Permission d'écriture refusée." },
+      { title: 'Import terminé', message: '2 nouvelle(s) · 24 fusionnée(s)\n1714 prise(s) importée(s) · 0 déjà présente(s)' },
+      { title: 'Restauration terminée', message: '0 nouvelle(s) · 26 fusionnée(s)\n1714 prise(s) restaurée(s) · 0 déjà présente(s)' },
+      { title: 'Erreur', message: 'Snapshot introuvable.' },
+      { title: 'Sauvegarde créée', message: 'Une sauvegarde a été créée. Vous pouvez la restaurer ou la supprimer définitivement via Paramètres.' },
+    ];
+    setDebugModals(list);
+    setDebugIdx(0);
+  };
+
   const allSubsForModal = [...substances, ...archivedSubstances]
     .map((s) => ({ id: s.id, name: s.name, color: s.color }));
 
@@ -168,7 +184,7 @@ export default function SettingsScreen() {
         <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.row} onPress={openCreateSnapshotModal}>
+      <TouchableOpacity style={styles.rowNoBorder} onPress={openCreateSnapshotModal}>
         <View style={styles.rowLeft}>
           <Ionicons name="add" size={20} color={theme.colors.text} style={styles.rowIcon} />
           <Text style={styles.rowLabel}>Créer une sauvegarde</Text>
@@ -220,11 +236,18 @@ export default function SettingsScreen() {
         <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.danger} />
       </TouchableOpacity>
 
+      {/* ===== DEBUG ===== */}
+      <Text style={styles.sectionTitle}>Debug</Text>
+      <TouchableOpacity style={styles.row} onPress={openDebugModals}>
+        <Text style={styles.rowLabel}>Afficher toutes les modals textuelles</Text>
+        <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
+      </TouchableOpacity>
+
       {/* ===== À PROPOS ===== */}
       <Text style={styles.sectionTitle}>À propos</Text>
       <View style={styles.row}>
         <Text style={styles.rowLabel}>Version</Text>
-        <Text style={styles.rowValue}>1.1.16</Text>
+        <Text style={styles.rowValue}>1.1.17</Text>
       </View>
       <View style={styles.row}>
         <Text style={styles.rowLabel}>Consos enregistrées depuis</Text>
@@ -322,17 +345,11 @@ export default function SettingsScreen() {
         }}
       />
 
-      <ConfirmModal
+      <InfoModal
         visible={wipeToastVisible}
         title="Sauvegarde créée"
         message="Une sauvegarde a été créée. Vous pouvez la restaurer ou la supprimer définitivement via Paramètres."
-        confirmLabel="OK"
-        hideCancel
-        onCancel={() => setWipeToastVisible(false)}
-        onConfirm={() => {
-          setWipeToastVisible(false);
-          navigation.goBack();
-        }}
+        onClose={() => { setWipeToastVisible(false); navigation.goBack(); }}
       />
 
       {/* ===== Wizards ===== */}
@@ -370,8 +387,13 @@ export default function SettingsScreen() {
         onConfirm={async (ids, nameInput) => {
           const base = (nameInput || 'sauvegarde').trim().replace(/\s+/g, '-').toLowerCase();
           const fullName = `${base}-${fmtDateTiret()}`;
-          await createSnapshotFromLive(fullName, ids);
-          setCreateSnapshotModal(false);
+          try {
+            await createSnapshotFromLive(fullName, ids);
+            setCreateSnapshotModal(false);
+          } catch (e) {
+            setCreateSnapshotModal(false);
+            setInfoModal({ title: 'Erreur création sauvegarde', message: e.message || String(e) });
+          }
         }}
       />
 
@@ -381,6 +403,21 @@ export default function SettingsScreen() {
         message={infoModal?.message}
         onClose={() => setInfoModal(null)}
       />
+
+      {/* Debug : enchaîne les modals */}
+      {debugModals.length > 0 && debugIdx < debugModals.length && (
+        <InfoModal
+          visible
+          title={`[${debugIdx + 1}/${debugModals.length}] ${debugModals[debugIdx].title}`}
+          message={debugModals[debugIdx].message}
+          buttonLabel={debugIdx === debugModals.length - 1 ? 'Fermer' : 'Suivant'}
+          onClose={() => {
+            const next = debugIdx + 1;
+            if (next >= debugModals.length) { setDebugModals([]); setDebugIdx(0); }
+            else setDebugIdx(next);
+          }}
+        />
+      )}
     </ScrollView>
   );
 }
@@ -402,6 +439,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border,
+  },
+  // Variante sans border-bottom pour la dernière ligne d'un groupe (Créer sauvegarde)
+  rowNoBorder: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.md,
   },
   rowLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   rowIcon: { marginRight: theme.spacing.md },

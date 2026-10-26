@@ -1,58 +1,20 @@
-// Wizard de restauration/fusion depuis un snapshot interne. Même UI qu'ImportWizard
-// mais sans l'étape PIN (le snapshot est déjà en clair dans la DB).
+// Wizard de restauration/fusion depuis un snapshot interne.
+// Même UI qu'ImportWizard mais sans PIN. Fusion automatique par nom + dédoublonnage timestamp.
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  Modal, View, Text, StyleSheet, TouchableOpacity, Pressable, ScrollView,
-  Animated, ActivityIndicator, KeyboardAvoidingView, Platform, BackHandler,
+  Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView,
+  ActivityIndicator, KeyboardAvoidingView, Platform, BackHandler,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../theme';
+import SubCard from './SubCard';
 import haptics from '../utils/haptics';
 import { performFusion } from '../utils/fusion';
 import { fmtDateTiretHM, parseSnapshot } from '../utils/snapshots';
 import { dbGetSnapshotData } from '../db';
 import { useStore } from '../store';
 import { useKeepAwake } from '../utils/keepAwake';
-
-const DIM_BORDER = '#2F2F2F';
-const DIM_TEXT = '#3A3A3A';
-
-function SubCard({ sub, isChecked, onToggle }) {
-  const scale = useRef(new Animated.Value(1)).current;
-  const triggerBubble = () => {
-    scale.setValue(0.95);
-    Animated.sequence([
-      Animated.spring(scale, { toValue: 1.05, useNativeDriver: true, speed: 20, bounciness: 10 }),
-      Animated.spring(scale, { toValue: 1.02, useNativeDriver: true, speed: 20, bounciness: 8 }),
-      Animated.spring(scale, { toValue: 1.0, useNativeDriver: true, speed: 20, bounciness: 6 }),
-    ]).start();
-  };
-  const handlePress = () => { haptics.light(); triggerBubble(); onToggle(); };
-  const borderColor = isChecked ? sub.color : DIM_BORDER;
-  const nameColor = isChecked ? theme.colors.text : DIM_TEXT;
-  const iconColor = isChecked ? sub.color : DIM_TEXT;
-  const consCount = sub._consCount ?? 0;
-  const days = sub._days ?? 0;
-  return (
-    <Animated.View style={{ transform: [{ scale }], marginBottom: 8 }}>
-      <Pressable onPress={handlePress} style={[styles.subCard, { borderColor }]}>
-        <View style={[styles.iconWrap, { borderColor: iconColor }]}>
-          <View style={[styles.iconDot, { backgroundColor: iconColor }]} />
-        </View>
-        <View style={styles.cardMiddle}>
-          <Text style={[styles.cardName, { color: nameColor }]} numberOfLines={1}>{sub.name}</Text>
-          <Text style={[styles.cardStats, { color: isChecked ? theme.colors.textMuted : DIM_TEXT }]}>
-            {consCount} prise{consCount > 1 ? 's' : ''} · {days}j
-          </Text>
-        </View>
-        {isChecked && (
-          <MaterialCommunityIcons name="check" size={22} color={sub.color} style={styles.check} />
-        )}
-      </Pressable>
-    </Animated.View>
-  );
-}
 
 function statsFromParsed(parsed) {
   const by = {};
@@ -73,20 +35,21 @@ function statsFromParsed(parsed) {
 }
 
 export default function RestoreWizard({ visible, snapshotId, onClose, onComplete }) {
-  const [step, setStep] = useState('loading'); // 'loading' | 'select' | 'busy' | 'result' | 'conflict'
+  const [step, setStep] = useState('loading');
+  // 'loading' | 'select' | 'importing' | 'result'
   const [parsed, setParsed] = useState(null);
   const [selected, setSelected] = useState({});
-  const [busyLabel, setBusyLabel] = useState('Restauration en cours…');
+  const [busyLabel, setBusyLabel] = useState('Restauration…');
+  const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [result, setResult] = useState(null);
-  const [conflict, setConflict] = useState(null);
 
   useKeepAwake('restore-wizard');
 
   useEffect(() => {
     if (!visible || !snapshotId) return;
     setStep('loading');
+    setProgress({ current: 0, total: 0 });
     setResult(null);
-    setConflict(null);
     (async () => {
       try {
         const data = await dbGetSnapshotData(snapshotId);
@@ -102,7 +65,7 @@ export default function RestoreWizard({ visible, snapshotId, onClose, onComplete
         setSelected(sel);
         setStep('select');
       } catch (e) {
-        setResult({ ok: false, message: e.message || 'Lecture du snapshot impossible.' });
+        setResult({ ok: false, message: e.message || 'Lecture impossible.' });
         setStep('result');
       }
     })();
@@ -127,37 +90,31 @@ export default function RestoreWizard({ visible, snapshotId, onClose, onComplete
     setSelected(next);
   };
 
-  const askConflictChoice = (parsedSub) => new Promise((resolve) => {
-    setConflict({ parsedSub, resolve });
-  });
-  const resolveConflict = (choice) => {
-    if (conflict) { conflict.resolve(choice); setConflict(null); }
-  };
-
   const doRestore = async () => {
     const selectedIds = parsed.substances.filter((s) => selected[s.id]).map((s) => s.id);
-    setBusyLabel('Restauration en cours…');
-    setStep('busy');
+    setBusyLabel('Préparation…');
+    setProgress({ current: 0, total: 0 });
+    setStep('importing');
     try {
       await useStore.getState().createSnapshotFromLive(`avant-restauration-${fmtDateTiretHM()}`);
       const activeSubs = [
         ...useStore.getState().substances,
         ...useStore.getState().archivedSubstances,
       ];
+      setBusyLabel('Restauration en cours…');
       const fused = await performFusion({
         parsed,
         activeSubs,
         substanceIds: new Set(selectedIds),
-        onConflict: askConflictChoice,
+        onProgress: (cur, tot) => setProgress({ current: cur, total: tot }),
       });
       await useStore.getState().loadAll();
       haptics.success();
       setResult({
         ok: true,
         message:
-          `${fused.added} ajoutée(s), ${fused.merged} fusionnée(s), ` +
-          `${fused.numbered} numérotée(s), ${fused.ignored} ignorée(s).\n` +
-          `${fused.consosAdded} conso(s) restaurée(s).`,
+          `${fused.added} nouvelle(s) · ${fused.merged} fusionnée(s)\n` +
+          `${fused.consosAdded} prise(s) restaurée(s) · ${fused.consosSkipped} déjà présente(s)`,
       });
       setStep('result');
       onComplete?.();
@@ -168,19 +125,13 @@ export default function RestoreWizard({ visible, snapshotId, onClose, onComplete
   };
 
   const parsedStats = parsed ? statsFromParsed(parsed) : {};
-  const subList = parsed
-    ? parsed.substances.map((s) => ({
-        ...s,
-        _consCount: parsedStats[s.id]?.consCount ?? 0,
-        _days: parsedStats[s.id]?.days ?? 0,
-      }))
-    : [];
+  const subList = parsed ? parsed.substances.map((s) => ({ ...s })) : [];
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.card}>
           {step === 'loading' && (
@@ -194,7 +145,7 @@ export default function RestoreWizard({ visible, snapshotId, onClose, onComplete
             <>
               <Text style={styles.title}>Restaurer / Fusionner</Text>
               <Text style={styles.intro}>
-                Les substances cochées seront ajoutées aux données actives. Un snapshot est créé juste avant.
+                Les substances cochées seront ajoutées. Un snapshot est créé juste avant.
               </Text>
               <View style={styles.header}>
                 <Text style={styles.sectionLabel}>
@@ -206,13 +157,14 @@ export default function RestoreWizard({ visible, snapshotId, onClose, onComplete
                   </Text>
                 </TouchableOpacity>
               </View>
-              <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
+              <ScrollView style={styles.list} contentContainerStyle={{ paddingVertical: 4 }}>
                 {subList.map((sub) => (
                   <SubCard
                     key={sub.id}
                     sub={sub}
                     isChecked={!!selected[sub.id]}
                     onToggle={() => toggleSub(sub.id)}
+                    stats={parsedStats[sub.id]}
                   />
                 ))}
               </ScrollView>
@@ -227,10 +179,13 @@ export default function RestoreWizard({ visible, snapshotId, onClose, onComplete
             </>
           )}
 
-          {step === 'busy' && !conflict && (
+          {step === 'importing' && (
             <View style={styles.busyWrap}>
-              <ActivityIndicator size="large" color={theme.colors.text} />
               <Text style={styles.busyText}>{busyLabel}</Text>
+              <ProgressBar current={progress.current} total={progress.total} />
+              <Text style={styles.progressText}>
+                {progress.total > 0 ? `${progress.current} / ${progress.total}` : 'préparation…'}
+              </Text>
             </View>
           )}
 
@@ -252,32 +207,29 @@ export default function RestoreWizard({ visible, snapshotId, onClose, onComplete
               </View>
             </View>
           )}
-
-          {conflict && (
-            <View style={styles.conflictInner}>
-              <Text style={styles.conflictTitle}>Nom déjà existant</Text>
-              <Text style={styles.conflictMessage}>
-                Une substance nommée "{conflict.parsedSub.name}" existe déjà. Que veux-tu faire ?
-              </Text>
-              <TouchableOpacity onPress={() => resolveConflict('merge')} style={styles.conflictBtn}>
-                <Text style={styles.conflictBtnText}>Fusionner</Text>
-                <Text style={styles.conflictBtnHint}>Ajouter les consos à la substance existante</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => resolveConflict('number')} style={styles.conflictBtn}>
-                <Text style={styles.conflictBtnText}>Numéroter</Text>
-                <Text style={styles.conflictBtnHint}>Créer "{conflict.parsedSub.name} (2)"</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => resolveConflict('ignore')} style={styles.conflictBtn}>
-                <Text style={styles.conflictBtnText}>Ignorer</Text>
-                <Text style={styles.conflictBtnHint}>Ne pas importer cette substance</Text>
-              </TouchableOpacity>
-            </View>
-          )}
         </View>
       </KeyboardAvoidingView>
     </Modal>
   );
 }
+
+function ProgressBar({ current, total }) {
+  const pct = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
+  return (
+    <View style={progressStyles.wrap}>
+      <View style={[progressStyles.fill, { width: `${pct}%` }]} />
+    </View>
+  );
+}
+
+const progressStyles = StyleSheet.create({
+  wrap: {
+    width: '80%', height: 6,
+    backgroundColor: theme.colors.border, borderRadius: 3,
+    overflow: 'hidden', marginVertical: theme.spacing.sm,
+  },
+  fill: { height: '100%', backgroundColor: theme.colors.text, borderRadius: 3 },
+});
 
 const styles = StyleSheet.create({
   overlay: {
@@ -286,21 +238,18 @@ const styles = StyleSheet.create({
     padding: theme.spacing.lg,
   },
   card: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: 8,
-    padding: theme.spacing.lg,
-    width: '100%',
-    maxHeight: '90%',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface, borderRadius: 10,
+    padding: theme.spacing.lg, width: '100%', maxWidth: 440, maxHeight: '90%',
+    borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border,
   },
   title: {
     color: theme.colors.text, fontSize: theme.font.sizes.md,
-    fontWeight: '400', textAlign: 'center', marginBottom: theme.spacing.sm,
+    fontWeight: '600', textAlign: 'center', marginBottom: theme.spacing.sm,
+    letterSpacing: 0.3,
   },
   intro: {
     color: theme.colors.textMuted, fontSize: theme.font.sizes.sm,
-    fontWeight: '300', lineHeight: 20,
+    fontWeight: '400', lineHeight: 20,
     marginBottom: theme.spacing.md, textAlign: 'center',
   },
   header: {
@@ -316,57 +265,32 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
   list: { maxHeight: 380 },
-  listContent: { paddingVertical: 4 },
-  subCard: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 10, paddingHorizontal: 12,
-    borderWidth: 1, borderRadius: 8, gap: 12,
-  },
-  iconWrap: {
-    width: 32, height: 32, borderRadius: 16, borderWidth: 1.5,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  iconDot: { width: 12, height: 12, borderRadius: 6 },
-  cardMiddle: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  cardName: { fontSize: 16, fontWeight: '700', textAlign: 'center', letterSpacing: 0.3 },
-  cardStats: { fontSize: 11, fontWeight: '400', marginTop: 2, letterSpacing: 0.5, textAlign: 'center' },
-  check: { marginLeft: 4 },
   actions: {
     flexDirection: 'row', justifyContent: 'flex-end',
     gap: theme.spacing.lg, marginTop: theme.spacing.md,
   },
-  cancelText: { color: theme.colors.textMuted, fontSize: theme.font.sizes.md, fontWeight: '300' },
-  confirmText: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '500' },
+  cancelText: { color: theme.colors.textMuted, fontSize: theme.font.sizes.md, fontWeight: '400' },
+  confirmText: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '600' },
   busyWrap: {
     alignItems: 'center', justifyContent: 'center',
     paddingVertical: theme.spacing.xl, gap: theme.spacing.md,
   },
-  busyText: { color: theme.colors.text, fontSize: theme.font.sizes.sm, fontWeight: '300' },
+  busyText: { color: theme.colors.text, fontSize: theme.font.sizes.sm, fontWeight: '400' },
+  progressText: {
+    color: theme.colors.textMuted, fontSize: theme.font.sizes.sm,
+    fontWeight: '400', fontVariant: ['tabular-nums'],
+  },
   resultWrap: {
     alignItems: 'center',
     paddingVertical: theme.spacing.lg, gap: theme.spacing.sm,
   },
   resultTitle: {
-    fontSize: theme.font.sizes.md, fontWeight: '500',
-    marginTop: theme.spacing.sm,
+    fontSize: theme.font.sizes.md, fontWeight: '600',
+    marginTop: theme.spacing.sm, textAlign: 'center',
   },
   resultMessage: {
     color: theme.colors.textMuted, fontSize: theme.font.sizes.sm,
-    fontWeight: '300', textAlign: 'center', marginBottom: theme.spacing.sm,
-  },
-  conflictInner: { paddingVertical: theme.spacing.md },
-  conflictTitle: {
-    color: theme.colors.text, fontSize: theme.font.sizes.md,
     fontWeight: '400', textAlign: 'center', marginBottom: theme.spacing.sm,
+    lineHeight: 20,
   },
-  conflictMessage: {
-    color: theme.colors.textMuted, fontSize: theme.font.sizes.sm,
-    fontWeight: '300', textAlign: 'center', marginBottom: theme.spacing.md, lineHeight: 20,
-  },
-  conflictBtn: {
-    paddingVertical: theme.spacing.md, paddingHorizontal: theme.spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border,
-  },
-  conflictBtnText: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '400' },
-  conflictBtnHint: { color: theme.colors.textFaint, fontSize: theme.font.sizes.xs, marginTop: 2, fontStyle: 'italic' },
 });
