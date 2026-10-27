@@ -51,8 +51,9 @@ export default function MainScreen() {
           {titles.map((t, i) => (
             <TouchableOpacity
               key={t}
-              onPress={() => pagerRef.current?.setPage(i)}
-              style={styles.titleTab}
+              onPress={() => !pagerLocked && pagerRef.current?.setPage(i)}
+              style={[styles.titleTab, pagerLocked && { opacity: 0.3 }]}
+              disabled={pagerLocked}
             >
               <Text
                 style={[styles.titleText, page === i && styles.titleTextActive]}
@@ -64,24 +65,28 @@ export default function MainScreen() {
         </View>
 
         <View style={styles.headerRight}>
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Settings')}
-            style={styles.settingBtn}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={styles.settingText}>settings</Text>
-              {hasUnconsulted && <View style={styles.redDot} />}
-            </View>
-          </TouchableOpacity>
+          {!pagerLocked && (
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Settings')}
+              style={styles.settingBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={styles.settingText}>settings</Text>
+                {hasUnconsulted && <View style={styles.redDot} />}
+              </View>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
-      <View style={styles.indicator}>
-        {[0, 1].map((i) => (
-          <View key={i} style={[styles.dot, page === i && styles.dotActive]} />
-        ))}
-      </View>
+      {!pagerLocked && (
+        <View style={styles.indicator}>
+          {[0, 1].map((i) => (
+            <View key={i} style={[styles.dot, page === i && styles.dotActive]} />
+          ))}
+        </View>
+      )}
 
       <PagerView
         ref={pagerRef}

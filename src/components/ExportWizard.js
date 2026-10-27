@@ -12,7 +12,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput,
-  ActivityIndicator, KeyboardAvoidingView, Platform, BackHandler, Keyboard,
+  ActivityIndicator, Platform, BackHandler, Keyboard,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../theme';
@@ -186,11 +186,14 @@ export default function ExportWizard({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <View style={styles.overlay}>
         <View style={styles.card}>
           {step === 'select' && (
             <>
@@ -315,7 +318,7 @@ export default function ExportWizard({
             </View>
           )}
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }

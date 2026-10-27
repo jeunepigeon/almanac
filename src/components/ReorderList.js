@@ -1,25 +1,20 @@
-// Système de réorganisation drag & drop v1.1.18.
+// Système de réorganisation drag & drop v1.1.18.1.
 //
-// Flow (en UN SEUL touch continu) :
-//  - Touch down → démarre un timer de long press (~400ms).
-//  - 1er timer : si mode inactif → active le mode (toutes les rows vibrent). Doigt toujours posé.
-//  - 2e timer (déclenché après activation si le doigt est encore posé sur la même row ~400ms de plus) :
-//    → pickup direct, la row suit le doigt immédiatement.
-//  - Pendant le drag : barre indicatrice blanche entre les rows cibles, haptic light au slot change.
-//  - Release : drop, haptic success si l'ordre a changé.
+// Trade-off : utilise Pressable (compatible scroll) → le drag nécessite 3 touches :
+//  - 1er long press (hors mode) → active le mode (toutes les rows vibrent).
+//  - 2e long press (en mode)  → pickup la row.
+//  - Relever le doigt puis re-poser sur la row flottante et faire glisser → drag.
 //
-// Si l'utilisateur relève puis repose son doigt pour le pickup, ça marche aussi : handleLongPress
-// classique via Pressable longPress détecte le 2e appui long et déclenche le pickup, mais le drag ne
-// peut PAS commencer sans un nouveau touch (limitation RN). Pour avoir "2 long press", il faut utiliser
-// le responder manuel sur chaque row.
+// (Pour avoir 2 longs press continu sans relever le doigt, il faudrait react-native-gesture-handler.)
 //
-// Note : les bordures séparatrices ne vibrent PAS (le wiggle est appliqué sur le CONTENU INTERNE
-// de la row, pas sur le wrapper qui contient le border-bottom).
+// - Lignes séparatrices NE vibrent PAS (wiggle sur contenu interne uniquement).
+// - Pendant pickup : seule la row flottante vibre.
+// - Scroll normal fonctionne tant qu'aucun pickup n'est actif.
 
 import { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, Animated, TouchableOpacity, BackHandler,
-  ScrollView,
+  View, Text, StyleSheet, Pressable, Animated, PanResponder,
+  TouchableOpacity, BackHandler, ScrollView,
 } from 'react-native';
 import { theme } from '../theme';
 import haptics from '../utils/haptics';
@@ -28,8 +23,6 @@ const WIGGLE_ANGLE = 1.2;
 const WIGGLE_DURATION = 110;
 const PICKUP_SCALE = 1.06;
 const PICKUP_OPACITY = 0.92;
-const LONG_PRESS_MS = 400;
-const CANCEL_MOVE_PX = 10;
 
 function WiggleContent({ children, isWiggling, phase }) {
   const rot = useRef(new Animated.Value(0)).current;
@@ -58,76 +51,6 @@ function WiggleContent({ children, isWiggling, phase }) {
     outputRange: [`-${WIGGLE_ANGLE}deg`, `${WIGGLE_ANGLE}deg`],
   });
   return <Animated.View style={{ transform: [{ rotate }] }}>{children}</Animated.View>;
-}
-
-// Row avec gestion manuelle du responder : long press timer, drag, release, tap court.
-function Row({
-  item, index, itemHeight, onLongPressActivate, onDragMove, onDragEnd, onTap,
-  isWiggling, isPickup, renderItem,
-}) {
-  const timerRef = useRef(null);
-  const startRef = useRef({ x: 0, y: 0 });
-  const draggingRef = useRef(false);
-  const longPressFiredRef = useRef(false);
-
-  const cancelTimer = () => {
-    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
-  };
-
-  const onStart = (evt) => {
-    const t = evt.nativeEvent;
-    startRef.current = { x: t.pageX, y: t.pageY };
-    draggingRef.current = false;
-    longPressFiredRef.current = false;
-    cancelTimer();
-    timerRef.current = setTimeout(() => {
-      longPressFiredRef.current = true;
-      const activated = onLongPressActivate(index);
-      if (activated === 'pickup') {
-        draggingRef.current = true;
-      }
-    }, LONG_PRESS_MS);
-  };
-
-  const onMove = (evt) => {
-    const t = evt.nativeEvent;
-    const dx = t.pageX - startRef.current.x;
-    const dy = t.pageY - startRef.current.y;
-    if (!draggingRef.current) {
-      if (Math.hypot(dx, dy) > CANCEL_MOVE_PX) {
-        cancelTimer();
-      }
-      return;
-    }
-    onDragMove(dy);
-  };
-
-  const onEnd = () => {
-    cancelTimer();
-    if (draggingRef.current) {
-      draggingRef.current = false;
-      onDragEnd();
-    } else if (!longPressFiredRef.current) {
-      // Tap court
-      onTap?.(index);
-    }
-  };
-
-  return (
-    <View
-      style={{ height: itemHeight }}
-      onStartShouldSetResponder={() => true}
-      onResponderGrant={onStart}
-      onResponderMove={onMove}
-      onResponderRelease={onEnd}
-      onResponderTerminate={onEnd}
-      onResponderTerminationRequest={() => !draggingRef.current}
-    >
-      <WiggleContent isWiggling={isWiggling} phase={index % 3}>
-        {renderItem({ item, index, isWiggling, isPickup })}
-      </WiggleContent>
-    </View>
-  );
 }
 
 export default function ReorderList({
@@ -192,14 +115,13 @@ export default function ReorderList({
     onDeactivate?.();
   };
 
-  // Appelé quand le timer long press expire. Retourne 'activated' | 'pickup' | null.
-  const onLongPressActivate = (idx) => {
+  const handleLongPress = (idx) => {
     if (!activeRef.current) {
       haptics.medium();
       onActivate?.();
-      return 'activated';
+      return;
     }
-    // Déjà en mode → pickup direct
+    // 2e long press → pickup
     haptics.medium();
     const id = localIdsRef.current[idx];
     snapshotRef.current = [...localIdsRef.current];
@@ -207,41 +129,59 @@ export default function ReorderList({
     dragStartYRef.current = idx * itemHeight + itemHeight / 2;
     setPickupId(id);
     setHoverIdx(idx);
-    return 'pickup';
   };
 
-  const onDragMove = (dy) => {
-    panY.setValue(dy);
-    const absY = dragStartYRef.current + dy;
-    const maxIdx = snapshotRef.current.length - 1;
-    let newHover = Math.floor(absY / itemHeight);
-    newHover = Math.max(0, Math.min(maxIdx, newHover));
-    if (newHover !== hoverIdxRef.current) {
-      haptics.light();
-      hoverIdxRef.current = newHover;
-      const next = [...snapshotRef.current];
-      const pid = pickupIdRef.current;
-      const origIdx = snapshotRef.current.indexOf(pid);
-      if (origIdx >= 0) {
-        const [moved] = next.splice(origIdx, 1);
-        next.splice(newHover, 0, moved);
-        localIdsRef.current = next;
-        setHoverIdx(newHover);
-        setLocalIds(next);
-      }
-    }
-  };
-
-  const onDragEnd = () => {
-    if (pickupIdRef.current == null) return;
-    const original = snapshotRef.current;
-    const current = localIdsRef.current;
-    const changed = current.some((id, i) => id !== original[i]);
-    if (changed) haptics.success();
-    setPickupId(null);
-    setHoverIdx(null);
-    panY.setValue(0);
-  };
+  // PanResponder sur la zone liste :
+  // - Pas d'interception au START (laisse le Pressable gérer long press + tap).
+  // - Au MOVE, SI pickupId != null → VOLE le responder (capture) au Pressable
+  //   → ça permet de dragger IMMÉDIATEMENT après le 2e long press sans relever le doigt.
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => pickupIdRef.current != null,
+      onMoveShouldSetPanResponder: () => pickupIdRef.current != null,
+      onStartShouldSetPanResponderCapture: () => false,
+      // Capture au move si on est en pickup : arrache le responder du Pressable
+      onMoveShouldSetPanResponderCapture: () => pickupIdRef.current != null,
+      onPanResponderMove: (_e, g) => {
+        const pid = pickupIdRef.current;
+        if (pid == null) return;
+        panY.setValue(g.dy);
+        const absY = dragStartYRef.current + g.dy;
+        const maxIdx = snapshotRef.current.length - 1;
+        let newHover = Math.floor(absY / itemHeight);
+        newHover = Math.max(0, Math.min(maxIdx, newHover));
+        if (newHover !== hoverIdxRef.current) {
+          haptics.light();
+          hoverIdxRef.current = newHover;
+          const next = [...snapshotRef.current];
+          const origIdx = snapshotRef.current.indexOf(pid);
+          if (origIdx >= 0) {
+            const [moved] = next.splice(origIdx, 1);
+            next.splice(newHover, 0, moved);
+            localIdsRef.current = next;
+            setHoverIdx(newHover);
+            setLocalIds(next);
+          }
+        }
+      },
+      onPanResponderRelease: () => {
+        if (pickupIdRef.current == null) return;
+        const original = snapshotRef.current;
+        const current = localIdsRef.current;
+        const changed = current.some((id, i) => id !== original[i]);
+        if (changed) haptics.success();
+        setPickupId(null);
+        setHoverIdx(null);
+        panY.setValue(0);
+      },
+      onPanResponderTerminate: () => {
+        setPickupId(null);
+        setHoverIdx(null);
+        panY.setValue(0);
+      },
+      onPanResponderTerminationRequest: () => false, // garde le lock pendant le drag
+    })
+  ).current;
 
   const items = localIds.map((id) => data.find((d) => d.id === id)).filter(Boolean);
   const pickupStartY = pickupId != null
@@ -259,35 +199,29 @@ export default function ReorderList({
       >
         {headerComponent}
 
-        <View style={styles.listArea}>
+        <View style={styles.listArea} {...panResponder.panHandlers}>
           {items.map((item, idx) => {
             const isPickup = item.id === pickupId;
             if (isPickup) {
               return <View key={item.id} style={{ height: itemHeight }} />;
             }
-            // Pendant un pickup, les AUTRES rows ne vibrent pas
+            // En pickup, les AUTRES rows ne vibrent pas
             const wiggleThisOne = active && pickupId == null;
             return (
-              <Row
-                key={item.id}
-                item={item}
-                index={idx}
-                itemHeight={itemHeight}
-                onLongPressActivate={onLongPressActivate}
-                onDragMove={onDragMove}
-                onDragEnd={onDragEnd}
-                onTap={(i) => {
-                  if (!activeRef.current) {
-                    const it = localIdsRef.current[i];
-                    const dataItem = data.find((d) => d.id === it);
-                    if (dataItem && onItemTap) onItemTap(dataItem, i);
-                  }
-                  // En mode réorg, tap court = rien
-                }}
-                isWiggling={wiggleThisOne}
-                isPickup={false}
-                renderItem={renderItem}
-              />
+              <View key={item.id} style={{ height: itemHeight }}>
+                <Pressable
+                  onPress={() => {
+                    if (!activeRef.current) onItemTap?.(item, idx);
+                    // En mode réorg, tap court = rien
+                  }}
+                  onLongPress={() => handleLongPress(idx)}
+                  delayLongPress={400}
+                >
+                  <WiggleContent isWiggling={wiggleThisOne} phase={idx % 3}>
+                    {renderItem({ item, index: idx, isWiggling: wiggleThisOne, isPickup: false })}
+                  </WiggleContent>
+                </Pressable>
+              </View>
             );
           })}
 

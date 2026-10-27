@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import {
   Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  ActivityIndicator, KeyboardAvoidingView, Platform, BackHandler,
+  ActivityIndicator, Platform, BackHandler,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../theme';
@@ -128,11 +128,14 @@ export default function RestoreWizard({ visible, snapshotId, onClose, onComplete
   const subList = parsed ? parsed.substances.map((s) => ({ ...s })) : [];
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <View style={styles.overlay}>
         <View style={styles.card}>
           {step === 'loading' && (
             <View style={styles.busyWrap}>
@@ -208,7 +211,7 @@ export default function RestoreWizard({ visible, snapshotId, onClose, onComplete
             </View>
           )}
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }

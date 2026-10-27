@@ -7,7 +7,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  ActivityIndicator, KeyboardAvoidingView, Platform, BackHandler, Keyboard,
+  ActivityIndicator, Platform, BackHandler, Keyboard,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -166,11 +166,14 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
   const subList = parsed ? parsed.substances.map((s) => ({ ...s })) : [];
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <View style={styles.overlay}>
         <View style={styles.card}>
           {step === 'pick' && (
             <>
@@ -285,7 +288,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
             </View>
           )}
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }

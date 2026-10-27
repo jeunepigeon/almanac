@@ -19,6 +19,9 @@ import ImportWizard from '../components/ImportWizard';
 import RestoreWizard from '../components/RestoreWizard';
 import { fmtDateTiret, fmtSize, parseSnapshot } from '../utils/snapshots';
 import { useKeepAwake } from '../utils/keepAwake';
+import appJson from '../../app.json';
+
+const APP_VERSION = appJson?.expo?.version || '?';
 
 function formatDateLongFR(ts) {
   const d = new Date(ts);
@@ -291,7 +294,7 @@ export default function SettingsScreen() {
       <Text style={styles.sectionTitle}>À propos</Text>
       <View style={styles.row}>
         <Text style={styles.rowLabel}>Version</Text>
-        <Text style={styles.rowValue}>1.1.17</Text>
+        <Text style={styles.rowValue}>{APP_VERSION}</Text>
       </View>
       <View style={styles.row}>
         <Text style={styles.rowLabel}>Consos enregistrées depuis</Text>
