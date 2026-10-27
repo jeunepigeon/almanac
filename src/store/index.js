@@ -20,7 +20,7 @@ import {
   dbInsertSubstanceRaw,
   dbInsertConsumptionRaw,
 } from '../db';
-import { createSnapshot, makeUniqueSnapshotName, fmtDateTiret, parseSnapshot } from '../utils/snapshots';
+import { createSnapshot, makeUniqueSnapshotName, fmtDateTiret, fmtDateTiretHM, parseSnapshot } from '../utils/snapshots';
 
 // Normalise un nom de substance pour matching lors de la fusion (trim + lowercase)
 function normalizeName(name) {
@@ -113,7 +113,7 @@ export const useStore = create((set, get) => ({
     const snap = parseSnapshot(jsonStr);
 
     // Auto-snapshot AVANT la fusion
-    await get().createSnapshotFromLive(`avant-fusion-${fmtDateTiret()}`);
+    await get().createSnapshotFromLive(`avant-fusion-${fmtDateTiretHM()}`);
 
     const activeSubs = [...state.substances, ...state.archivedSubstances];
     // Map : nom normalisé → substance active
@@ -225,7 +225,7 @@ export const useStore = create((set, get) => ({
     if (sub) {
       // Nom du snapshot : slug depuis le nom de la substance
       const slug = sub.name.trim().replace(/\s+/g, '-').toLowerCase();
-      await get().createSnapshotFromLive(`archivage-${slug}-${fmtDateTiret()}`, [id]);
+      await get().createSnapshotFromLive(`archivage-${slug}-${fmtDateTiretHM()}`, [id]);
     }
     await dbDeleteSubstance(id);
     const newCons = { ...get().consumptionsBySubstance };
@@ -329,7 +329,7 @@ export const useStore = create((set, get) => ({
 
   wipeAll: async () => {
     // Auto-snapshot AVANT wipe
-    await get().createSnapshotFromLive(`remise-a-zero-${fmtDateTiret()}`);
+    await get().createSnapshotFromLive(`remise-a-zero-${fmtDateTiretHM()}`);
     await dbWipeAll();
     set({
       substances: [],

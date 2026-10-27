@@ -17,7 +17,7 @@ import SubstanceSelectModal from '../components/SubstanceSelectModal';
 import ExportWizard from '../components/ExportWizard';
 import ImportWizard from '../components/ImportWizard';
 import RestoreWizard from '../components/RestoreWizard';
-import { fmtDateTiret, fmtSize, parseSnapshot } from '../utils/snapshots';
+import { fmtDateTiretHM, fmtSize, parseSnapshot } from '../utils/snapshots';
 import { useKeepAwake } from '../utils/keepAwake';
 import appJson from '../../app.json';
 
@@ -426,14 +426,14 @@ export default function SettingsScreen() {
         showNameField
         nameFieldLabel="Nom (optionnel)"
         nameFieldPlaceholder="sauvegarde"
-        nameHint={(n) => `→ ${(n || 'sauvegarde').trim().replace(/\s+/g, '-').toLowerCase()}-${fmtDateTiret()}`}
+        nameHint={(n) => `→ ${(n || 'sauvegarde').trim().replace(/\s+/g, '-').toLowerCase()}-${fmtDateTiretHM()}`}
         substances={allSubsForModal}
         statsById={liveStatsById}
         confirmLabel="Créer"
         onCancel={() => setCreateSnapshotModal(false)}
         onConfirm={async (ids, nameInput) => {
           const base = (nameInput || 'sauvegarde').trim().replace(/\s+/g, '-').toLowerCase();
-          const fullName = `${base}-${fmtDateTiret()}`;
+          const fullName = `${base}-${fmtDateTiretHM()}`;
           try {
             await createSnapshotFromLive(fullName, ids);
             setCreateSnapshotModal(false);

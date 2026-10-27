@@ -61,7 +61,7 @@ function WiggleContent({ children, isWiggling, phase }) {
 // Row mode ACTIF : View avec responder manuel pour long press + drag en un seul touch.
 function ActiveRow({
   item, index, itemHeight, onPickup, onDragMove, onDragEnd,
-  isWiggling, renderItem,
+  isWiggling, renderItem, hidden = false,
 }) {
   const timerRef = useRef(null);
   const startRef = useRef({ x: 0, y: 0 });
@@ -111,9 +111,12 @@ function ActiveRow({
       onResponderTerminate={onEnd}
       onResponderTerminationRequest={() => !draggingRef.current}
     >
-      <WiggleContent isWiggling={isWiggling} phase={index % 3}>
-        {renderItem({ item, index, isWiggling, isPickup: false })}
-      </WiggleContent>
+      {/* hidden = ligne en cours de drag : reste MONTÉE (garde le geste) mais invisible */}
+      <View style={hidden ? { opacity: 0 } : null}>
+        <WiggleContent isWiggling={isWiggling && !hidden} phase={index % 3}>
+          {renderItem({ item, index, isWiggling, isPickup: false })}
+        </WiggleContent>
+      </View>
     </View>
   );
 }
@@ -152,19 +155,12 @@ export default function ReorderList({
   const localScrollRef = useRef(null);
   const effectiveScrollRef = scrollRef || localScrollRef;
 
-  // Sync localIds depuis data uniquement HORS mode & HORS pickup
+  // Resync depuis data UNIQUEMENT quand data change (pas quand on entre/sort du mode).
+  // Évite le flash « ancien ordre » à la confirmation : on garde l'ordre local jusqu'à ce que
+  // le store renvoie le nouvel ordre (identique).
   useEffect(() => {
-    if (!active && pickupIdRef.current == null) {
-      setLocalIds(data.map((d) => d.id));
-    }
-  }, [data, active]);
-
-  // Sync initial à l'entrée du mode (prend l'ordre actuel comme base)
-  useEffect(() => {
-    if (active && pickupIdRef.current == null) {
-      setLocalIds(data.map((d) => d.id));
-    }
-  }, [active]); // eslint-disable-line
+    if (pickupIdRef.current == null) setLocalIds(data.map((d) => d.id));
+  }, [data]);
 
   useEffect(() => {
     if (!active) return;
@@ -255,11 +251,9 @@ export default function ReorderList({
         <View style={styles.listArea}>
           {items.map((item, idx) => {
             const isPickup = item.id === pickupId;
-            if (isPickup) {
-              return <View key={item.id} style={{ height: itemHeight }} />;
-            }
             if (active) {
-              // Mode actif : responder manuel pour avoir long press + drag continu
+              // Mode actif : responder manuel (long press + drag continu en 1 touch).
+              // La ligne saisie reste montée (hidden) sinon elle perd le geste en cours.
               const wiggleThisOne = pickupId == null;
               return (
                 <ActiveRow
@@ -271,6 +265,7 @@ export default function ReorderList({
                   onDragMove={onDragMove}
                   onDragEnd={onDragEnd}
                   isWiggling={wiggleThisOne}
+                  hidden={isPickup}
                   renderItem={renderItem}
                 />
               );

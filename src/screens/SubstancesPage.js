@@ -135,7 +135,17 @@ export default function SubstancesPage() {
   const scrollRef = useRef(null);
   const bannerHeightRef = useRef(0);
   const scrollYRef = useRef(0);
-  const pendingBannerFlashRef = useRef(null); // flash après fin du scroll
+  const pendingBannerFlashRef = useRef(null); // flash à déclencher dès l'arrêt du scroll
+  const bannerScrollTimerRef = useRef(null);
+  const bannerFallbackRef = useRef(null);
+
+  const firePendingBannerFlash = () => {
+    if (bannerScrollTimerRef.current) { clearTimeout(bannerScrollTimerRef.current); bannerScrollTimerRef.current = null; }
+    if (bannerFallbackRef.current) { clearTimeout(bannerFallbackRef.current); bannerFallbackRef.current = null; }
+    const f = pendingBannerFlashRef.current;
+    pendingBannerFlashRef.current = null;
+    if (f) f();
+  };
 
   const handleBannerPress = () => {
     if (!lastGlobalSubId) return;
@@ -144,35 +154,26 @@ export default function SubstancesPage() {
     if (idx < 0) return;
     const bannerH = bannerHeightRef.current || 110;
     const y = Math.max(0, bannerH + idx * ROW_HEIGHT - 100);
-    const needsScroll = Math.abs(scrollYRef.current - y) > 10;
     const flash = () => {
       setFlashedSubId(lastGlobalSubId);
-      setTimeout(() => setFlashedSubId(null), 500);
+      setTimeout(() => setFlashedSubId(null), 520);
     };
-    if (needsScroll) {
-      // Flash sera déclenché par onMomentumScrollEnd via pendingBannerFlashRef
-      pendingBannerFlashRef.current = flash;
-      scrollRef.current?.scrollTo?.({ y, animated: true });
-      // Fallback safety : si onMomentumScrollEnd ne fire pas dans 600ms, on flash quand même
-      setTimeout(() => {
-        if (pendingBannerFlashRef.current) {
-          pendingBannerFlashRef.current();
-          pendingBannerFlashRef.current = null;
-        }
-      }, 600);
-    } else {
-      flash();
-    }
+    if (Math.abs(scrollYRef.current - y) <= 10) { flash(); return; }
+    pendingBannerFlashRef.current = flash;
+    scrollRef.current?.scrollTo?.({ y, animated: true });
+    // Filet de sécurité (cible hors limite de scroll, pas d'event…)
+    bannerFallbackRef.current = setTimeout(firePendingBannerFlash, 700);
   };
 
+  // Chaque event de scroll repousse le flash de 60ms : il part dès que le scroll s'arrête.
   const handleScroll = (y) => {
     scrollYRef.current = y;
+    if (!pendingBannerFlashRef.current) return;
+    if (bannerScrollTimerRef.current) clearTimeout(bannerScrollTimerRef.current);
+    bannerScrollTimerRef.current = setTimeout(firePendingBannerFlash, 60);
   };
   const handleScrollEnd = () => {
-    if (pendingBannerFlashRef.current) {
-      pendingBannerFlashRef.current();
-      pendingBannerFlashRef.current = null;
-    }
+    if (pendingBannerFlashRef.current) firePendingBannerFlash();
   };
 
   if (!ready) return <View style={styles.container} />;

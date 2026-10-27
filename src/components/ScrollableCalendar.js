@@ -118,26 +118,23 @@ function MarkersGrid({ markers }) {
 
 const DayCell = memo(function DayCell({ date, markers, isToday, isFuture, isSober, onPress, flashColor, flashNonce }) {
   const flash = useRef(new Animated.Value(0)).current;
+  // Couleur du flash gardée localement : l'overlay reste monté jusqu'à la FIN du fondu
+  // (avant : démonté par le parent en plein fondu → palier « opacité faible » puis disparition sèche).
+  const [activeFlash, setActiveFlash] = useState(null);
   useEffect(() => {
     if (!flashColor || !flashNonce) return;
+    setActiveFlash(flashColor);
     flash.setValue(0);
-    // Rise rapide puis fall smooth avec Easing in-out, fade propre vers 0 (pas de stay).
     Animated.sequence([
+      Animated.timing(flash, { toValue: 1, duration: 110, useNativeDriver: true }),
       Animated.timing(flash, {
-        toValue: 1, duration: 120, useNativeDriver: false,
+        toValue: 0, duration: 480, useNativeDriver: true,
+        easing: EasingLib.out(EasingLib.quad),
       }),
-      Animated.timing(flash, {
-        toValue: 0, duration: 450, useNativeDriver: false,
-        easing: EasingLib.out(EasingLib.cubic),
-      }),
-    ]).start();
-  }, [flashColor, flashNonce]);
+    ]).start(() => setActiveFlash(null));
+  }, [flashNonce]); // eslint-disable-line
   if (!date) return <View style={styles.dayCell} />;
-  // Opacité plus douce, fade propre vers 0 complet.
-  const overlayOpacity = flash.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, 0.55],
-  });
+  const overlayOpacity = flash.interpolate({ inputRange: [0, 1], outputRange: [0, 0.55] });
   return (
     <TouchableOpacity
       style={[styles.dayCell, isToday && styles.dayCellToday]}
@@ -155,13 +152,10 @@ const DayCell = memo(function DayCell({ date, markers, isToday, isFuture, isSobe
         </Text>
       </View>
       <MarkersGrid markers={markers} />
-      {flashColor && (
+      {activeFlash && (
         <Animated.View
           pointerEvents="none"
-          style={[
-            styles.flashOverlay,
-            { backgroundColor: flashColor, opacity: overlayOpacity },
-          ]}
+          style={[styles.flashOverlay, { backgroundColor: activeFlash, opacity: overlayOpacity }]}
         />
       )}
     </TouchableOpacity>
@@ -241,7 +235,7 @@ export default function ScrollableCalendar({
     if (flashTimer.current) clearTimeout(flashTimer.current);
     setFlashKey(dayKey);
     setFlashNonce((n) => n + 1);  // force re-render de l'animation
-    flashTimer.current = setTimeout(() => setFlashKey(null), 600);
+    flashTimer.current = setTimeout(() => setFlashKey(null), 900);
   }, []);
   useEffect(() => () => flashTimer.current && clearTimeout(flashTimer.current), []);
 
@@ -308,26 +302,34 @@ export default function ScrollableCalendar({
   useEffect(() => { visibleIdxRef.current = visibleIdx; }, [visibleIdx]);
 
   // Scroll initial vers le mois courant (en bas).
-  // Tant que l'utilisateur n'a PAS scrollé manuellement, on re-scrolle vers le présent
-  // à chaque changement de months.length (nécessaire si markersByDay arrive après le mount).
+  // Ouverture : on démarre sur le mois courant via initialScrollIndex (cf. FlatList),
+  // + re-calage dès que la taille du contenu change tant que l'utilisateur n'a pas touché.
   const userTouchedRef = useRef(false);
-  useEffect(() => {
+  const snapToPresent = useCallback(() => {
     if (userTouchedRef.current) return;
-    const t = setTimeout(() => {
-      try {
-        // scrollToEnd garantit qu'on arrive bien tout en bas (contrairement à scrollToOffset
-        // qui peut sous-estimer la hauteur réelle du contenu si paddingBottom ou autre).
-        flatListRef.current?.scrollToEnd({ animated: false });
-        setVisibleIdx(currentIdx);
-      } catch {}
-    }, 80);
-    return () => clearTimeout(t);
-  }, [currentIdx, months.length]);
+    try {
+      flatListRef.current?.scrollToOffset({ offset: currentIdx * MONTH_ITEM_HEIGHT, animated: false });
+      setVisibleIdx(currentIdx);
+    } catch {}
+  }, [currentIdx]);
 
-  // Scroll animé — on utilise scrollToOffset qui est 100% fiable (contrairement à scrollToIndex
-  // qui échoue silencieusement si l'item n'est pas rendu dans la fenêtre virtualisée).
+  // --- Fin de scroll programmé : détectée quand les events onScroll s'arrêtent (≈70ms de silence).
+  // Plus réactif que onMomentumScrollEnd (pas toujours émis sur un scroll programmé Android).
   const programmedScrollRef = useRef(false);
-  const pendingFlashRef = useRef(null); // { dayKey } à flasher à la fin du scroll
+  const pendingFlashRef = useRef(null); // { dayKey }
+  const scrollEndTimerRef = useRef(null);
+  const fallbackTimerRef = useRef(null);
+  const finishProgrammedScroll = useCallback(() => {
+    if (scrollEndTimerRef.current) { clearTimeout(scrollEndTimerRef.current); scrollEndTimerRef.current = null; }
+    if (fallbackTimerRef.current) { clearTimeout(fallbackTimerRef.current); fallbackTimerRef.current = null; }
+    programmedScrollRef.current = false;
+    if (pendingFlashRef.current) {
+      const { dayKey } = pendingFlashRef.current;
+      pendingFlashRef.current = null;
+      triggerFlash(dayKey);
+    }
+  }, [triggerFlash]);
+
   const scrollToIdx = useCallback((idx, animated = true) => {
     if (!flatListRef.current) return;
     programmedScrollRef.current = true;
@@ -335,127 +337,130 @@ export default function ScrollableCalendar({
       flatListRef.current.scrollToOffset({ offset: idx * MONTH_ITEM_HEIGHT, animated });
     } catch {}
     setVisibleIdx(idx);
-    // Fallback : si onMomentumScrollEnd ne fire pas (scroll trop court / animated:false),
-    // on reset le flag après un délai.
-    setTimeout(() => {
-      if (programmedScrollRef.current) {
-        programmedScrollRef.current = false;
-        // Déclenche le flash s'il est en attente
-        if (pendingFlashRef.current) {
-          const { dayKey } = pendingFlashRef.current;
-          pendingFlashRef.current = null;
-          triggerFlash(dayKey);
-        }
-      }
-    }, animated ? 450 : 50);
-  }, [triggerFlash]);
+    // Filet de sécurité si aucun event de scroll n'arrive
+    if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+    fallbackTimerRef.current = setTimeout(finishProgrammedScroll, animated ? 700 : 60);
+  }, [finishProgrammedScroll]);
 
-  const goPrev = () => {
-    const cur = visibleIdxRef.current;
-    if (cur > 0) {
-      haptics.light();
-      scrollToIdx(cur - 1);
-    } else {
-      triggerBounce();
-    }
-  };
-  const goNext = () => {
-    const cur = visibleIdxRef.current;
-    if (cur < currentIdx) {
-      haptics.light();
-      scrollToIdx(cur + 1);
-    } else {
-      triggerBounce();
-    }
-  };
-  const goToday = () => {
-    const cur = visibleIdxRef.current;
-    if (cur < currentIdx) {
-      haptics.light();
-      scrollToIdx(currentIdx);
-    } else {
-      triggerBounce();
-    }
-  };
+  const onScrollEvent = useCallback(() => {
+    if (!programmedScrollRef.current) return;
+    if (scrollEndTimerRef.current) clearTimeout(scrollEndTimerRef.current);
+    scrollEndTimerRef.current = setTimeout(finishProgrammedScroll, 70);
+  }, [finishProgrammedScroll]);
 
-  // --- Jump prise prev/next : saute à la 1ère prise antérieure/postérieure et flash le jour.
-  // Trie des timestamps (jours avec prise), par ordre croissant.
+  // --- Prises triées
   const sortedPriseDays = useMemo(() => {
     const list = Object.keys(markersByDay).map((k) => {
       const [y, m, d] = k.split('-');
-      return {
-        key: k,
-        ts: new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10)).getTime(),
-      };
+      return { key: k, ts: new Date(parseInt(y, 10), parseInt(m, 10) - 1, parseInt(d, 10)).getTime() };
     });
     list.sort((a, b) => a.ts - b.ts);
     return list;
   }, [markersByDay]);
 
-  // Référence au jour courant visible : on prend "aujourd'hui" comme ancre si pas encore scrollé,
-  // mais pour jump précédente/suivante on utilise plutôt un cursor sur les prises.
-  const priseCursorRef = useRef(null); // key du dernier jour sur lequel on a flashé
+  // Curseur = dernière prise atteinte via les chevrons prise.
+  // Il est EFFACÉ dès que l'utilisateur se déplace autrement (scroll doigt, chevrons mois, dropdown) :
+  // les chevrons prise repartent alors du mois affiché.
+  const priseCursorRef = useRef(null);
+  const clearCursor = () => { priseCursorRef.current = null; };
 
-  const findCurrentCursorIdx = () => {
-    // Si on a déjà un cursor, retourner son idx
-    if (priseCursorRef.current) {
-      const i = sortedPriseDays.findIndex((d) => d.key === priseCursorRef.current);
-      if (i >= 0) return i;
-    }
-    // Sinon : prendre la prise la plus récente visible (fin de liste)
-    return sortedPriseDays.length - 1;
+  const monthBounds = () => {
+    const m = months[visibleIdxRef.current];
+    if (!m) return null;
+    return {
+      start: new Date(m.year, m.month, 1).getTime(),
+      end: new Date(m.year, m.month + 1, 0, 23, 59, 59).getTime(),
+    };
   };
 
-  // Jump sur un jour : si on est DÉJÀ sur le bon mois → flash immédiat (pas de scroll).
-  // Sinon → scroll animé puis flash à la fin via onMomentumScrollEnd.
+  const cursorIdx = () => {
+    if (!priseCursorRef.current) return -1;
+    return sortedPriseDays.findIndex((d) => d.key === priseCursorRef.current);
+  };
+
+  // Index cible pour « prise précédente » (-1 = aucune)
+  const prevTargetIdx = () => {
+    const c = cursorIdx();
+    if (c >= 0) return c - 1;
+    const b = monthBounds();
+    if (!b) return sortedPriseDays.length - 1;
+    // Dernière prise dans ou avant le mois affiché
+    for (let i = sortedPriseDays.length - 1; i >= 0; i--) {
+      if (sortedPriseDays[i].ts <= b.end) return i;
+    }
+    return -1;
+  };
+  // Index cible pour « prise suivante » (-1 = aucune)
+  const nextTargetIdx = () => {
+    const c = cursorIdx();
+    if (c >= 0) return c + 1 < sortedPriseDays.length ? c + 1 : -1;
+    const b = monthBounds();
+    if (!b) return -1;
+    // Première prise dans ou après le mois affiché
+    for (let i = 0; i < sortedPriseDays.length; i++) {
+      if (sortedPriseDays[i].ts >= b.start) return i;
+    }
+    return -1;
+  };
+
+  // Jump : déjà sur le bon mois → flash immédiat ; sinon scroll puis flash dès l'arrêt du scroll.
   const jumpToDay = (dayKey, dayTs) => {
     const d = new Date(dayTs);
     const idx = months.findIndex((m) => m.year === d.getFullYear() && m.month === d.getMonth());
     priseCursorRef.current = dayKey;
     if (idx < 0 || idx === visibleIdxRef.current) {
-      // Pas de scroll → flash immédiat
       triggerFlash(dayKey);
       return;
     }
-    // Scroll animé → flash sera déclenché à la fin via pendingFlashRef
     pendingFlashRef.current = { dayKey };
     scrollToIdx(idx, true);
   };
 
+  const goPrev = () => {
+    clearCursor();
+    const cur = visibleIdxRef.current;
+    if (cur > 0) { haptics.light(); scrollToIdx(cur - 1); } else { triggerBounce(); }
+  };
+  const goNext = () => {
+    clearCursor();
+    const cur = visibleIdxRef.current;
+    if (cur < currentIdx) { haptics.light(); scrollToIdx(cur + 1); } else { triggerBounce(); }
+  };
+  const goToday = () => {
+    clearCursor();
+    const cur = visibleIdxRef.current;
+    if (cur < currentIdx) { haptics.light(); scrollToIdx(currentIdx); } else { triggerBounce(); }
+  };
+
   const goPrevLog = () => {
-    const curIdx = findCurrentCursorIdx();
-    if (curIdx > 0) {
+    if (sortedPriseDays.length === 0) { triggerBounce(); return; }
+    const t = prevTargetIdx();
+    if (t >= 0) {
       haptics.light();
-      const target = sortedPriseDays[curIdx - 1];
-      jumpToDay(target.key, target.ts);
+      jumpToDay(sortedPriseDays[t].key, sortedPriseDays[t].ts);
     } else {
-      // En butée : flash quand même la première prise + haptic warning
+      // Butée : haptic + flash de la toute première prise
       triggerBounce();
-      if (sortedPriseDays.length > 0) {
-        const first = sortedPriseDays[0];
-        jumpToDay(first.key, first.ts);
-      }
+      jumpToDay(sortedPriseDays[0].key, sortedPriseDays[0].ts);
     }
   };
 
   const goNextLog = () => {
-    const curIdx = findCurrentCursorIdx();
-    if (curIdx >= 0 && curIdx < sortedPriseDays.length - 1) {
+    if (sortedPriseDays.length === 0) { triggerBounce(); return; }
+    const t = nextTargetIdx();
+    if (t >= 0) {
       haptics.light();
-      const target = sortedPriseDays[curIdx + 1];
-      jumpToDay(target.key, target.ts);
+      jumpToDay(sortedPriseDays[t].key, sortedPriseDays[t].ts);
     } else {
-      // En butée : flash quand même la dernière prise + haptic warning
+      // Butée : haptic + flash de la toute dernière prise
       triggerBounce();
-      if (sortedPriseDays.length > 0) {
-        const last = sortedPriseDays[sortedPriseDays.length - 1];
-        jumpToDay(last.key, last.ts);
-      }
+      const last = sortedPriseDays[sortedPriseDays.length - 1];
+      jumpToDay(last.key, last.ts);
     }
   };
 
-  const canGoPrevLog = showJumpButtons && sortedPriseDays.length > 0 && findCurrentCursorIdx() > 0;
-  const canGoNextLog = showJumpButtons && sortedPriseDays.length > 0 && findCurrentCursorIdx() < sortedPriseDays.length - 1;
+  const canGoPrevLog = showJumpButtons && sortedPriseDays.length > 0 && prevTargetIdx() >= 0;
+  const canGoNextLog = showJumpButtons && sortedPriseDays.length > 0 && nextTargetIdx() >= 0;
 
   const canGoPrev = visibleIdx > 0;
   const canGoNext = visibleIdx < currentIdx;
@@ -588,8 +593,12 @@ export default function ScrollableCalendar({
         showsVerticalScrollIndicator={false}
         bounces={true}
         overScrollMode="always"
-        onScrollBeginDrag={() => { userTouchedRef.current = true; }}
+        initialScrollIndex={currentIdx}
+        onContentSizeChange={snapToPresent}
+        onLayout={snapToPresent}
+        onScrollBeginDrag={() => { userTouchedRef.current = true; clearCursor(); }}
         onScroll={(e) => {
+          onScrollEvent();
           const y = e.nativeEvent.contentOffset.y;
           const h = e.nativeEvent.layoutMeasurement.height;
           const content = e.nativeEvent.contentSize.height;
@@ -598,14 +607,7 @@ export default function ScrollableCalendar({
           }
         }}
         scrollEventThrottle={32}
-        onMomentumScrollEnd={() => {
-          programmedScrollRef.current = false;
-          if (pendingFlashRef.current) {
-            const { dayKey } = pendingFlashRef.current;
-            pendingFlashRef.current = null;
-            triggerFlash(dayKey);
-          }
-        }}
+        onMomentumScrollEnd={() => { if (programmedScrollRef.current) finishProgrammedScroll(); }}
       />
 
       <Modal
@@ -636,6 +638,7 @@ export default function ScrollableCalendar({
                     ]}
                     onPress={() => {
                       haptics.light();
+                      clearCursor();
                       scrollToIdx(actualIdx);
                       setPickerOpen(false);
                     }}

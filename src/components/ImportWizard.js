@@ -7,7 +7,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  ActivityIndicator, Platform, BackHandler, Keyboard, KeyboardAvoidingView, Pressable,
+  ActivityIndicator, BackHandler, Keyboard,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -21,6 +21,7 @@ import { performFusion } from '../utils/fusion';
 import { fmtDateTiretHM } from '../utils/snapshots';
 import { useStore } from '../store';
 import { useKeepAwake } from '../utils/keepAwake';
+import { useKeyboardHeight, yieldToUI } from '../utils/useKeyboard';
 
 function statsFromParsed(parsed) {
   const by = {};
@@ -58,6 +59,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [result, setResult] = useState(null);
   const pinRef = useRef(null);
+  const kbHeight = useKeyboardHeight();
 
   useKeepAwake('import-wizard');
 
@@ -71,7 +73,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
 
   useEffect(() => {
     if (step === 'pin') {
-      const t = setTimeout(() => pinRef.current?.focus(), 150);
+      const t = setTimeout(() => pinRef.current?.focus(), 200);
       return () => clearTimeout(t);
     }
   }, [step]);
@@ -102,37 +104,42 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
     }
   };
 
+  const busyRef = useRef(false);
   const submitPin = async () => {
+    if (busyRef.current) return;
     if (pin.length !== 4) {
       pinRef.current?.shake('4 chiffres requis');
       return;
     }
+    busyRef.current = true;
     Keyboard.dismiss();
-    // On tente le déchiffrement SANS afficher le spinner tout de suite.
-    // Si PIN wrong → parseExportFile throw rapidement → on reste sur l'étape PIN avec shake,
-    //   AUCUN spinner n'apparaît (pas de flash).
-    // Si PIN right → le parse peut prendre un moment : on affiche le spinner après 350ms seulement.
-    let spinnerTimer = setTimeout(() => {
-      setBusyLabel('Déchiffrement en cours…');
-      setStep('busy');
-    }, 350);
+    // Spinner AFFICHÉ avant le calcul : la vérif du PIN (PBKDF2) bloque le thread JS plusieurs secondes.
+    setBusyLabel('Vérification du code…');
+    setStep('busy');
+    await yieldToUI();
     try {
-      // Petit yield pour laisser le render se faire
-      await new Promise((r) => setTimeout(r, 10));
       const data = parseExportFile(fileContent, pin);
-      clearTimeout(spinnerTimer);
       setParsed(data);
       const sel = {};
       for (const s of data.substances) sel[s.id] = true;
       setSelected(sel);
       setStep('select');
     } catch (e) {
-      clearTimeout(spinnerTimer);
-      // Si le spinner avait déjà été affiché, revenir à l'étape PIN proprement
+      setPin('');
       setStep('pin');
-      setTimeout(() => pinRef.current?.shake('Code PIN incorrect'), 50);
+      setTimeout(() => {
+        pinRef.current?.shake('Code PIN incorrect');
+        pinRef.current?.focus();
+      }, 120);
+    } finally {
+      busyRef.current = false;
     }
   };
+
+  // 4e chiffre tapé → déchiffrement automatique (0 tap)
+  useEffect(() => {
+    if (step === 'pin' && pin.length === 4) submitPin();
+  }, [pin]); // eslint-disable-line
 
   const toggleSub = (id) => setSelected((p) => ({ ...p, [id]: !p[id] }));
   const allSelected = parsed?.substances.every((s) => selected[s.id]);
@@ -183,10 +190,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <KeyboardAvoidingView
-        style={styles.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <View style={[styles.overlay, { paddingBottom: theme.spacing.lg + kbHeight }]}>
         <View style={styles.card}>
           {step === 'pick' && (
             <>
@@ -206,7 +210,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
           {step === 'pin' && (
             <ScrollView keyboardShouldPersistTaps="always" contentContainerStyle={{ paddingBottom: 4 }}>
               <Text style={styles.title}>Code PIN</Text>
-              <Text style={styles.intro}>Entre le code PIN du fichier.</Text>
+              <Text style={styles.intro}>Entre le code PIN du fichier. Le déchiffrement démarre au 4e chiffre.</Text>
               <PinField
                 ref={pinRef}
                 value={pin}
@@ -216,13 +220,12 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
                 onSubmitEditing={submitPin}
               />
               <View style={styles.actions}>
-                {/* Pressable + onPressIn + accessible={false} = capture le tap en 1 fois même clavier ouvert */}
-                <Pressable onPressIn={() => { Keyboard.dismiss(); setStep('pick'); }}>
+                <TouchableOpacity onPress={() => { Keyboard.dismiss(); setStep('pick'); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                   <Text style={styles.cancelText}>Retour</Text>
-                </Pressable>
-                <Pressable onPressIn={submitPin}>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={submitPin} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                   <Text style={styles.confirmText}>Déchiffrer</Text>
-                </Pressable>
+                </TouchableOpacity>
               </View>
             </ScrollView>
           )}
@@ -301,7 +304,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
             </View>
           )}
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }

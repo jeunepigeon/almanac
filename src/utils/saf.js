@@ -5,6 +5,7 @@
 
 import * as FileSystem from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
+import CryptoJS from 'crypto-js';
 
 let AsyncStorage;
 try {
@@ -82,6 +83,8 @@ export async function getOrPickExportDir({ forcePick = false } = {}) {
   }
 }
 
+// Écrit le fichier via SAF en BASE64 (plus fiable que UTF8 sur certains Android :
+// des fichiers créés mais vides ont été observés en UTF8).
 export async function writeFileToDir(dirUri, filename, content, mimeType = 'application/octet-stream') {
   const SAF = FileSystem.StorageAccessFramework;
   if (!SAF) { _lastErr = 'SAF indisponible'; return null; }
@@ -91,31 +94,38 @@ export async function writeFileToDir(dirUri, filename, content, mimeType = 'appl
     fileUri = await SAF.createFileAsync(dirUri, filename, mimeType);
   } catch (e) {
     recordErr('createFile', e);
-    // Si le dossier choisi ne permet pas la création (ex : Downloads virtuel non-writable),
-    // on efface l'URI persistée pour que le prochain export redemande un dossier.
-    const msg = (e?.message || '').toLowerCase();
-    if (msg.includes('writable') || msg.includes('rejected') || msg.includes('ioexception')) {
-      try { await setPersistedDirUri(null); } catch {}
-    }
     return null;
   }
   try {
-    await SAF.writeAsStringAsync(fileUri, content, { encoding: FileSystem.EncodingType.UTF8 });
+    const b64 = CryptoJS.enc.Base64.stringify(CryptoJS.enc.Utf8.parse(content));
+    await SAF.writeAsStringAsync(fileUri, b64, { encoding: FileSystem.EncodingType.Base64 });
     return fileUri;
   } catch (e) {
-    recordErr('writeString', e);
-    return null;
+    recordErr('writeBase64', e);
+    // 2e tentative en UTF8
+    try {
+      await SAF.writeAsStringAsync(fileUri, content, { encoding: FileSystem.EncodingType.UTF8 });
+      return fileUri;
+    } catch (e2) {
+      recordErr('writeUtf8', e2);
+      return null;
+    }
   }
 }
 
-export async function verifyFileExists(fileUri) {
-  if (!fileUri) return false;
+// Relit le fichier et renvoie sa taille (0 si vide / illisible).
+export async function readBackLength(fileUri) {
+  if (!fileUri) return 0;
   const SAF = FileSystem.StorageAccessFramework;
-  if (!SAF) return false;
+  if (!SAF) return 0;
   try {
     const content = await SAF.readAsStringAsync(fileUri, { encoding: FileSystem.EncodingType.UTF8 });
-    return content != null && content.length > 0;
-  } catch (e) { recordErr('verify', e); return false; }
+    return content ? content.length : 0;
+  } catch (e) { recordErr('readBack', e); return 0; }
+}
+
+export async function verifyFileExists(fileUri) {
+  return (await readBackLength(fileUri)) > 0;
 }
 
 export async function listDirFileNames(dirUri) {

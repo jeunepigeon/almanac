@@ -1,22 +1,17 @@
-// Champ PIN 4 chiffres custom :
-//  - 4 dots visuels dont les positions remplies sont pleines, les vides sont évidées
-//  - le dot courant (position = value.length) PULSE légèrement quand le champ a le focus
-//  - shake + haptic error + message rouge sous le champ
-//  - pas de cursor Android (caretHidden) — l'indicateur de focus est le dot qui pulse
+// Champ PIN 4 chiffres v1.1.18.5
+//  - 4 dots visuels ; le dot courant PULSE quand le champ a le focus
+//    (si le champ est plein, c'est le 4e dot plein qui pulse)
+//  - Le TextInput couvre toute la zone des dots (transparent) → 1 seul tap pour sélectionner,
+//    plus de focus() JS sur un input caché (source du « 1er tap ferme juste le clavier »)
+//  - shake + haptic error + message rouge sous le champ (place réservée)
 
 import { forwardRef, useImperativeHandle, useRef, useState, useEffect } from 'react';
-import { View, TextInput, StyleSheet, Animated, Text, Pressable } from 'react-native';
+import { View, TextInput, StyleSheet, Animated, Text } from 'react-native';
 import { theme } from '../theme';
 import haptics from '../utils/haptics';
 
 const PinField = forwardRef(function PinField(
-  {
-    value, onChangeText,
-    autoFocus = false,
-    onSubmitEditing,
-    returnKeyType = 'next',
-    testID,
-  },
+  { value, onChangeText, autoFocus = false, onSubmitEditing, returnKeyType = 'next' },
   ref
 ) {
   const inputRef = useRef(null);
@@ -25,19 +20,12 @@ const PinField = forwardRef(function PinField(
   const [errorMsg, setErrorMsg] = useState(null);
   const [focused, setFocused] = useState(false);
 
-  // Pulse de l'indicateur de focus (dot courant)
   useEffect(() => {
-    if (!focused) {
-      pulse.stopAnimation();
-      pulse.setValue(0);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 500, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0, duration: 500, useNativeDriver: true }),
-      ])
-    );
+    if (!focused) { pulse.stopAnimation(); pulse.setValue(0); return; }
+    const loop = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration: 450, useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration: 450, useNativeDriver: true }),
+    ]));
     loop.start();
     return () => loop.stop();
   }, [focused, pulse]);
@@ -62,78 +50,58 @@ const PinField = forwardRef(function PinField(
   }));
 
   const activeIdx = Math.min(value.length, 3);
-
-  // Opacité et scale du dot pulsant
   const pulseOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] });
-  const pulseScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.15] });
-
+  const pulseScale = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1.2] });
   const dotColor = errorMsg ? theme.colors.danger : theme.colors.text;
-  const emptyDotColor = errorMsg ? theme.colors.danger : theme.colors.textMuted;
+  const emptyColor = errorMsg ? theme.colors.danger : theme.colors.textMuted;
 
   return (
-    <View style={styles.wrap} testID={testID}>
-      <Animated.View style={{ transform: [{ translateX: shake }] }}>
-        <Pressable onPress={() => inputRef.current?.focus()} style={styles.dotsRow}>
+    <View style={styles.wrap}>
+      <Animated.View style={[styles.dotsRow, { transform: [{ translateX: shake }] }]}>
+        <View style={styles.dotsInner} pointerEvents="none">
           {[0, 1, 2, 3].map((i) => {
             const filled = i < value.length;
-            const isActive = focused && i === activeIdx;
-            if (filled) {
-              return (
-                <View
-                  key={i}
-                  style={[styles.dot, { backgroundColor: dotColor, borderColor: dotColor }]}
-                />
-              );
-            }
-            if (isActive) {
+            const pulsing = focused && i === activeIdx;
+            const base = [
+              styles.dot,
+              filled ? { backgroundColor: dotColor, borderColor: dotColor } : [styles.dotEmpty, { borderColor: pulsing ? dotColor : emptyColor }],
+            ];
+            if (pulsing) {
               return (
                 <Animated.View
                   key={i}
-                  style={[
-                    styles.dot,
-                    styles.dotEmpty,
-                    { borderColor: dotColor, opacity: pulseOpacity, transform: [{ scale: pulseScale }] },
-                  ]}
+                  style={[...base, { opacity: pulseOpacity, transform: [{ scale: pulseScale }] }]}
                 />
               );
             }
-            return (
-              <View
-                key={i}
-                style={[styles.dot, styles.dotEmpty, { borderColor: emptyDotColor, opacity: 0.5 }]}
-              />
-            );
+            return <View key={i} style={[...base, !filled && { opacity: 0.5 }]} />;
           })}
-        </Pressable>
+        </View>
+        {/* TextInput transparent posé PAR-DESSUS les dots : tap direct = focus natif */}
+        <TextInput
+          ref={inputRef}
+          value={value}
+          onChangeText={(v) => {
+            onChangeText(v.replace(/\D/g, '').slice(0, 4));
+            if (errorMsg) setErrorMsg(null);
+          }}
+          style={styles.overlayInput}
+          autoFocus={autoFocus}
+          keyboardType="number-pad"
+          maxLength={4}
+          autoCorrect={false}
+          caretHidden
+          contextMenuHidden
+          selectionColor="transparent"
+          underlineColorAndroid="transparent"
+          onSubmitEditing={onSubmitEditing}
+          returnKeyType={returnKeyType}
+          blurOnSubmit={false}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+        />
       </Animated.View>
-
-      {/* TextInput invisible pour capter la saisie clavier */}
-      <TextInput
-        ref={inputRef}
-        value={value}
-        onChangeText={(v) => {
-          onChangeText(v.replace(/\D/g, '').slice(0, 4));
-          if (errorMsg) setErrorMsg(null);
-        }}
-        style={styles.hiddenInput}
-        secureTextEntry
-        autoFocus={autoFocus}
-        keyboardType="number-pad"
-        maxLength={4}
-        autoCapitalize="none"
-        autoCorrect={false}
-        textContentType="oneTimeCode"
-        caretHidden
-        onSubmitEditing={onSubmitEditing}
-        returnKeyType={returnKeyType}
-        blurOnSubmit={false}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-      />
-
-      <Text style={[styles.errorText, { opacity: errorMsg ? 1 : 0 }]}>
-        {errorMsg || ' '}
-      </Text>
+      <Text style={[styles.errorText, { opacity: errorMsg ? 1 : 0 }]}>{errorMsg || ' '}</Text>
     </View>
   );
 });
@@ -141,36 +109,26 @@ const PinField = forwardRef(function PinField(
 export default PinField;
 
 const styles = StyleSheet.create({
-  wrap: { marginBottom: 4 },
+  wrap: { marginBottom: 2 },
   dotsRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 20,
-    paddingVertical: 16,
+    position: 'relative',
+    paddingVertical: 11,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.colors.border,
   },
-  dot: {
-    width: 14, height: 14, borderRadius: 7,
-    borderWidth: 1.5,
-  },
-  dotEmpty: {
+  dotsInner: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 20 },
+  dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 1.5 },
+  dotEmpty: { backgroundColor: 'transparent' },
+  overlayInput: {
+    ...StyleSheet.absoluteFillObject,
+    color: 'transparent',
     backgroundColor: 'transparent',
-  },
-  hiddenInput: {
-    // Caché mais pas display:none (sinon pas de focus clavier)
-    position: 'absolute',
-    width: 1, height: 1,
-    opacity: 0,
+    fontSize: 1,
+    padding: 0,
   },
   errorText: {
-    marginTop: 4,
-    minHeight: 14,
-    color: theme.colors.danger,
-    fontSize: 11,
-    fontWeight: '400',
-    textAlign: 'center',
-    letterSpacing: 0.3,
+    marginTop: 4, minHeight: 14,
+    color: theme.colors.danger, fontSize: 11, fontWeight: '400',
+    textAlign: 'center', letterSpacing: 0.3,
   },
 });
