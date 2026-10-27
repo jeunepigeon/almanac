@@ -48,45 +48,51 @@ export default function MainScreen() {
         </View>
 
         <View style={styles.headerCenter}>
-          {titles.map((t, i) => (
-            <TouchableOpacity
-              key={t}
-              onPress={() => !pagerLocked && pagerRef.current?.setPage(i)}
-              style={[styles.titleTab, pagerLocked && { opacity: 0.3 }]}
-              disabled={pagerLocked}
-            >
-              <Text
-                style={[styles.titleText, page === i && styles.titleTextActive]}
+          {titles.map((t, i) => {
+            // Dim 'Global' en mode réorg, 'Substances' reste normal
+            const isGlobal = i === 1;
+            const dim = pagerLocked && isGlobal;
+            return (
+              <TouchableOpacity
+                key={t}
+                onPress={() => !pagerLocked && pagerRef.current?.setPage(i)}
+                style={styles.titleTab}
+                disabled={pagerLocked}
               >
-                {t}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <Text
+                  style={[
+                    styles.titleText,
+                    page === i && styles.titleTextActive,
+                    dim && { opacity: 0.3 },
+                  ]}
+                >
+                  {t}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         <View style={styles.headerRight}>
-          {!pagerLocked && (
-            <TouchableOpacity
-              onPress={() => navigation.navigate('Settings')}
-              style={styles.settingBtn}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={styles.settingText}>settings</Text>
-                {hasUnconsulted && <View style={styles.redDot} />}
-              </View>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            onPress={() => !pagerLocked && navigation.navigate('Settings')}
+            style={[styles.settingBtn, pagerLocked && { opacity: 0.3 }]}
+            disabled={pagerLocked}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={styles.settingText}>settings</Text>
+              {hasUnconsulted && !pagerLocked && <View style={styles.redDot} />}
+            </View>
+          </TouchableOpacity>
         </View>
       </View>
 
-      {!pagerLocked && (
-        <View style={styles.indicator}>
-          {[0, 1].map((i) => (
-            <View key={i} style={[styles.dot, page === i && styles.dotActive]} />
-          ))}
-        </View>
-      )}
+      <View style={styles.indicator}>
+        {[0, 1].map((i) => (
+          <View key={i} style={[styles.dot, page === i && styles.dotActive]} />
+        ))}
+      </View>
 
       <PagerView
         ref={pagerRef}

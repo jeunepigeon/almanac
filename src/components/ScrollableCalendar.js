@@ -8,6 +8,7 @@ import {
   Modal,
   Pressable,
   Animated,
+  Easing as EasingLib,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme';
@@ -120,16 +121,22 @@ const DayCell = memo(function DayCell({ date, markers, isToday, isFuture, isSobe
   useEffect(() => {
     if (!flashColor || !flashNonce) return;
     flash.setValue(0);
+    // Rise rapide puis fall smooth avec Easing in-out, fade propre vers 0 (pas de stay).
     Animated.sequence([
-      Animated.timing(flash, { toValue: 1, duration: 150, useNativeDriver: false }),
-      Animated.timing(flash, { toValue: 0, duration: 350, useNativeDriver: false }),
+      Animated.timing(flash, {
+        toValue: 1, duration: 120, useNativeDriver: false,
+      }),
+      Animated.timing(flash, {
+        toValue: 0, duration: 450, useNativeDriver: false,
+        easing: EasingLib.out(EasingLib.cubic),
+      }),
     ]).start();
   }, [flashColor, flashNonce]);
   if (!date) return <View style={styles.dayCell} />;
-  // Carré plus petit (80% de la case) + opacité plus douce, fade propre vers 0.
+  // Opacité plus douce, fade propre vers 0 complet.
   const overlayOpacity = flash.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, 0.6],
+    outputRange: [0, 0.55],
   });
   return (
     <TouchableOpacity
@@ -308,7 +315,9 @@ export default function ScrollableCalendar({
     if (userTouchedRef.current) return;
     const t = setTimeout(() => {
       try {
-        flatListRef.current?.scrollToOffset({ offset: currentIdx * MONTH_ITEM_HEIGHT, animated: false });
+        // scrollToEnd garantit qu'on arrive bien tout en bas (contrairement à scrollToOffset
+        // qui peut sous-estimer la hauteur réelle du contenu si paddingBottom ou autre).
+        flatListRef.current?.scrollToEnd({ animated: false });
         setVisibleIdx(currentIdx);
       } catch {}
     }, 80);
@@ -420,7 +429,12 @@ export default function ScrollableCalendar({
       const target = sortedPriseDays[curIdx - 1];
       jumpToDay(target.key, target.ts);
     } else {
+      // En butée : flash quand même la première prise + haptic warning
       triggerBounce();
+      if (sortedPriseDays.length > 0) {
+        const first = sortedPriseDays[0];
+        jumpToDay(first.key, first.ts);
+      }
     }
   };
 
@@ -431,7 +445,12 @@ export default function ScrollableCalendar({
       const target = sortedPriseDays[curIdx + 1];
       jumpToDay(target.key, target.ts);
     } else {
+      // En butée : flash quand même la dernière prise + haptic warning
       triggerBounce();
+      if (sortedPriseDays.length > 0) {
+        const last = sortedPriseDays[sortedPriseDays.length - 1];
+        jumpToDay(last.key, last.ts);
+      }
     }
   };
 
@@ -727,7 +746,7 @@ const styles = StyleSheet.create({
   },
   flashOverlay: {
     position: 'absolute',
-    top: '10%', left: '10%', right: '10%', bottom: '10%',
+    top: '6%', left: '6%', right: '6%', bottom: '6%',
     borderRadius: 6,
   },
   dayCellToday: { backgroundColor: 'rgba(1, 200, 83, 0.15)' },

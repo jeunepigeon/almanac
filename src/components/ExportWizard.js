@@ -12,13 +12,15 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput,
-  ActivityIndicator, Platform, BackHandler, Keyboard,
+  ActivityIndicator, Platform, BackHandler, Keyboard, KeyboardAvoidingView, Pressable,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../theme';
 import PinField from './PinField';
 import SubCard from './SubCard';
 import haptics from '../utils/haptics';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { buildExportFile } from '../utils/exportImport';
 import {
   getOrPickExportDir, writeFileToDir, verifyFileExists, makeUniqueFilename, debugLastError,
@@ -151,22 +153,54 @@ export default function ExportWizard({
 
       setBusyLabel('Sauvegarde du fichier…');
 
+      const desiredName = `${base}.almanac`;
+
+      // Essai SAF d'abord. Si le dossier choisi refuse l'écriture (ex: Downloads virtuel),
+      // on tombe automatiquement sur Sharing (menu Android « Enregistrer dans ») qui marche partout.
       const dirUri = await getOrPickExportDir();
-      if (!dirUri) {
-        setResult({ ok: false, message: "Permission d'écriture refusée ou dossier non sélectionné." });
+      let fileUri = null;
+      let finalName = desiredName;
+      if (dirUri) {
+        finalName = await makeUniqueFilename(dirUri, desiredName);
+        fileUri = await writeFileToDir(dirUri, finalName, fileContent);
+      }
+
+      if (!fileUri) {
+        // Fallback universel : écrit en cache puis ouvre le menu Android de partage
+        try {
+          const cachePath = `${FileSystem.cacheDirectory}${desiredName}`;
+          await FileSystem.writeAsStringAsync(cachePath, fileContent, { encoding: FileSystem.EncodingType.UTF8 });
+          const available = await Sharing.isAvailableAsync();
+          if (available) {
+            await Sharing.shareAsync(cachePath, {
+              mimeType: 'application/octet-stream',
+              dialogTitle: 'Exporter Almanac',
+            });
+            // On ne peut pas vérifier côté app si l'user a bien sauvegardé (c'est Android qui gère),
+            // mais le fichier est bien généré dans le cache et le menu a été affiché.
+            haptics.success();
+            setResult({
+              ok: true,
+              message:
+                `${desiredName}\n${cons.length} prises · ${subs.length} substances\n\n` +
+                `Partage via Android — choisis où enregistrer dans le menu qui s'est ouvert.`,
+            });
+            setStep('result');
+            return;
+          }
+        } catch (e) {
+          // fallthrough
+        }
+        const err = debugLastError() || 'Impossible d\'écrire le fichier.';
+        setResult({
+          ok: false,
+          message:
+            `Erreur SAF :\n${err}\n\nEssaie de choisir un autre dossier (évite "Downloads").`,
+        });
         setStep('result');
         return;
       }
 
-      const desiredName = `${base}.almanac`;
-      const finalName = await makeUniqueFilename(dirUri, desiredName);
-      const fileUri = await writeFileToDir(dirUri, finalName, fileContent);
-      if (!fileUri) {
-        const err = debugLastError() || 'Impossible d\'écrire le fichier.';
-        setResult({ ok: false, message: `Erreur SAF :\n${err}` });
-        setStep('result');
-        return;
-      }
       const exists = await verifyFileExists(fileUri);
       if (!exists) {
         setResult({ ok: false, message: "Le fichier a été écrit mais n'a pas pu être relu." });
@@ -193,7 +227,10 @@ export default function ExportWizard({
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <View style={styles.card}>
           {step === 'select' && (
             <>
@@ -232,7 +269,7 @@ export default function ExportWizard({
           )}
 
           {step === 'password' && (
-            <ScrollView contentContainerStyle={{ paddingBottom: 10 }} keyboardShouldPersistTaps="handled">
+            <ScrollView contentContainerStyle={{ paddingBottom: 10 }} keyboardShouldPersistTaps="always">
               <Text style={styles.title}>Code PIN & nom</Text>
               <Text style={styles.intro}>Choisis un PIN à 4 chiffres pour chiffrer le fichier.</Text>
 
@@ -281,13 +318,12 @@ export default function ExportWizard({
               </View>
 
               <View style={styles.actions}>
-                <TouchableOpacity onPressIn={() => { Keyboard.dismiss(); setStep('select'); }}>
+                <Pressable onPressIn={() => { Keyboard.dismiss(); setStep('select'); }}>
                   <Text style={styles.cancelText}>Retour</Text>
-                </TouchableOpacity>
-                {/* onPressIn pour éviter que le 1er tap ferme juste le clavier (bug Android TextInput + Button) */}
-                <TouchableOpacity onPressIn={handleExport}>
+                </Pressable>
+                <Pressable onPressIn={handleExport}>
                   <Text style={styles.confirmText}>Exporter</Text>
-                </TouchableOpacity>
+                </Pressable>
               </View>
             </ScrollView>
           )}
@@ -318,7 +354,7 @@ export default function ExportWizard({
             </View>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

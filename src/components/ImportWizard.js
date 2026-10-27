@@ -7,7 +7,7 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  ActivityIndicator, Platform, BackHandler, Keyboard,
+  ActivityIndicator, Platform, BackHandler, Keyboard, KeyboardAvoidingView, Pressable,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -108,17 +108,27 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
       return;
     }
     Keyboard.dismiss();
-    setBusyLabel('Déchiffrement en cours…');
-    setStep('busy');
-    await new Promise((r) => setTimeout(r, 50));
+    // On tente le déchiffrement SANS afficher le spinner tout de suite.
+    // Si PIN wrong → parseExportFile throw rapidement → on reste sur l'étape PIN avec shake,
+    //   AUCUN spinner n'apparaît (pas de flash).
+    // Si PIN right → le parse peut prendre un moment : on affiche le spinner après 350ms seulement.
+    let spinnerTimer = setTimeout(() => {
+      setBusyLabel('Déchiffrement en cours…');
+      setStep('busy');
+    }, 350);
     try {
+      // Petit yield pour laisser le render se faire
+      await new Promise((r) => setTimeout(r, 10));
       const data = parseExportFile(fileContent, pin);
+      clearTimeout(spinnerTimer);
       setParsed(data);
       const sel = {};
       for (const s of data.substances) sel[s.id] = true;
       setSelected(sel);
       setStep('select');
     } catch (e) {
+      clearTimeout(spinnerTimer);
+      // Si le spinner avait déjà été affiché, revenir à l'étape PIN proprement
       setStep('pin');
       setTimeout(() => pinRef.current?.shake('Code PIN incorrect'), 50);
     }
@@ -173,7 +183,10 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <View style={styles.card}>
           {step === 'pick' && (
             <>
@@ -191,7 +204,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
           )}
 
           {step === 'pin' && (
-            <>
+            <ScrollView keyboardShouldPersistTaps="always" contentContainerStyle={{ paddingBottom: 4 }}>
               <Text style={styles.title}>Code PIN</Text>
               <Text style={styles.intro}>Entre le code PIN du fichier.</Text>
               <PinField
@@ -203,15 +216,15 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
                 onSubmitEditing={submitPin}
               />
               <View style={styles.actions}>
-                <TouchableOpacity onPressIn={() => { Keyboard.dismiss(); setStep('pick'); }}>
+                {/* Pressable + onPressIn + accessible={false} = capture le tap en 1 fois même clavier ouvert */}
+                <Pressable onPressIn={() => { Keyboard.dismiss(); setStep('pick'); }}>
                   <Text style={styles.cancelText}>Retour</Text>
-                </TouchableOpacity>
-                {/* onPressIn → fonctionne du 1er tap même quand le clavier est ouvert */}
-                <TouchableOpacity onPressIn={submitPin}>
+                </Pressable>
+                <Pressable onPressIn={submitPin}>
                   <Text style={styles.confirmText}>Déchiffrer</Text>
-                </TouchableOpacity>
+                </Pressable>
               </View>
-            </>
+            </ScrollView>
           )}
 
           {step === 'busy' && (
@@ -288,7 +301,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
             </View>
           )}
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

@@ -135,6 +135,7 @@ export default function SubstancesPage() {
   const scrollRef = useRef(null);
   const bannerHeightRef = useRef(0);
   const scrollYRef = useRef(0);
+  const pendingBannerFlashRef = useRef(null); // flash après fin du scroll
 
   const handleBannerPress = () => {
     if (!lastGlobalSubId) return;
@@ -149,10 +150,28 @@ export default function SubstancesPage() {
       setTimeout(() => setFlashedSubId(null), 500);
     };
     if (needsScroll) {
+      // Flash sera déclenché par onMomentumScrollEnd via pendingBannerFlashRef
+      pendingBannerFlashRef.current = flash;
       scrollRef.current?.scrollTo?.({ y, animated: true });
-      setTimeout(flash, 400);
+      // Fallback safety : si onMomentumScrollEnd ne fire pas dans 600ms, on flash quand même
+      setTimeout(() => {
+        if (pendingBannerFlashRef.current) {
+          pendingBannerFlashRef.current();
+          pendingBannerFlashRef.current = null;
+        }
+      }, 600);
     } else {
       flash();
+    }
+  };
+
+  const handleScroll = (y) => {
+    scrollYRef.current = y;
+  };
+  const handleScrollEnd = () => {
+    if (pendingBannerFlashRef.current) {
+      pendingBannerFlashRef.current();
+      pendingBannerFlashRef.current = null;
     }
   };
 
@@ -237,7 +256,8 @@ export default function SubstancesPage() {
           onDeactivate={() => setReorderMode(false)}
           onReorder={(newIds) => reorderSubstances(newIds)}
           onItemTap={(sub) => navigation.navigate('Substance', { substanceId: sub.id })}
-          onScrollY={(y) => { scrollYRef.current = y; }}
+          onScrollY={handleScroll}
+          onScrollEnd={handleScrollEnd}
           headerComponent={banner}
           scrollRef={scrollRef}
           renderItem={({ item, isWiggling, isPickup }) => (

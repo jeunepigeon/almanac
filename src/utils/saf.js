@@ -91,6 +91,12 @@ export async function writeFileToDir(dirUri, filename, content, mimeType = 'appl
     fileUri = await SAF.createFileAsync(dirUri, filename, mimeType);
   } catch (e) {
     recordErr('createFile', e);
+    // Si le dossier choisi ne permet pas la création (ex : Downloads virtuel non-writable),
+    // on efface l'URI persistée pour que le prochain export redemande un dossier.
+    const msg = (e?.message || '').toLowerCase();
+    if (msg.includes('writable') || msg.includes('rejected') || msg.includes('ioexception')) {
+      try { await setPersistedDirUri(null); } catch {}
+    }
     return null;
   }
   try {

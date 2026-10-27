@@ -36,7 +36,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: theme.colors.surface, borderRadius: 10,
-    paddingVertical: theme.spacing.lg, paddingHorizontal: theme.spacing.lg,
+    paddingVertical: theme.spacing.xl, paddingHorizontal: theme.spacing.lg,
     width: '100%', maxWidth: 400,
     borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border,
     alignItems: 'center',
@@ -44,8 +44,8 @@ const styles = StyleSheet.create({
   title: {
     fontSize: theme.font.sizes.md,
     fontWeight: '600',
-    marginTop: theme.spacing.sm,
-    marginBottom: theme.spacing.sm,
+    marginTop: theme.spacing.lg,       // + d'espace entre icône et titre
+    marginBottom: theme.spacing.md,
     textAlign: 'center',
     letterSpacing: 0.3,
   },
@@ -53,7 +53,7 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted, fontSize: theme.font.sizes.sm,
     fontWeight: '400', lineHeight: 22,
     textAlign: 'center',
-    marginBottom: theme.spacing.lg,
+    marginBottom: theme.spacing.xl,     // + d'espace entre message et bouton
   },
   btn: {
     paddingVertical: theme.spacing.sm, paddingHorizontal: theme.spacing.xl,

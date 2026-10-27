@@ -460,13 +460,12 @@ export default function SettingsScreen() {
           if (next >= debugModals.length) { setDebugModals([]); setDebugIdx(0); }
           else setDebugIdx(next);
         };
-        const prefix = `[${debugIdx + 1}/${debugModals.length}] `;
         if (m.kind === 'result-ok' || m.kind === 'result-ko') {
           return (
             <ResultModal
               visible
               ok={m.kind === 'result-ok'}
-              title={prefix + m.title}
+              title={m.title}
               message={m.message}
               buttonLabel={label}
               onClose={close}
@@ -476,7 +475,7 @@ export default function SettingsScreen() {
         return (
           <InfoModal
             visible
-            title={prefix + m.title}
+            title={m.title}
             message={m.message}
             buttonLabel={label}
             onClose={close}
