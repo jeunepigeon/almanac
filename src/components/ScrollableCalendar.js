@@ -115,21 +115,21 @@ function MarkersGrid({ markers }) {
   );
 }
 
-const DayCell = memo(function DayCell({ date, markers, isToday, isFuture, isSober, onPress, flashColor }) {
+const DayCell = memo(function DayCell({ date, markers, isToday, isFuture, isSober, onPress, flashColor, flashNonce }) {
   const flash = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    if (flashColor) {
-      Animated.sequence([
-        Animated.timing(flash, { toValue: 1, duration: 120, useNativeDriver: false }),
-        Animated.timing(flash, { toValue: 0, duration: 500, useNativeDriver: false }),
-      ]).start();
-    }
-  }, [flashColor]);
+    if (!flashColor || !flashNonce) return;
+    flash.setValue(0);
+    Animated.sequence([
+      Animated.timing(flash, { toValue: 1, duration: 150, useNativeDriver: false }),
+      Animated.timing(flash, { toValue: 0, duration: 350, useNativeDriver: false }),
+    ]).start();
+  }, [flashColor, flashNonce]);
   if (!date) return <View style={styles.dayCell} />;
-  // Flash en overlay carré pleine case (pas de cercle)
-  const overlayBg = flash.interpolate({
+  // Carré plus petit (80% de la case) + opacité plus douce, fade propre vers 0.
+  const overlayOpacity = flash.interpolate({
     inputRange: [0, 1],
-    outputRange: ['rgba(0,0,0,0)', flashColor ? flashColor + 'CC' : 'rgba(0,0,0,0)'],
+    outputRange: [0, 0.6],
   });
   return (
     <TouchableOpacity
@@ -151,14 +151,17 @@ const DayCell = memo(function DayCell({ date, markers, isToday, isFuture, isSobe
       {flashColor && (
         <Animated.View
           pointerEvents="none"
-          style={[styles.flashOverlay, { backgroundColor: overlayBg }]}
+          style={[
+            styles.flashOverlay,
+            { backgroundColor: flashColor, opacity: overlayOpacity },
+          ]}
         />
       )}
     </TouchableOpacity>
   );
 });
 
-const MonthGrid = memo(function MonthGrid({ year, month, markersByDay, onDayPress, showSoberFill, todayTime, flashKey, flashColor }) {
+const MonthGrid = memo(function MonthGrid({ year, month, markersByDay, onDayPress, showSoberFill, todayTime, flashKey, flashColor, flashNonce }) {
   const firstDay = new Date(year, month, 1);
   const startWeekday = (firstDay.getDay() + 6) % 7;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -198,6 +201,7 @@ const MonthGrid = memo(function MonthGrid({ year, month, markersByDay, onDayPres
             isFuture={c.isFuture}
             isSober={c.isSober}
             flashColor={flashKey && c.key === flashKey ? flashColor : null}
+            flashNonce={flashKey && c.key === flashKey ? flashNonce : null}
             onPress={c.date ? () => onDayPress?.(c.key, c.timestamp) : undefined}
           />
         ))}
@@ -224,11 +228,13 @@ export default function ScrollableCalendar({
 
   // Flash : state éphémère pour flasher un jour au saut.
   const [flashKey, setFlashKey] = useState(null);
+  const [flashNonce, setFlashNonce] = useState(0);
   const flashTimer = useRef(null);
   const triggerFlash = useCallback((dayKey) => {
     if (flashTimer.current) clearTimeout(flashTimer.current);
     setFlashKey(dayKey);
-    flashTimer.current = setTimeout(() => setFlashKey(null), 550);
+    setFlashNonce((n) => n + 1);  // force re-render de l'animation
+    flashTimer.current = setTimeout(() => setFlashKey(null), 600);
   }, []);
   useEffect(() => () => flashTimer.current && clearTimeout(flashTimer.current), []);
 
@@ -302,21 +308,38 @@ export default function ScrollableCalendar({
     if (userTouchedRef.current) return;
     const t = setTimeout(() => {
       try {
-        flatListRef.current?.scrollToIndex({ index: currentIdx, animated: false });
+        flatListRef.current?.scrollToOffset({ offset: currentIdx * MONTH_ITEM_HEIGHT, animated: false });
         setVisibleIdx(currentIdx);
       } catch {}
     }, 80);
     return () => clearTimeout(t);
   }, [currentIdx, months.length]);
 
-  // Scroll animé (pour toutes les navigations)
+  // Scroll animé — on utilise scrollToOffset qui est 100% fiable (contrairement à scrollToIndex
+  // qui échoue silencieusement si l'item n'est pas rendu dans la fenêtre virtualisée).
+  const programmedScrollRef = useRef(false);
+  const pendingFlashRef = useRef(null); // { dayKey } à flasher à la fin du scroll
   const scrollToIdx = useCallback((idx, animated = true) => {
     if (!flatListRef.current) return;
+    programmedScrollRef.current = true;
     try {
-      flatListRef.current.scrollToIndex({ index: idx, animated });
+      flatListRef.current.scrollToOffset({ offset: idx * MONTH_ITEM_HEIGHT, animated });
     } catch {}
     setVisibleIdx(idx);
-  }, []);
+    // Fallback : si onMomentumScrollEnd ne fire pas (scroll trop court / animated:false),
+    // on reset le flag après un délai.
+    setTimeout(() => {
+      if (programmedScrollRef.current) {
+        programmedScrollRef.current = false;
+        // Déclenche le flash s'il est en attente
+        if (pendingFlashRef.current) {
+          const { dayKey } = pendingFlashRef.current;
+          pendingFlashRef.current = null;
+          triggerFlash(dayKey);
+        }
+      }
+    }, animated ? 450 : 50);
+  }, [triggerFlash]);
 
   const goPrev = () => {
     const cur = visibleIdxRef.current;
@@ -374,21 +397,20 @@ export default function ScrollableCalendar({
     return sortedPriseDays.length - 1;
   };
 
-  // Jump sur un jour : scroll animé puis flash après l'arrivée (300-500ms selon la distance).
+  // Jump sur un jour : si on est DÉJÀ sur le bon mois → flash immédiat (pas de scroll).
+  // Sinon → scroll animé puis flash à la fin via onMomentumScrollEnd.
   const jumpToDay = (dayKey, dayTs) => {
     const d = new Date(dayTs);
     const idx = months.findIndex((m) => m.year === d.getFullYear() && m.month === d.getMonth());
-    if (idx >= 0) {
-      scrollToIdx(idx, true);
-      priseCursorRef.current = dayKey;
-      // Flash après que le scroll ait eu le temps d'arriver (on ne peut pas écouter la fin du scrollToIndex de FlatList)
-      const dist = Math.abs(idx - visibleIdxRef.current);
-      const delay = Math.min(600, 150 + dist * 60);
-      setTimeout(() => triggerFlash(dayKey), delay);
-    } else {
+    priseCursorRef.current = dayKey;
+    if (idx < 0 || idx === visibleIdxRef.current) {
+      // Pas de scroll → flash immédiat
       triggerFlash(dayKey);
-      priseCursorRef.current = dayKey;
+      return;
     }
+    // Scroll animé → flash sera déclenché à la fin via pendingFlashRef
+    pendingFlashRef.current = { dayKey };
+    scrollToIdx(idx, true);
   };
 
   const goPrevLog = () => {
@@ -439,14 +461,18 @@ export default function ScrollableCalendar({
       showSoberFill={showSoberFill}
       todayTime={todayTime}
       flashKey={flashKey}
+      flashNonce={flashNonce}
       flashColor={substanceColor || '#FFFFFF'}
     />
-  ), [markersByDay, onDayPress, showSoberFill, todayTime, flashKey, substanceColor]);
+  ), [markersByDay, onDayPress, showSoberFill, todayTime, flashKey, flashNonce, substanceColor]);
 
   const onViewableItemsChanged = useCallback(({ viewableItems }) => {
+    // Ignore pendant un scroll programmé (évite la désynchro entre scroll + dropdown)
+    if (programmedScrollRef.current) return;
     if (viewableItems.length > 0) {
-      const last = viewableItems[viewableItems.length - 1];
-      if (last.index != null) setVisibleIdx(last.index);
+      // Prend l'item CENTRAL (pas le dernier) : plus proche de ce que l'user voit vraiment
+      const middle = viewableItems[Math.floor(viewableItems.length / 2)];
+      if (middle?.index != null) setVisibleIdx(middle.index);
     }
   }, []);
 
@@ -553,6 +579,14 @@ export default function ScrollableCalendar({
           }
         }}
         scrollEventThrottle={32}
+        onMomentumScrollEnd={() => {
+          programmedScrollRef.current = false;
+          if (pendingFlashRef.current) {
+            const { dayKey } = pendingFlashRef.current;
+            pendingFlashRef.current = null;
+            triggerFlash(dayKey);
+          }
+        }}
       />
 
       <Modal
@@ -693,8 +727,8 @@ const styles = StyleSheet.create({
   },
   flashOverlay: {
     position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    borderRadius: 4,
+    top: '10%', left: '10%', right: '10%', bottom: '10%',
+    borderRadius: 6,
   },
   dayCellToday: { backgroundColor: 'rgba(1, 200, 83, 0.15)' },
   dayNumberWrap: {

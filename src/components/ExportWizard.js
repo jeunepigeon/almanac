@@ -1,20 +1,18 @@
-// Wizard d'export v1.1.17.
-// Étapes :
+// Wizard d'export v1.1.18 — flow compact :
 //   1. select     : sélection substances
-//   2. pin1       : choix du PIN (4 chiffres). Validation locale avant d'avancer.
-//   3. pin2       : confirmation du PIN. Doit matcher pin1.
-//   4. filename   : nom de fichier éditable (optionnel). Enter → export.
-//   5. busy       : spinner inline (chiffrement + écriture)
-//   6. result     : ✓ ou ❌
-//
-// Nom de fichier final : `<nom-ou-"almanac-export">-<DD-MM-YYYY-HHMM>.almanac`
-// Collisions : suffixe auto -2, -3, …
-// SAF 1ère fois seulement, URI persisté.
+//   2. password   : PIN + confirm + nom de fichier (TOUT sur le même écran)
+//      - Enter PIN1 → focus PIN2
+//      - Enter PIN2 → focus nom
+//      - Enter nom  → export
+//      - Validation locale : shake le mauvais champ
+//      - Tap "Exporter" fonctionne du 1er coup (onPressIn pour éviter le blur du TextInput)
+//   3. busy       : spinner inline
+//   4. result     : ✓ / ❌
 
 import { useState, useRef, useEffect } from 'react';
 import {
   Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput,
-  ActivityIndicator, KeyboardAvoidingView, Platform, BackHandler,
+  ActivityIndicator, KeyboardAvoidingView, Platform, BackHandler, Keyboard,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../theme';
@@ -22,7 +20,9 @@ import PinField from './PinField';
 import SubCard from './SubCard';
 import haptics from '../utils/haptics';
 import { buildExportFile } from '../utils/exportImport';
-import { getOrPickExportDir, writeFileToDir, verifyFileExists, makeUniqueFilename } from '../utils/saf';
+import {
+  getOrPickExportDir, writeFileToDir, verifyFileExists, makeUniqueFilename, debugLastError,
+} from '../utils/saf';
 import { fmtDateTiretHM } from '../utils/snapshots';
 import { useKeepAwake } from '../utils/keepAwake';
 
@@ -34,7 +34,7 @@ export default function ExportWizard({
   onClose,
 }) {
   const [step, setStep] = useState('select');
-  // 'select' | 'pin1' | 'pin2' | 'filename' | 'busy' | 'result'
+  // 'select' | 'password' | 'busy' | 'result'
   const [selected, setSelected] = useState({});
   const [pin, setPin] = useState('');
   const [pinConfirm, setPinConfirm] = useState('');
@@ -57,31 +57,19 @@ export default function ExportWizard({
     setResult(null);
   }, [visible, substances]);
 
-  // Focus auto PIN à chaque étape où il est pertinent
+  // Focus auto quand on entre dans l'étape password
   useEffect(() => {
-    if (step === 'pin1') {
-      // Petit délai pour laisser le render de la modal se stabiliser avant d'ouvrir le clavier
-      const t = setTimeout(() => pin1Ref.current?.focus(), 100);
-      return () => clearTimeout(t);
-    }
-    if (step === 'pin2') {
-      const t = setTimeout(() => pin2Ref.current?.focus(), 100);
-      return () => clearTimeout(t);
-    }
-    if (step === 'filename') {
-      const t = setTimeout(() => nameRef.current?.focus(), 100);
+    if (step === 'password') {
+      const t = setTimeout(() => pin1Ref.current?.focus(), 150);
       return () => clearTimeout(t);
     }
   }, [step]);
 
-  // Back Android
   useEffect(() => {
     if (!visible) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (step === 'select') { onClose?.(); return true; }
-      if (step === 'pin1') { setStep('select'); return true; }
-      if (step === 'pin2') { setStep('pin1'); return true; }
-      if (step === 'filename') { setStep('pin2'); return true; }
+      if (step === 'password') { Keyboard.dismiss(); setStep('select'); return true; }
       if (step === 'result') { onClose?.(); return true; }
       return true;
     });
@@ -97,16 +85,16 @@ export default function ExportWizard({
     setSelected(next);
   };
 
-  // Validation PIN1 → va à PIN2
-  const submitPin1 = () => {
+  // Enter sur PIN1 → focus PIN2
+  const onSubmitPin1 = () => {
     if (pin.length !== 4) {
       pin1Ref.current?.shake('4 chiffres requis');
       return;
     }
-    setStep('pin2');
+    pin2Ref.current?.focus();
   };
-  // Validation PIN2 → va à filename
-  const submitPin2 = () => {
+  // Enter sur PIN2 → focus nom (ne lance pas l'export)
+  const onSubmitPin2 = () => {
     if (pinConfirm.length !== 4) {
       pin2Ref.current?.shake('4 chiffres requis');
       return;
@@ -115,13 +103,22 @@ export default function ExportWizard({
       pin2Ref.current?.shake('Les codes ne correspondent pas');
       return;
     }
-    setStep('filename');
+    nameRef.current?.focus();
+  };
+
+  const validateAll = () => {
+    if (pin.length !== 4) { pin1Ref.current?.shake('4 chiffres requis'); return false; }
+    if (pinConfirm.length !== 4) { pin2Ref.current?.shake('4 chiffres requis'); return false; }
+    if (pin !== pinConfirm) { pin2Ref.current?.shake('Les codes ne correspondent pas'); return false; }
+    return true;
   };
 
   const handleExport = async () => {
+    if (!validateAll()) return;
+    Keyboard.dismiss();
+
     const trimmed = (filename || '').trim();
     const timestamp = fmtDateTiretHM();
-    // Nom final : <nom>-<timestamp>.almanac  (si nom vide → almanac-export-<timestamp>)
     const base = trimmed ? `${trimmed}-${timestamp}` : `almanac-export-${timestamp}`;
 
     const selectedIds = substances.filter((s) => selected[s.id]).map((s) => s.id);
@@ -156,7 +153,7 @@ export default function ExportWizard({
 
       const dirUri = await getOrPickExportDir();
       if (!dirUri) {
-        setResult({ ok: false, message: "Permission d'écriture refusée." });
+        setResult({ ok: false, message: "Permission d'écriture refusée ou dossier non sélectionné." });
         setStep('result');
         return;
       }
@@ -165,24 +162,25 @@ export default function ExportWizard({
       const finalName = await makeUniqueFilename(dirUri, desiredName);
       const fileUri = await writeFileToDir(dirUri, finalName, fileContent);
       if (!fileUri) {
-        setResult({ ok: false, message: "Impossible d'écrire le fichier." });
+        const err = debugLastError() || 'Impossible d\'écrire le fichier.';
+        setResult({ ok: false, message: `Erreur SAF :\n${err}` });
         setStep('result');
         return;
       }
       const exists = await verifyFileExists(fileUri);
       if (!exists) {
-        setResult({ ok: false, message: "Le fichier n'a pas pu être vérifié." });
+        setResult({ ok: false, message: "Le fichier a été écrit mais n'a pas pu être relu." });
         setStep('result');
         return;
       }
       haptics.success();
       setResult({
         ok: true,
-        message: `${finalName}\n${cons.length} prise(s) · ${subs.length} substance(s)`,
+        message: `${finalName}\n${cons.length} prises · ${subs.length} substances`,
       });
       setStep('result');
     } catch (e) {
-      setResult({ ok: false, message: e.message || String(e) });
+      setResult({ ok: false, message: `${e.message || e}` });
       setStep('result');
     }
   };
@@ -223,71 +221,39 @@ export default function ExportWizard({
                 <TouchableOpacity onPress={onClose}>
                   <Text style={styles.cancelText}>Fermer</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setStep('pin1')} disabled={noneSelected}>
+                <TouchableOpacity onPress={() => setStep('password')} disabled={noneSelected}>
                   <Text style={[styles.confirmText, noneSelected && { opacity: 0.4 }]}>Suivant</Text>
                 </TouchableOpacity>
               </View>
             </>
           )}
 
-          {step === 'pin1' && (
-            <>
-              <Text style={styles.title}>Code PIN</Text>
-              <Text style={styles.intro}>Choisis un code à 4 chiffres pour chiffrer le fichier.</Text>
+          {step === 'password' && (
+            <ScrollView contentContainerStyle={{ paddingBottom: 10 }} keyboardShouldPersistTaps="handled">
+              <Text style={styles.title}>Code PIN & nom</Text>
+              <Text style={styles.intro}>Choisis un PIN à 4 chiffres pour chiffrer le fichier.</Text>
+
+              <Text style={styles.fieldLabel}>Code PIN</Text>
               <PinField
                 ref={pin1Ref}
                 value={pin}
                 onChangeText={setPin}
-                autoFocus
+                autoFocus={false}
                 returnKeyType="next"
-                onSubmitEditing={submitPin1}
+                onSubmitEditing={onSubmitPin1}
               />
-              <View style={styles.actions}>
-                <TouchableOpacity onPress={() => setStep('select')}>
-                  <Text style={styles.cancelText}>Retour</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={submitPin1}>
-                  <Text style={styles.confirmText}>Suivant</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
 
-          {step === 'pin2' && (
-            <>
-              <Text style={styles.title}>Confirmer</Text>
-              <Text style={styles.intro}>Retape le même code pour confirmer.</Text>
+              <Text style={styles.fieldLabel}>Confirmer</Text>
               <PinField
                 ref={pin2Ref}
                 value={pinConfirm}
                 onChangeText={setPinConfirm}
-                autoFocus
+                autoFocus={false}
                 returnKeyType="next"
-                onSubmitEditing={submitPin2}
+                onSubmitEditing={onSubmitPin2}
               />
-              <View style={styles.warningBox}>
-                <MaterialCommunityIcons name="alert-outline" size={16} color={theme.colors.textMuted} />
-                <Text style={styles.warningText}>
-                  Si tu oublies ce code, le fichier sera illisible.
-                </Text>
-              </View>
-              <View style={styles.actions}>
-                <TouchableOpacity onPress={() => setStep('pin1')}>
-                  <Text style={styles.cancelText}>Retour</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={submitPin2}>
-                  <Text style={styles.confirmText}>Suivant</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
 
-          {step === 'filename' && (
-            <>
-              <Text style={styles.title}>Nom du fichier</Text>
-              <Text style={styles.intro}>
-                Laisse vide pour « almanac-export ». La date-heure est ajoutée automatiquement.
-              </Text>
+              <Text style={styles.fieldLabel}>Nom du fichier (optionnel)</Text>
               <TextInput
                 ref={nameRef}
                 value={filename}
@@ -303,15 +269,24 @@ export default function ExportWizard({
               <Text style={styles.hint}>
                 {`${(filename.trim() || 'almanac-export')}-${fmtDateTiretHM()}.almanac`}
               </Text>
+
+              <View style={styles.warningBox}>
+                <MaterialCommunityIcons name="alert-outline" size={16} color={theme.colors.textMuted} />
+                <Text style={styles.warningText}>
+                  Si tu oublies ce code, le fichier sera illisible.
+                </Text>
+              </View>
+
               <View style={styles.actions}>
-                <TouchableOpacity onPress={() => setStep('pin2')}>
+                <TouchableOpacity onPressIn={() => { Keyboard.dismiss(); setStep('select'); }}>
                   <Text style={styles.cancelText}>Retour</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={handleExport}>
+                {/* onPressIn pour éviter que le 1er tap ferme juste le clavier (bug Android TextInput + Button) */}
+                <TouchableOpacity onPressIn={handleExport}>
                   <Text style={styles.confirmText}>Exporter</Text>
                 </TouchableOpacity>
               </View>
-            </>
+            </ScrollView>
           )}
 
           {step === 'busy' && (
@@ -379,6 +354,11 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
   list: { maxHeight: 380 },
+  fieldLabel: {
+    color: theme.colors.textMuted, fontSize: theme.font.sizes.xs,
+    fontWeight: '400', letterSpacing: 1, textTransform: 'uppercase',
+    marginBottom: theme.spacing.xs, marginTop: theme.spacing.sm,
+  },
   input: {
     color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '400',
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border,
@@ -392,7 +372,7 @@ const styles = StyleSheet.create({
   },
   warningBox: {
     flexDirection: 'row', alignItems: 'flex-start', gap: theme.spacing.sm,
-    marginTop: theme.spacing.md, marginBottom: theme.spacing.lg,
+    marginTop: theme.spacing.sm, marginBottom: theme.spacing.md,
     padding: theme.spacing.md, borderRadius: 4,
     borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border,
     backgroundColor: theme.colors.background,
@@ -418,8 +398,7 @@ const styles = StyleSheet.create({
   },
   resultTitle: {
     fontSize: theme.font.sizes.md, fontWeight: '600',
-    marginTop: theme.spacing.sm,
-    textAlign: 'center',
+    marginTop: theme.spacing.sm, textAlign: 'center',
   },
   resultMessage: {
     color: theme.colors.textMuted, fontSize: theme.font.sizes.sm,

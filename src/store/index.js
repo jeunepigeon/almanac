@@ -40,6 +40,8 @@ export const useStore = create((set, get) => ({
   // (incrément d'un tick pour déclencher useEffect)
   gotoGlobalStatsTick: 0,
   requestGotoGlobalStats: () => set((s) => ({ gotoGlobalStatsTick: s.gotoGlobalStatsTick + 1 })),
+  pagerLocked: false,
+  setPagerLocked: (locked) => set({ pagerLocked: !!locked }),
   ready: false,
 
   loadAll: async () => {

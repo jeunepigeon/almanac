@@ -1,8 +1,7 @@
-// Champ PIN 4 chiffres avec :
-//  - placeholder "••••" centré, pas de blinking cursor
-//  - état d'erreur (rouge + shake + haptic error) via ref.setError(msg)
-//  - message d'erreur sous le champ (petit, rouge, place pré-réservée pour ne pas décaler le layout)
-//  - submit (bouton clavier "entrée") → callback onSubmitEditing
+// Champ PIN 4 chiffres, cursor stable au centre.
+// - caretHidden pour éviter le blinking cursor qui se décale (bug Android avec textAlign:center)
+// - placeholder "••••"
+// - shake + haptic error + message rouge sous le champ (place pré-réservée)
 
 import { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import { View, TextInput, StyleSheet, Animated, Text } from 'react-native';
@@ -16,6 +15,7 @@ const PinField = forwardRef(function PinField(
     autoFocus = false,
     onSubmitEditing,
     returnKeyType = 'next',
+    testID,
   },
   ref
 ) {
@@ -35,22 +35,23 @@ const PinField = forwardRef(function PinField(
     ]).start();
   };
 
-  const clearError = () => setErrorMsg(null);
-
   useImperativeHandle(ref, () => ({
     shake: (msg) => triggerShake(msg),
     focus: () => inputRef.current?.focus(),
     blur: () => inputRef.current?.blur(),
-    clearError,
+    clearError: () => setErrorMsg(null),
   }));
 
   return (
-    <View style={styles.wrap}>
+    <View style={styles.wrap} testID={testID}>
       <Animated.View style={{ transform: [{ translateX: shake }] }}>
         <TextInput
           ref={inputRef}
           value={value}
-          onChangeText={(v) => { onChangeText(v.replace(/\D/g, '').slice(0, 4)); if (errorMsg) clearError(); }}
+          onChangeText={(v) => {
+            onChangeText(v.replace(/\D/g, '').slice(0, 4));
+            if (errorMsg) setErrorMsg(null);
+          }}
           placeholder={placeholder}
           placeholderTextColor={theme.colors.textFaint}
           style={[styles.input, errorMsg && styles.inputError]}
@@ -67,7 +68,6 @@ const PinField = forwardRef(function PinField(
           blurOnSubmit={false}
         />
       </Animated.View>
-      {/* Placeholder du message d'erreur : place toujours réservée pour éviter le décalage. */}
       <Text style={[styles.errorText, { opacity: errorMsg ? 1 : 0 }]}>
         {errorMsg || ' '}
       </Text>
@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
   },
   input: {
     color: theme.colors.text,
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '400',
     letterSpacing: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,

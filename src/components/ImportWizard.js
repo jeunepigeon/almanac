@@ -1,14 +1,13 @@
-// Wizard d'import v1.1.17.
-// - PIN validé AVANT déchiffrement (pas de spinner inutile si PIN invalide)
-// - Erreurs PIN affichées en rouge sous le champ, pas de shake auto du 2e champ
-// - Fusion automatique par nom (plus de pop-up conflit) : même nom = merge, dédoublonnage par timestamp
-// - Barre de progression (consos importées / total)
-// - Snapshot auto créé juste avant la fusion
+// Wizard d'import v1.1.18.
+// Flow compact : pick → pin → select
+// - PIN validé AVANT déchiffrement
+// - Fix bug "double tap Déchiffrer" (onPressIn au lieu de onPress sur le bouton)
+// - Fusion : nouveau count split (nouvelles / fusionnées / déjà présentes / prises / déjà présentes)
 
 import { useState, useRef, useEffect } from 'react';
 import {
   Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  ActivityIndicator, KeyboardAvoidingView, Platform, BackHandler,
+  ActivityIndicator, KeyboardAvoidingView, Platform, BackHandler, Keyboard,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
@@ -41,9 +40,16 @@ function statsFromParsed(parsed) {
   return result;
 }
 
+function formatFusionResult(fused) {
+  // Tout au pluriel, pas de (s)
+  return (
+    `${fused.added} nouvelles · ${fused.merged} fusionnées · ${fused.alreadyPresent} déjà présentes\n` +
+    `${fused.consosAdded} prises importées · ${fused.consosSkipped} déjà présentes`
+  );
+}
+
 export default function ImportWizard({ visible, onClose, onComplete }) {
   const [step, setStep] = useState('pick');
-  // 'pick' | 'pin' | 'busy' | 'select' | 'importing' | 'result'
   const [fileContent, setFileContent] = useState(null);
   const [pin, setPin] = useState('');
   const [parsed, setParsed] = useState(null);
@@ -65,7 +71,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
 
   useEffect(() => {
     if (step === 'pin') {
-      const t = setTimeout(() => pinRef.current?.focus(), 100);
+      const t = setTimeout(() => pinRef.current?.focus(), 150);
       return () => clearTimeout(t);
     }
   }, [step]);
@@ -74,7 +80,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
     if (!visible) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (step === 'pick') { onClose?.(); return true; }
-      if (step === 'pin') { setStep('pick'); return true; }
+      if (step === 'pin') { Keyboard.dismiss(); setStep('pick'); return true; }
       if (step === 'select') { setStep('pin'); return true; }
       if (step === 'result') { onClose?.(); return true; }
       return true;
@@ -96,15 +102,14 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
     }
   };
 
-  // Validation locale AVANT déchiffrement (évite spinner inutile)
   const submitPin = async () => {
     if (pin.length !== 4) {
       pinRef.current?.shake('4 chiffres requis');
       return;
     }
+    Keyboard.dismiss();
     setBusyLabel('Déchiffrement en cours…');
     setStep('busy');
-    // Laisser le render se stabiliser avant le travail CPU
     await new Promise((r) => setTimeout(r, 50));
     try {
       const data = parseExportFile(fileContent, pin);
@@ -114,9 +119,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
       setSelected(sel);
       setStep('select');
     } catch (e) {
-      // PIN probablement incorrect : retour à l'étape PIN avec message rouge
       setStep('pin');
-      // Shake après que la modal ait fini le switch de step
       setTimeout(() => pinRef.current?.shake('Code PIN incorrect'), 50);
     }
   };
@@ -150,12 +153,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
       });
       await useStore.getState().loadAll();
       haptics.success();
-      setResult({
-        ok: true,
-        message:
-          `${fused.added} nouvelle(s) · ${fused.merged} fusionnée(s)\n` +
-          `${fused.consosAdded} prise(s) importée(s) · ${fused.consosSkipped} déjà présente(s)`,
-      });
+      setResult({ ok: true, message: formatFusionResult(fused) });
       setStep('result');
       onComplete?.();
     } catch (e) {
@@ -165,9 +163,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
   };
 
   const parsedStats = parsed ? statsFromParsed(parsed) : {};
-  const subList = parsed
-    ? parsed.substances.map((s) => ({ ...s }))
-    : [];
+  const subList = parsed ? parsed.substances.map((s) => ({ ...s })) : [];
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -199,15 +195,16 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
                 ref={pinRef}
                 value={pin}
                 onChangeText={setPin}
-                autoFocus
+                autoFocus={false}
                 returnKeyType="done"
                 onSubmitEditing={submitPin}
               />
               <View style={styles.actions}>
-                <TouchableOpacity onPress={() => setStep('pick')}>
+                <TouchableOpacity onPressIn={() => { Keyboard.dismiss(); setStep('pick'); }}>
                   <Text style={styles.cancelText}>Retour</Text>
                 </TouchableOpacity>
-                <TouchableOpacity onPress={submitPin}>
+                {/* onPressIn → fonctionne du 1er tap même quand le clavier est ouvert */}
+                <TouchableOpacity onPressIn={submitPin}>
                   <Text style={styles.confirmText}>Déchiffrer</Text>
                 </TouchableOpacity>
               </View>
@@ -264,9 +261,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
               <Text style={styles.busyText}>{busyLabel}</Text>
               <ProgressBar current={progress.current} total={progress.total} />
               <Text style={styles.progressText}>
-                {progress.total > 0
-                  ? `${progress.current} / ${progress.total}`
-                  : 'préparation…'}
+                {progress.total > 0 ? `${progress.current} / ${progress.total}` : 'préparation…'}
               </Text>
             </View>
           )}
@@ -310,11 +305,7 @@ const progressStyles = StyleSheet.create({
     backgroundColor: theme.colors.border, borderRadius: 3,
     overflow: 'hidden', marginVertical: theme.spacing.sm,
   },
-  fill: {
-    height: '100%',
-    backgroundColor: theme.colors.text,
-    borderRadius: 3,
-  },
+  fill: { height: '100%', backgroundColor: theme.colors.text, borderRadius: 3 },
 });
 
 const styles = StyleSheet.create({

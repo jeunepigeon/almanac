@@ -15,6 +15,7 @@ export default function MainScreen() {
   const [page, setPage] = useState(0);
   const hasUnconsulted = useStore((s) => s.hasUnconsultedSnapshots);
   const gotoGlobalStatsTick = useStore((s) => s.gotoGlobalStatsTick);
+  const pagerLocked = useStore((s) => s.pagerLocked);
 
   // Switcher vers la page Global quand le store signale un gotoGlobalStats
   useEffect(() => {
@@ -86,6 +87,7 @@ export default function MainScreen() {
         ref={pagerRef}
         style={styles.pager}
         initialPage={0}
+        scrollEnabled={!pagerLocked}
         onPageSelected={(e) => setPage(e.nativeEvent.position)}
       >
         <View key="1" style={styles.page}>

@@ -38,8 +38,7 @@ function SobreBanner({ lastGlobalTimestamp, onPress }) {
 }
 
 function SubstanceRow({
-  substance, lastTimestamp, isWiggling, isPickup, isFlashed,
-  onPress, onLongPress, onMenu,
+  substance, lastTimestamp, isWiggling, isPickup, isFlashed, onMenu,
 }) {
   const iconEntry = getIconById(substance.icon);
   const flashAnim = useRef(new Animated.Value(0)).current;
@@ -47,8 +46,8 @@ function SubstanceRow({
   useEffect(() => {
     if (isFlashed) {
       Animated.sequence([
-        Animated.timing(flashAnim, { toValue: 1, duration: 100, useNativeDriver: false }),
-        Animated.timing(flashAnim, { toValue: 0, duration: 400, useNativeDriver: false }),
+        Animated.timing(flashAnim, { toValue: 1, duration: 120, useNativeDriver: false }),
+        Animated.timing(flashAnim, { toValue: 0, duration: 380, useNativeDriver: false }),
       ]).start();
     }
   }, [isFlashed, flashAnim]);
@@ -58,7 +57,7 @@ function SubstanceRow({
     outputRange: ['rgba(0,0,0,0)', substance.color + '55'],
   });
 
-  const content = (
+  return (
     <Animated.View style={[styles.row, { backgroundColor: bgInterp }]}>
       <View style={[styles.iconWrap, { borderColor: substance.color }]}>
         <MaterialCommunityIcons name={iconEntry.icon} size={18} color={substance.color} />
@@ -77,15 +76,6 @@ function SubstanceRow({
         </TouchableOpacity>
       )}
     </Animated.View>
-  );
-
-  // En mode wiggle/pickup, pas de Pressable interactive (le long press est géré par ReorderList).
-  if (isWiggling || isPickup) return content;
-
-  return (
-    <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={450}>
-      {content}
-    </Pressable>
   );
 }
 
@@ -135,8 +125,16 @@ export default function SubstancesPage() {
   const [reorderMode, setReorderMode] = useState(false);
   const [flashedSubId, setFlashedSubId] = useState(null);
 
+  // Verrouille le PagerView (swipe gauche/droite vers Global) tant qu'on est en mode réorg.
+  const setPagerLocked = useStore((s) => s.setPagerLocked);
+  useEffect(() => {
+    setPagerLocked(reorderMode);
+    return () => setPagerLocked(false);
+  }, [reorderMode, setPagerLocked]);
+
   const scrollRef = useRef(null);
   const bannerHeightRef = useRef(0);
+  const scrollYRef = useRef(0);
 
   const handleBannerPress = () => {
     if (!lastGlobalSubId) return;
@@ -145,9 +143,17 @@ export default function SubstancesPage() {
     if (idx < 0) return;
     const bannerH = bannerHeightRef.current || 110;
     const y = Math.max(0, bannerH + idx * ROW_HEIGHT - 100);
-    scrollRef.current?.scrollTo?.({ y, animated: true });
-    setFlashedSubId(lastGlobalSubId);
-    setTimeout(() => setFlashedSubId(null), 600);
+    const needsScroll = Math.abs(scrollYRef.current - y) > 10;
+    const flash = () => {
+      setFlashedSubId(lastGlobalSubId);
+      setTimeout(() => setFlashedSubId(null), 500);
+    };
+    if (needsScroll) {
+      scrollRef.current?.scrollTo?.({ y, animated: true });
+      setTimeout(flash, 400);
+    } else {
+      flash();
+    }
   };
 
   if (!ready) return <View style={styles.container} />;
@@ -230,6 +236,8 @@ export default function SubstancesPage() {
           onActivate={() => setReorderMode(true)}
           onDeactivate={() => setReorderMode(false)}
           onReorder={(newIds) => reorderSubstances(newIds)}
+          onItemTap={(sub) => navigation.navigate('Substance', { substanceId: sub.id })}
+          onScrollY={(y) => { scrollYRef.current = y; }}
           headerComponent={banner}
           scrollRef={scrollRef}
           renderItem={({ item, isWiggling, isPickup }) => (
@@ -239,8 +247,6 @@ export default function SubstancesPage() {
               isWiggling={isWiggling}
               isPickup={isPickup}
               isFlashed={flashedSubId === item.id}
-              onPress={() => navigation.navigate('Substance', { substanceId: item.id })}
-              onLongPress={() => setReorderMode(true)}
               onMenu={() => openActions(item)}
             />
           )}

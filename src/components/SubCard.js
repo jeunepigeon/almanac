@@ -45,9 +45,9 @@ export default function SubCard({ sub, isChecked, onToggle, stats }) {
             <Text style={[styles.name, { color: nameColor }]} numberOfLines={1}>{sub.name}</Text>
             <Text style={[styles.stats, { color: statsColor }]}>
               <Text style={styles.bold}>{consCount}</Text>
-              {` prise${consCount > 1 ? 's' : ''} · `}
+              {` prises · `}
               <Text style={styles.bold}>{days}</Text>
-              {' j'}
+              {' jours'}
             </Text>
           </View>
           {isChecked && (

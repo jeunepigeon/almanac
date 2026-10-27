@@ -12,6 +12,7 @@ import ActionSheet from '../components/ActionSheet';
 import ExportIcon from '../components/ExportIcon';
 import ImportIcon from '../components/ImportIcon';
 import InfoModal from '../components/InfoModal';
+import ResultModal from '../components/ResultModal';
 import SubstanceSelectModal from '../components/SubstanceSelectModal';
 import ExportWizard from '../components/ExportWizard';
 import ImportWizard from '../components/ImportWizard';
@@ -138,17 +139,60 @@ export default function SettingsScreen() {
     setCreateSnapshotModal(true);
   };
 
-  // Debug : enchaîne toutes les modals textuelles de l'app
+  // Debug : enchaîne les VRAIES modals de l'app (celles qui ne font qu'info + OK, pas celles
+  // avec logique de confirmation / sélection substance).
   const openDebugModals = () => {
     const list = [
-      { title: 'InfoModal — exemple', message: 'Message info classique sur une ligne.' },
-      { title: 'InfoModal — multi-ligne', message: 'Première ligne.\nDeuxième ligne.\nTroisième ligne de test pour vérifier le centrage.' },
-      { title: 'Sauvegarde enregistrée', message: 'almanac-export-26-10-2026-2254.almanac\n1714 prise(s) · 26 substance(s)' },
-      { title: "La sauvegarde n'a pas pu aboutir", message: "Permission d'écriture refusée." },
-      { title: 'Import terminé', message: '2 nouvelle(s) · 24 fusionnée(s)\n1714 prise(s) importée(s) · 0 déjà présente(s)' },
-      { title: 'Restauration terminée', message: '0 nouvelle(s) · 26 fusionnée(s)\n1714 prise(s) restaurée(s) · 0 déjà présente(s)' },
-      { title: 'Erreur', message: 'Snapshot introuvable.' },
-      { title: 'Sauvegarde créée', message: 'Une sauvegarde a été créée. Vous pouvez la restaurer ou la supprimer définitivement via Paramètres.' },
+      {
+        kind: 'result-ok',
+        title: 'Sauvegarde enregistrée',
+        message: 'almanac-export-27-10-2026-0049.almanac\n1714 prises · 26 substances',
+      },
+      {
+        kind: 'result-ko',
+        title: "La sauvegarde n'a pas pu aboutir",
+        message: "Permission d'écriture refusée ou dossier non sélectionné.",
+      },
+      {
+        kind: 'result-ko',
+        title: "La sauvegarde n'a pas pu aboutir",
+        message: "Erreur SAF :\n[createFile] IOException: Could not write to file",
+      },
+      {
+        kind: 'result-ok',
+        title: 'Import terminé',
+        message: '2 nouvelles · 24 fusionnées · 0 déjà présentes\n1714 prises importées · 0 déjà présentes',
+      },
+      {
+        kind: 'result-ok',
+        title: 'Import terminé',
+        message: '0 nouvelles · 0 fusionnées · 26 déjà présentes\n0 prises importées · 1714 déjà présentes',
+      },
+      {
+        kind: 'result-ko',
+        title: "L'import n'a pas pu aboutir",
+        message: 'Format de fichier invalide.',
+      },
+      {
+        kind: 'result-ok',
+        title: 'Restauration terminée',
+        message: '0 nouvelles · 26 fusionnées · 0 déjà présentes\n1714 prises restaurées · 0 déjà présentes',
+      },
+      {
+        kind: 'info',
+        title: 'Sauvegarde créée',
+        message: 'Une sauvegarde a été créée. Vous pouvez la restaurer ou la supprimer définitivement via Paramètres.',
+      },
+      {
+        kind: 'info',
+        title: 'Erreur création sauvegarde',
+        message: 'Database locked. Réessayez dans quelques secondes.',
+      },
+      {
+        kind: 'info',
+        title: 'Erreur',
+        message: 'Snapshot introuvable.',
+      },
     ];
     setDebugModals(list);
     setDebugIdx(0);
@@ -404,20 +448,38 @@ export default function SettingsScreen() {
         onClose={() => setInfoModal(null)}
       />
 
-      {/* Debug : enchaîne les modals */}
-      {debugModals.length > 0 && debugIdx < debugModals.length && (
-        <InfoModal
-          visible
-          title={`[${debugIdx + 1}/${debugModals.length}] ${debugModals[debugIdx].title}`}
-          message={debugModals[debugIdx].message}
-          buttonLabel={debugIdx === debugModals.length - 1 ? 'Fermer' : 'Suivant'}
-          onClose={() => {
-            const next = debugIdx + 1;
-            if (next >= debugModals.length) { setDebugModals([]); setDebugIdx(0); }
-            else setDebugIdx(next);
-          }}
-        />
-      )}
+      {/* Debug : enchaîne les vraies modals */}
+      {debugModals.length > 0 && debugIdx < debugModals.length && (() => {
+        const m = debugModals[debugIdx];
+        const label = debugIdx === debugModals.length - 1 ? 'Fermer' : 'Suivant';
+        const close = () => {
+          const next = debugIdx + 1;
+          if (next >= debugModals.length) { setDebugModals([]); setDebugIdx(0); }
+          else setDebugIdx(next);
+        };
+        const prefix = `[${debugIdx + 1}/${debugModals.length}] `;
+        if (m.kind === 'result-ok' || m.kind === 'result-ko') {
+          return (
+            <ResultModal
+              visible
+              ok={m.kind === 'result-ok'}
+              title={prefix + m.title}
+              message={m.message}
+              buttonLabel={label}
+              onClose={close}
+            />
+          );
+        }
+        return (
+          <InfoModal
+            visible
+            title={prefix + m.title}
+            message={m.message}
+            buttonLabel={label}
+            onClose={close}
+          />
+        );
+      })()}
     </ScrollView>
   );
 }

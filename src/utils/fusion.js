@@ -36,32 +36,31 @@ export async function performFusion({ parsed, activeSubs, substanceIds, onProgre
   }
 
   const idMap = {}; // parsed substance id → active (ou nouvellement créée) substance id
-  let added = 0, merged = 0;
+  // Track pour chaque sub du parsed si c'est "nouveau" ou "existant" (pour compter plus tard)
+  const subIsNew = {};
+  let added = 0;
 
-  // Pass 1 : substances
   for (const sub of parsed.substances) {
     if (substanceIds && !substanceIds.has(sub.id)) continue;
     const key = normalizeName(sub.name);
     const existing = activeByName.get(key);
     if (existing) {
-      // Même nom → fusion
       idMap[sub.id] = existing.id;
-      merged++;
+      subIsNew[sub.id] = false;
     } else {
-      // Nouveau
       const newId = sub.id || uuid();
       await dbInsertSubstanceRaw({
         id: newId, name: sub.name, color: sub.color, icon: sub.icon,
         createdAt: sub.createdAt, archived: !!sub.archived, position: sub.position ?? 9999,
       });
       idMap[sub.id] = newId;
+      subIsNew[sub.id] = true;
       added++;
     }
   }
 
-  // Pass 2 : consumptions, dedup par timestamp exact
-  // Pré-charge les timestamps existants par substance (optimisation : évite N queries)
-  const existingTsBySub = {}; // destId → Set<timestamp>
+  // Pré-charge timestamps existants
+  const existingTsBySub = {};
   for (const destId of new Set(Object.values(idMap))) {
     const list = await dbGetConsumptionsBySubstance(destId);
     existingTsBySub[destId] = new Set(list.map((c) => c.timestamp));
@@ -71,6 +70,9 @@ export async function performFusion({ parsed, activeSubs, substanceIds, onProgre
     if (substanceIds && !substanceIds.has(c.substanceId)) return false;
     return !!idMap[c.substanceId];
   });
+
+  // Compteurs par substance ancienne : combien de consos ajoutées ?
+  const addedBySrcSub = {};
 
   let consosAdded = 0, consosSkipped = 0;
   const total = consosToImport.length;
@@ -87,11 +89,21 @@ export async function performFusion({ parsed, activeSubs, substanceIds, onProgre
       });
       seen.add(c.timestamp);
       consosAdded++;
+      addedBySrcSub[c.substanceId] = (addedBySrcSub[c.substanceId] || 0) + 1;
     }
     if (onProgress && (i % 25 === 0 || i === total - 1)) {
       onProgress(i + 1, total);
     }
   }
 
-  return { added, merged, consosAdded, consosSkipped };
+  // Pour chaque sub existante (subIsNew = false) : "fusionnée" si on a ajouté ≥1 conso,
+  // sinon "déjà présente".
+  let merged = 0, alreadyPresent = 0;
+  for (const srcId of Object.keys(subIsNew)) {
+    if (subIsNew[srcId]) continue; // sub nouvelle, pas comptée ici
+    if ((addedBySrcSub[srcId] || 0) > 0) merged++;
+    else alreadyPresent++;
+  }
+
+  return { added, merged, alreadyPresent, consosAdded, consosSkipped };
 }

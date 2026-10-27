@@ -113,8 +113,8 @@ export default function RestoreWizard({ visible, snapshotId, onClose, onComplete
       setResult({
         ok: true,
         message:
-          `${fused.added} nouvelle(s) · ${fused.merged} fusionnée(s)\n` +
-          `${fused.consosAdded} prise(s) restaurée(s) · ${fused.consosSkipped} déjà présente(s)`,
+          `${fused.added} nouvelles · ${fused.merged} fusionnées · ${fused.alreadyPresent} déjà présentes\n` +
+          `${fused.consosAdded} prises restaurées · ${fused.consosSkipped} déjà présentes`,
       });
       setStep('result');
       onComplete?.();
