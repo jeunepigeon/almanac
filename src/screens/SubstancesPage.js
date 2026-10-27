@@ -38,7 +38,7 @@ function SobreBanner({ lastGlobalTimestamp, onPress }) {
 }
 
 function SubstanceRow({
-  substance, lastTimestamp, isWiggling, isPickup, isFlashed, onMenu,
+  substance, lastTimestamp, inReorder, isFlashed, onMenu,
 }) {
   const iconEntry = getIconById(substance.icon);
   const flashAnim = useRef(new Animated.Value(0)).current;
@@ -65,8 +65,9 @@ function SubstanceRow({
       <View style={styles.rowMiddle}>
         <Text style={styles.rowName} numberOfLines={1}>{substance.name}</Text>
       </View>
-      {!isWiggling && <LiveCounter timestamp={lastTimestamp} style={styles.rowCounter} />}
-      {!isWiggling && (
+      {/* Compteur et ⋯ masqués pendant TOUT le mode réorganisation (pas lié au wiggle) */}
+      {!inReorder && <LiveCounter timestamp={lastTimestamp} style={styles.rowCounter} />}
+      {!inReorder && (
         <TouchableOpacity
           onPress={onMenu}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
@@ -262,12 +263,11 @@ export default function SubstancesPage() {
           onScrollEnd={handleScrollEnd}
           headerComponent={banner}
           scrollRef={scrollRef}
-          renderItem={({ item, isWiggling, isPickup }) => (
+          renderItem={({ item, inReorder }) => (
             <SubstanceRow
               substance={item}
               lastTimestamp={lastTimestamps[item.id]}
-              isWiggling={isWiggling}
-              isPickup={isPickup}
+              inReorder={inReorder}
               isFlashed={flashedSubId === item.id}
               onMenu={() => openActions(item)}
             />

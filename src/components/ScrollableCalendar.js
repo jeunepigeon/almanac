@@ -134,7 +134,7 @@ const DayCell = memo(function DayCell({ date, markers, isToday, isFuture, isSobe
     Animated.sequence([
       Animated.timing(flash, { toValue: 1, duration: 150, useNativeDriver: true }),
       Animated.timing(flash, {
-        toValue: 0, duration: 600, useNativeDriver: true,
+        toValue: 0, duration: 650, useNativeDriver: true, // total 800 ms (150 + 650)
         easing: EasingLib.out(EasingLib.quad),
       }),
     ]).start(({ finished }) => { if (finished) setActiveFlash(null); });
@@ -241,7 +241,7 @@ export default function ScrollableCalendar({
     if (flashTimer.current) clearTimeout(flashTimer.current);
     setFlashKey(dayKey);
     setFlashNonce((n) => n + 1);  // force re-render de l'animation
-    flashTimer.current = setTimeout(() => setFlashKey(null), 1000);
+    flashTimer.current = setTimeout(() => setFlashKey(null), 1100);
   }, []);
   useEffect(() => () => flashTimer.current && clearTimeout(flashTimer.current), []);
 

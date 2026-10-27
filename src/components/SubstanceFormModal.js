@@ -99,6 +99,8 @@ export default function SubstanceFormModal({
           <Pressable style={styles.card} onPress={() => {}}>
             <Text style={styles.title}>{titles[mode]}</Text>
 
+            {/* Contenu scrollable (grille 5×8 plus haute) ; boutons fixes en bas */}
+            <ScrollView style={styles.formScroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             {showName && (
               <TextInput
                 value={name}
@@ -151,7 +153,7 @@ export default function SubstanceFormModal({
                         >
                           <MaterialCommunityIcons
                             name={entry.icon}
-                            size={18}
+                            size={30}
                             color={selected ? selectedColor : theme.colors.textMuted}
                           />
                         </TouchableOpacity>
@@ -161,6 +163,7 @@ export default function SubstanceFormModal({
                 </View>
               </>
             )}
+            </ScrollView>
 
             <View style={styles.actions}>
               <TouchableOpacity onPress={onClose} style={styles.actionBtn}>
@@ -254,12 +257,14 @@ const styles = StyleSheet.create({
   colorDotSelected: {
     borderColor: theme.colors.text,
   },
+  formScroll: { flexGrow: 0, flexShrink: 1 },
   iconScroll: {
     maxHeight: 180,
     marginBottom: theme.spacing.lg,
   },
-  // Grille icônes 8×5 : chaque cellule prend 1/8 de la largeur, carrée.
-  // Pas de gap (sinon flex-wrap casse en 7 par ligne), le padding interne de iconCellInner fait l'espacement.
+  // Grille icônes 5×8 (v1.1.19) : chaque cellule prend 1/5 de la largeur, carrée, icône 30.
+  // ROLLBACK 8×5 : iconCell.width '12.5%', padding 3, icône size 18.
+  // Pas de gap (sinon flex-wrap casse), le padding interne de iconCellInner fait l'espacement.
   iconGridStatic: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -272,18 +277,18 @@ const styles = StyleSheet.create({
     paddingBottom: theme.spacing.sm,
   },
   iconCell: {
-    width: '12.5%',
+    width: '20%',
     aspectRatio: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 3,
+    padding: 5,
   },
   iconCellInner: {
     width: '100%',
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 4,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },

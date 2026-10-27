@@ -10,6 +10,10 @@
 //    pour libérer la place. La ligne sous le doigt n'est donc jamais déplacée dans la liste
 //    (c'est ce qui faisait annuler le toucher par Android et « revenir » la substance) ;
 //  - lâcher → le nouvel ordre est appliqué en une fois ; décalages remis à 0 avant l'affichage.
+//  - v1.1.19 : AUCUN zIndex/elevation dans la liste (sur Android ça peut réordonner les vues et
+//    annuler le toucher → la substance « revenait » à sa place). La ligne touchée devient juste
+//    invisible ; une COPIE (montée en fin de liste, toujours présente en mode actif) suit le doigt.
+//  - renderItem reçoit inReorder (compteurs/⋯ masqués pendant tout le mode, indépendamment du wiggle).
 //  - « Terminé » ou retour Android → sortie du mode + enregistrement de l'ordre.
 
 import { useState, useEffect, useLayoutEffect, useRef } from 'react';
@@ -77,15 +81,8 @@ function ActiveRow({
     if (draggingRef.current) { draggingRef.current = false; onDragEnd(); }
   };
 
-  const style = isPicked
-    ? {
-        height: itemHeight,
-        zIndex: 100, elevation: 10,
-        opacity: PICKUP_OPACITY,
-        backgroundColor: theme.colors.background,
-        transform: [{ translateY: panY }, { scale: PICKUP_SCALE }],
-      }
-    : { height: itemHeight, transform: [{ translateY: offsetY }] };
+  // Ligne saisie : reste exactement en place (même vue, mêmes props de structure), juste invisible.
+  const style = { height: itemHeight, opacity: isPicked ? 0 : 1, transform: [{ translateY: isPicked ? 0 : offsetY }] };
 
   return (
     <Animated.View
@@ -98,7 +95,7 @@ function ActiveRow({
       onResponderTerminationRequest={() => !draggingRef.current}
     >
       <WiggleContent isWiggling={isWiggling} phase={index % 3}>
-        {renderItem({ item, index, isWiggling, isPickup: isPicked })}
+        {renderItem({ item, index, isWiggling, isPickup: false, inReorder: true })}
       </WiggleContent>
     </Animated.View>
   );
@@ -219,6 +216,7 @@ export default function ReorderList({
   }
 
   const items = localIds.map((id) => data.find((d) => d.id === id)).filter(Boolean);
+  const pickedItem = pickupIdx != null ? items[pickupIdx] : null;
 
   return (
     <View style={styles.container}>
@@ -260,14 +258,39 @@ export default function ReorderList({
                   onLongPress={() => { haptics.medium(); onItemLongPress?.(item, idx); }}
                   delayLongPress={400}
                 >
-                  {renderItem({ item, index: idx, isWiggling: false, isPickup: false })}
+                  {renderItem({ item, index: idx, isWiggling: false, isPickup: false, inReorder: false })}
                 </Pressable>
               </View>
             );
           })}
 
-          {barTop != null && (
-            <View pointerEvents="none" style={[styles.indicatorBar, { top: barTop }]} />
+          {/* Barre + copie : montées en FIN de liste et en permanence en mode actif
+              (aucune insertion/zIndex pendant le geste) ; affichées via opacité. */}
+          {active && (
+            <View
+              pointerEvents="none"
+              style={[styles.indicatorBar, { top: barTop ?? 0, opacity: barTop != null ? 1 : 0 }]}
+            />
+          )}
+          {active && (
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.floating,
+                {
+                  top: (pickupIdx ?? 0) * itemHeight,
+                  height: itemHeight,
+                  opacity: pickedItem ? PICKUP_OPACITY : 0,
+                  transform: [{ translateY: panY }, { scale: PICKUP_SCALE }],
+                },
+              ]}
+            >
+              {pickedItem && (
+                <WiggleContent isWiggling phase={0}>
+                  {renderItem({ item: pickedItem, index: pickupIdx, isWiggling: true, isPickup: true, inReorder: true })}
+                </WiggleContent>
+              )}
+            </Animated.View>
           )}
         </View>
       </ScrollView>
@@ -304,6 +327,10 @@ const styles = StyleSheet.create({
   listArea: { position: 'relative' },
   indicatorBar: {
     position: 'absolute', left: '22.5%', width: '55%', height: 1,
-    backgroundColor: '#FFFFFF', borderRadius: 1, zIndex: 150, elevation: 15,
+    backgroundColor: '#FFFFFF', borderRadius: 1,
+  },
+  floating: {
+    position: 'absolute', left: 0, right: 0,
+    backgroundColor: theme.colors.background,
   },
 });

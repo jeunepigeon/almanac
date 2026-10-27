@@ -29,6 +29,7 @@ import {
 import { fmtDateTiretHM } from '../utils/snapshots';
 import { useKeepAwake } from '../utils/keepAwake';
 import { yieldToUI } from '../utils/useKeyboard';
+import { useFixedModalTop } from '../utils/modalPosition';
 
 function fmtBytes(n) {
   if (n < 1024) return `${n} o`;
@@ -49,6 +50,8 @@ export default function ExportWizard({ visible, substances = [], statsById = {},
   const nameRef = useRef(null);
 
   useKeepAwake('export-wizard');
+  // Étape PIN : centrée entre le bas du bandeau « Paramètres » et le haut du clavier, position fixe
+  const fixed = useFixedModalTop('betweenHeaderAndKeyboard');
 
   useEffect(() => {
     if (!visible) return;
@@ -194,9 +197,12 @@ export default function ExportWizard({ visible, substances = [], statsById = {},
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      {/* Étape PIN : position fixe en haut, visible clavier ouvert ou fermé, ne bouge pas */}
-      <View style={[styles.overlay, step === 'password' && styles.overlayFixed]}>
-        <View style={styles.card}>
+      {/* Étape PIN : position fixe, centrée entre bandeau et clavier, ne bouge pas */}
+      <View style={[styles.overlay, step === 'password' && fixed.overlayStyle]}>
+        <View
+          style={[styles.card, step === 'password' && fixed.cardStyle]}
+          onLayout={step === 'password' ? fixed.onLayout : undefined}
+        >
           {step === 'select' && (
             <>
               <Text style={styles.title}>Exporter</Text>
@@ -304,7 +310,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center', padding: theme.spacing.lg,
   },
   // Clavier ouvert : carte collée en haut pour rester dans la zone libre
-  overlayFixed: { justifyContent: 'flex-start', paddingTop: 56 },
   card: {
     backgroundColor: theme.colors.surface, borderRadius: 10,
     paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.lg, paddingBottom: theme.spacing.md,

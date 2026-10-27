@@ -22,6 +22,7 @@ import { fmtDateTiretHM } from '../utils/snapshots';
 import { useStore } from '../store';
 import { useKeepAwake } from '../utils/keepAwake';
 import { yieldToUI } from '../utils/useKeyboard';
+import { useFixedModalTop } from '../utils/modalPosition';
 
 function statsFromParsed(parsed) {
   const by = {};
@@ -61,6 +62,8 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
   const pinRef = useRef(null);
 
   useKeepAwake('import-wizard');
+  // Étape PIN : quasi centrée dans l'écran, toujours au-dessus du clavier, position fixe
+  const fixed = useFixedModalTop('screenCenter');
 
   useEffect(() => {
     if (!visible) return;
@@ -184,9 +187,12 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      {/* Étape PIN : position fixe un peu au-dessus du centre, ne bouge pas avec le clavier */}
-      <View style={[styles.overlay, step === 'pin' && styles.overlayFixed]}>
-        <View style={styles.card}>
+      {/* Étape PIN : quasi centrée, au-dessus du clavier, ne bouge pas */}
+      <View style={[styles.overlay, step === 'pin' && fixed.overlayStyle]}>
+        <View
+          style={[styles.card, step === 'pin' && fixed.cardStyle]}
+          onLayout={step === 'pin' ? fixed.onLayout : undefined}
+        >
           {step === 'pick' && (
             <>
               <Text style={styles.title}>Importer</Text>
@@ -328,7 +334,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
     padding: theme.spacing.lg,
   },
-  overlayFixed: { justifyContent: 'flex-start', paddingTop: 170 },
   card: {
     backgroundColor: theme.colors.surface, borderRadius: 10,
     padding: theme.spacing.lg, width: '100%', maxWidth: 440, maxHeight: '90%',
