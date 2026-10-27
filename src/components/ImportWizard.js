@@ -21,7 +21,7 @@ import { performFusion } from '../utils/fusion';
 import { fmtDateTiretHM } from '../utils/snapshots';
 import { useStore } from '../store';
 import { useKeepAwake } from '../utils/keepAwake';
-import { useKeyboardHeight, yieldToUI } from '../utils/useKeyboard';
+import { yieldToUI } from '../utils/useKeyboard';
 
 function statsFromParsed(parsed) {
   const by = {};
@@ -59,7 +59,6 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [result, setResult] = useState(null);
   const pinRef = useRef(null);
-  const kbHeight = useKeyboardHeight();
 
   useKeepAwake('import-wizard');
 
@@ -114,7 +113,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
     busyRef.current = true;
     Keyboard.dismiss();
     // Spinner AFFICHÉ avant le calcul : la vérif du PIN (PBKDF2) bloque le thread JS plusieurs secondes.
-    setBusyLabel('Vérification du code…');
+    setBusyLabel('Déchiffrement en cours…');
     setStep('busy');
     await yieldToUI();
     try {
@@ -135,11 +134,6 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
       busyRef.current = false;
     }
   };
-
-  // 4e chiffre tapé → déchiffrement automatique (0 tap)
-  useEffect(() => {
-    if (step === 'pin' && pin.length === 4) submitPin();
-  }, [pin]); // eslint-disable-line
 
   const toggleSub = (id) => setSelected((p) => ({ ...p, [id]: !p[id] }));
   const allSelected = parsed?.substances.every((s) => selected[s.id]);
@@ -190,7 +184,8 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <View style={[styles.overlay, { paddingBottom: theme.spacing.lg + kbHeight }]}>
+      {/* Étape PIN : position fixe un peu au-dessus du centre, ne bouge pas avec le clavier */}
+      <View style={[styles.overlay, step === 'pin' && styles.overlayFixed]}>
         <View style={styles.card}>
           {step === 'pick' && (
             <>
@@ -210,7 +205,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
           {step === 'pin' && (
             <ScrollView keyboardShouldPersistTaps="always" contentContainerStyle={{ paddingBottom: 4 }}>
               <Text style={styles.title}>Code PIN</Text>
-              <Text style={styles.intro}>Entre le code PIN du fichier. Le déchiffrement démarre au 4e chiffre.</Text>
+              <Text style={styles.intro}>Entre le code PIN du fichier.</Text>
               <PinField
                 ref={pinRef}
                 value={pin}
@@ -333,6 +328,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
     padding: theme.spacing.lg,
   },
+  overlayFixed: { justifyContent: 'flex-start', paddingTop: 170 },
   card: {
     backgroundColor: theme.colors.surface, borderRadius: 10,
     padding: theme.spacing.lg, width: '100%', maxWidth: 440, maxHeight: '90%',

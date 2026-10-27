@@ -14,11 +14,11 @@ export function fmtDateTiret(ts = Date.now()) {
   return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}`;
 }
 
-// Format DD-MM-YYYY-HHMM (pour timestamp précis à la minute)
+// Format DD-MM-YYYY-HHhMM (ex 27-10-2026-21h45) — ':' interdit dans les noms de fichiers
 export function fmtDateTiretHM(ts = Date.now()) {
   const d = new Date(ts);
   const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
-  return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+  return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}-${pad(d.getHours())}h${pad(d.getMinutes())}`;
 }
 
 // Serialize substances + consumptions en JSON string.

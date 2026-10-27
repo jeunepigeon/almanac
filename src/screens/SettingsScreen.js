@@ -205,7 +205,11 @@ export default function SettingsScreen() {
     .map((s) => ({ id: s.id, name: s.name, color: s.color }));
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    // Les modals (wizards, confirmations) sont rendues HORS de la ScrollView :
+    // sinon la ScrollView parente intercepte le 1er tap quand le clavier est ouvert
+    // et ferme le clavier au lieu de déclencher le bouton.
+    <View style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {/* ===== SOUTENIR ===== */}
       <Text style={styles.sectionTitle}>Soutenir le projet</Text>
       <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('Donations')}>
@@ -306,6 +310,7 @@ export default function SettingsScreen() {
       <View style={styles.creditWrap}>
         <Text style={styles.creditText}>almanac — développé par pigeon</Text>
       </View>
+    </ScrollView>
 
       {/* Action sheet snapshot */}
       <ActionSheet
@@ -482,7 +487,7 @@ export default function SettingsScreen() {
           />
         );
       })()}
-    </ScrollView>
+    </View>
   );
 }
 

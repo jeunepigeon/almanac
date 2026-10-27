@@ -3,9 +3,10 @@
 //   2. password : PIN + confirmation + nom (même écran)
 //        - PIN1 focus auto à l'arrivée
 //        - PIN1 = 4 chiffres → focus PIN2 automatique
+//        - 4e chiffre de PIN2 : erreur immédiate si ≠ PIN1 (rien d'auto si identique)
 //        - Entrée sur PIN2 → validation (4+4+correspondance) puis focus Nom
 //        - Entrée sur Nom → export
-//        - Même mise en page clavier ouvert/fermé, centrée dans la zone libre au-dessus du clavier
+//        - Position FIXE (ne bouge pas à l'ouverture du clavier), visible clavier ouvert ou fermé
 //   3. busy     : spinner (affiché AVANT le calcul PBKDF2 qui bloque le thread JS)
 //   4. result   : ✓ / ❌ avec taille réellement écrite
 // SAF : l'emplacement est redemandé à CHAQUE export (Android ne redemande l'autorisation
@@ -27,7 +28,7 @@ import {
 } from '../utils/saf';
 import { fmtDateTiretHM } from '../utils/snapshots';
 import { useKeepAwake } from '../utils/keepAwake';
-import { useKeyboardHeight, yieldToUI } from '../utils/useKeyboard';
+import { yieldToUI } from '../utils/useKeyboard';
 
 function fmtBytes(n) {
   if (n < 1024) return `${n} o`;
@@ -42,7 +43,6 @@ export default function ExportWizard({ visible, substances = [], statsById = {},
   const [filename, setFilename] = useState('');
   const [busyLabel, setBusyLabel] = useState('');
   const [result, setResult] = useState(null);
-  const kbHeight = useKeyboardHeight();
 
   const pin1Ref = useRef(null);
   const pin2Ref = useRef(null);
@@ -70,6 +70,17 @@ export default function ExportWizard({ visible, substances = [], statsById = {},
   useEffect(() => {
     if (step === 'password' && pin.length === 4) pin2Ref.current?.focus();
   }, [pin, step]);
+
+  // Toute modif de PIN1 efface l'erreur de PIN2 (sinon elle restait affichée même codes identiques)
+  useEffect(() => {
+    if (step === 'password') pin2Ref.current?.clearError();
+  }, [pin, step]);
+
+  // 4e chiffre de PIN2 : erreur immédiate si ça ne correspond pas
+  useEffect(() => {
+    if (step !== 'password' || pinConfirm.length !== 4 || pin.length !== 4) return;
+    if (pin !== pinConfirm) pin2Ref.current?.shake('Les codes ne correspondent pas');
+  }, [pinConfirm, step]); // eslint-disable-line
 
   // Entrée sur PIN1 : si incomplet → erreur, sinon PIN2
   const onSubmitPin1 = () => {
@@ -183,8 +194,8 @@ export default function ExportWizard({ visible, substances = [], statsById = {},
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      {/* paddingBottom = hauteur clavier → la carte est centrée dans la zone libre au-dessus */}
-      <View style={[styles.overlay, { paddingBottom: theme.spacing.lg + kbHeight }]}>
+      {/* Étape PIN : position fixe en haut, visible clavier ouvert ou fermé, ne bouge pas */}
+      <View style={[styles.overlay, step === 'password' && styles.overlayFixed]}>
         <View style={styles.card}>
           {step === 'select' && (
             <>
@@ -293,9 +304,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center', padding: theme.spacing.lg,
   },
   // Clavier ouvert : carte collée en haut pour rester dans la zone libre
+  overlayFixed: { justifyContent: 'flex-start', paddingTop: 56 },
   card: {
     backgroundColor: theme.colors.surface, borderRadius: 10,
-    paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, paddingBottom: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.lg, paddingBottom: theme.spacing.md,
     width: '100%', maxWidth: 440, maxHeight: '100%',
     borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border,
   },
@@ -305,7 +317,7 @@ const styles = StyleSheet.create({
   },
   intro: {
     color: theme.colors.textMuted, fontSize: theme.font.sizes.sm, fontWeight: '400',
-    lineHeight: 18, marginBottom: theme.spacing.sm, textAlign: 'center',
+    lineHeight: 20, marginBottom: theme.spacing.md, textAlign: 'center',
   },
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -328,16 +340,16 @@ const styles = StyleSheet.create({
   },
   hint: {
     color: theme.colors.textFaint, fontSize: theme.font.sizes.xs, fontStyle: 'italic',
-    marginTop: 4, marginBottom: 6, textAlign: 'center',
+    marginTop: 6, marginBottom: 8, textAlign: 'center',
   },
   warningBox: {
     flexDirection: 'row', alignItems: 'flex-start', gap: theme.spacing.sm,
-    alignItems: 'center', paddingVertical: 6, paddingHorizontal: theme.spacing.sm, borderRadius: 4,
+    alignItems: 'center', paddingVertical: 9, paddingHorizontal: theme.spacing.sm, borderRadius: 4, marginTop: 4,
     borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border,
     backgroundColor: theme.colors.background,
   },
   warningText: { flex: 1, color: theme.colors.textMuted, fontSize: theme.font.sizes.xs, lineHeight: 16 },
-  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: theme.spacing.lg, marginTop: theme.spacing.sm },
+  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: theme.spacing.lg, marginTop: theme.spacing.md },
   cancelText: { color: theme.colors.textMuted, fontSize: theme.font.sizes.md, fontWeight: '400', paddingVertical: 4 },
   confirmText: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '600', paddingVertical: 4 },
   busyWrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: theme.spacing.xl, gap: theme.spacing.md },

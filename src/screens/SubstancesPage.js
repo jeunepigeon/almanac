@@ -223,13 +223,14 @@ export default function SubstancesPage() {
     setPendingArchivedConflict(null);
   };
 
+  // Ouvre le menu « ⋯ » de CETTE substance (bouton ⋯ ou appui long) ; chaque action agit sur elle seule
   const openActions = (sub) => setActionSheetFor(sub);
 
   const actionItems = (sub) => [
+    { id: 'reorder', label: 'Réorganiser', icon: 'drag', onPress: () => setReorderMode(true) },
     { id: 'rename', label: 'Renommer', icon: 'pencil-outline', onPress: () => setEditMode({ sub, mode: 'rename' }) },
     { id: 'color', label: 'Changer la couleur', icon: 'palette-outline', onPress: () => setEditMode({ sub, mode: 'color' }) },
     { id: 'icon', label: "Changer l'icône", icon: 'shape-outline', onPress: () => setEditMode({ sub, mode: 'icon' }) },
-    { id: 'reorder', label: 'Réorganiser la liste', icon: 'drag', onPress: () => setReorderMode(true) },
     { id: 'delete', label: 'Supprimer', icon: 'trash-can-outline', destructive: true, onPress: () => setPendingDelete(sub) },
   ];
 
@@ -253,7 +254,7 @@ export default function SubstancesPage() {
           data={substances}
           itemHeight={ROW_HEIGHT}
           active={reorderMode}
-          onActivate={() => setReorderMode(true)}
+          onItemLongPress={(sub) => openActions(sub)}
           onDeactivate={() => setReorderMode(false)}
           onReorder={(newIds) => reorderSubstances(newIds)}
           onItemTap={(sub) => navigation.navigate('Substance', { substanceId: sub.id })}

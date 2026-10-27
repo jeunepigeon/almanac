@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
   wrap: { marginBottom: 2 },
   dotsRow: {
     position: 'relative',
-    paddingVertical: 11,
+    paddingVertical: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.colors.border,
   },

@@ -122,19 +122,25 @@ const DayCell = memo(function DayCell({ date, markers, isToday, isFuture, isSobe
   // (avant : démonté par le parent en plein fondu → palier « opacité faible » puis disparition sèche).
   const [activeFlash, setActiveFlash] = useState(null);
   useEffect(() => {
-    if (!flashColor || !flashNonce) return;
+    if (!flashColor || !flashNonce) {
+      // Ce jour n'est plus la cible (spam) : on coupe son flash immédiatement
+      flash.stopAnimation();
+      flash.setValue(0);
+      setActiveFlash(null);
+      return;
+    }
     setActiveFlash(flashColor);
     flash.setValue(0);
     Animated.sequence([
-      Animated.timing(flash, { toValue: 1, duration: 110, useNativeDriver: true }),
+      Animated.timing(flash, { toValue: 1, duration: 150, useNativeDriver: true }),
       Animated.timing(flash, {
-        toValue: 0, duration: 480, useNativeDriver: true,
+        toValue: 0, duration: 600, useNativeDriver: true,
         easing: EasingLib.out(EasingLib.quad),
       }),
-    ]).start(() => setActiveFlash(null));
+    ]).start(({ finished }) => { if (finished) setActiveFlash(null); });
   }, [flashNonce]); // eslint-disable-line
   if (!date) return <View style={styles.dayCell} />;
-  const overlayOpacity = flash.interpolate({ inputRange: [0, 1], outputRange: [0, 0.55] });
+  const overlayOpacity = flash.interpolate({ inputRange: [0, 1], outputRange: [0, 0.65] });
   return (
     <TouchableOpacity
       style={[styles.dayCell, isToday && styles.dayCellToday]}
@@ -235,7 +241,7 @@ export default function ScrollableCalendar({
     if (flashTimer.current) clearTimeout(flashTimer.current);
     setFlashKey(dayKey);
     setFlashNonce((n) => n + 1);  // force re-render de l'animation
-    flashTimer.current = setTimeout(() => setFlashKey(null), 900);
+    flashTimer.current = setTimeout(() => setFlashKey(null), 1000);
   }, []);
   useEffect(() => () => flashTimer.current && clearTimeout(flashTimer.current), []);
 
@@ -305,8 +311,11 @@ export default function ScrollableCalendar({
   // Ouverture : on démarre sur le mois courant via initialScrollIndex (cf. FlatList),
   // + re-calage dès que la taille du contenu change tant que l'utilisateur n'a pas touché.
   const userTouchedRef = useRef(false);
+  const navigatedRef = useRef(false); // true dès la 1re navigation (chevrons, dropdown, prise)
   const snapToPresent = useCallback(() => {
-    if (userTouchedRef.current) return;
+    // Uniquement à l'ouverture : sinon un saut lointain (qui charge de nouveaux mois et change la
+    // taille du contenu) déclenchait ce recalage et ramenait au présent.
+    if (userTouchedRef.current || navigatedRef.current) return;
     try {
       flatListRef.current?.scrollToOffset({ offset: currentIdx * MONTH_ITEM_HEIGHT, animated: false });
       setVisibleIdx(currentIdx);
@@ -332,6 +341,7 @@ export default function ScrollableCalendar({
 
   const scrollToIdx = useCallback((idx, animated = true) => {
     if (!flatListRef.current) return;
+    navigatedRef.current = true;
     programmedScrollRef.current = true;
     try {
       flatListRef.current.scrollToOffset({ offset: idx * MONTH_ITEM_HEIGHT, animated });
@@ -408,7 +418,13 @@ export default function ScrollableCalendar({
     const d = new Date(dayTs);
     const idx = months.findIndex((m) => m.year === d.getFullYear() && m.month === d.getMonth());
     priseCursorRef.current = dayKey;
+    navigatedRef.current = true;
+    // Annule tout flash/scroll en attente d'un appui précédent (spam des chevrons)
+    pendingFlashRef.current = null;
+    if (scrollEndTimerRef.current) { clearTimeout(scrollEndTimerRef.current); scrollEndTimerRef.current = null; }
+    if (fallbackTimerRef.current) { clearTimeout(fallbackTimerRef.current); fallbackTimerRef.current = null; }
     if (idx < 0 || idx === visibleIdxRef.current) {
+      programmedScrollRef.current = false;
       triggerFlash(dayKey);
       return;
     }
@@ -484,8 +500,8 @@ export default function ScrollableCalendar({
       onDayPress={onDayPress}
       showSoberFill={showSoberFill}
       todayTime={todayTime}
-      flashKey={flashKey}
-      flashNonce={flashNonce}
+      flashKey={flashKey && flashKey.startsWith(`${item.year}-${pad2(item.month + 1)}-`) ? flashKey : null}
+      flashNonce={flashKey && flashKey.startsWith(`${item.year}-${pad2(item.month + 1)}-`) ? flashNonce : null}
       flashColor={substanceColor || '#FFFFFF'}
     />
   ), [markersByDay, onDayPress, showSoberFill, todayTime, flashKey, flashNonce, substanceColor]);
