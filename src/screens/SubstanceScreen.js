@@ -7,6 +7,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { theme } from '../theme';
 import { useStore } from '../store';
 import { getIconById } from '../icons';
+import SubstanceIcon from '../components/SubstanceIcon';
 import { formatDateLong, formatTime } from '../utils/dates';
 import LiveCounter from '../components/LiveCounter';
 import LogConsumptionModal from '../components/LogConsumptionModal';
@@ -88,13 +89,12 @@ export default function SubstanceScreen() {
     );
   }
 
-  const iconEntry = getIconById(substance.icon);
 
   return (
     <View style={styles.container}>
       <View style={styles.hero}>
         <View style={[styles.heroIcon, { borderColor: substance.color }]}>
-          <MaterialCommunityIcons name={iconEntry.icon} size={28} color={substance.color} />
+          <SubstanceIcon iconId={substance.icon} size={28} color={substance.color} />
         </View>
         <Text style={styles.heroLabel}>Sobre depuis</Text>
         <View style={styles.counterWrap}>

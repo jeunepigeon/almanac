@@ -61,7 +61,7 @@ export const ICONS = [
   { id: 'lightning-bolt', icon: 'lightning-bolt' },
   { id: 'water', icon: 'water' },
   { id: 'snowflake', icon: 'snowflake' },
-  { id: 'xxx', icon: 'alpha-x-box' }, // remplace le doublon 'fire' (pas d'icône « XXX » dans MDI),
+  { id: 'xxx', icon: 'alpha-x-box', custom: 'xxx' }, // xXx dessinée sur mesure (components/SubstanceIcon.js), 'icon' = repli ; remplace le doublon 'fire' (pas d'icône « XXX » dans MDI),
 ];
 
 export const DEFAULT_ICON_ID = 'circle';

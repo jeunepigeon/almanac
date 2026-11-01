@@ -3,6 +3,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../theme';
 import { formatDateLong, formatTime } from '../utils/dates';
 import { getIconById } from '../icons';
+import SubstanceIcon from './SubstanceIcon';
 import LiveCounter from './LiveCounter';
 import BottomSheet from './BottomSheet';
 
@@ -33,14 +34,13 @@ export default function DayDetailModal({
           renderItem={({ item }) => {
             const sub = singleSubstance ?? substancesById[item.substanceId];
             if (!sub) return null;
-            const iconEntry = getIconById(sub.icon);
             return (
               <Pressable
                 onPress={() => onTapConsumption?.(item, sub)}
                 style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
               >
                 <View style={[styles.iconWrap, { borderColor: sub.color }]}>
-                  <MaterialCommunityIcons name={iconEntry.icon} size={16} color={sub.color} />
+                  <SubstanceIcon iconId={sub.icon} size={16} color={sub.color} />
                 </View>
                 <View style={styles.rowMiddle}>
                   {!singleSubstance && <Text style={styles.rowName}>{sub.name}</Text>}

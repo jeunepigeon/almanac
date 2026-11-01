@@ -2,6 +2,7 @@ import { View, Text, StyleSheet, FlatList, Pressable } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../theme';
 import { getIconById } from '../icons';
+import SubstanceIcon from './SubstanceIcon';
 import BottomSheet from './BottomSheet';
 
 export default function SubstancePicker({ visible, substances, onPick, onClose }) {
@@ -17,14 +18,13 @@ export default function SubstancePicker({ visible, substances, onPick, onClose }
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => {
-            const iconEntry = getIconById(item.icon);
             return (
               <Pressable
                 onPress={() => onPick(item)}
                 style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
               >
                 <View style={[styles.iconWrap, { borderColor: item.color }]}>
-                  <MaterialCommunityIcons name={iconEntry.icon} size={18} color={item.color} />
+                  <SubstanceIcon iconId={item.icon} size={18} color={item.color} />
                 </View>
                 <Text style={styles.rowName}>{item.name}</Text>
                 <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.textFaint} />

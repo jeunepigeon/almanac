@@ -1,162 +1,177 @@
 # Almanac
 
-**Tracker neutre de consommation** — outil personnel et privé pour suivre n'importe quel comportement répété : substances, habitudes, prises de médicaments, etc.
+**Tracker de consommation neutre et privé** pour Android : substances, habitudes, médicaments, n'importe quel comportement répété.
 
-Tout reste **local sur ton téléphone** (SQLite via expo-sqlite). Aucun compte, aucun serveur, aucun tracking.
+Tout reste **sur le téléphone** (SQLite local). Pas de compte, pas de serveur, pas de tracking. Les seules données qui sortent de l'appareil sont les exports que tu crées toi-même, chiffrés par un code PIN.
 
-**Version actuelle : v1.1.6** — Android only (build APK via EAS).
+**Version actuelle : 1.22** · Android · build APK via EAS · développement démarré le 26 avril 2026.
+
+---
+
+## Fonctionnalités
+
+### Substances
+- Liste des substances avec compteur en direct « sobre depuis » pour chacune, et bandeau **« Sobre de tout depuis »** en haut. Un tap sur le bandeau fait défiler jusqu'à la substance de la dernière prise et la met en surbrillance.
+- Chaque substance a un nom, une couleur (palette de 12) et une icône (grille de 40, dont une xXx dessinée sur mesure).
+- **Bandeaux par couleur** : sous « Sobre de tout », un bandeau « Sobre depuis » par couleur choisie (couleurs ayant au moins 2 substances), ajouté via la pilule **+**. Tap → défile jusqu'à la dernière substance consommée de cette couleur ; appui long → Réorganiser (entre bandeaux, « Sobre de tout » reste en tête) / Supprimer.
+- Appui long sur une substance → menu : **Réorganiser** · Renommer · Changer la couleur · Changer l'icône · Supprimer.
+- **Réorganisation par glisser-déposer** : appui long pour saisir, défilement automatique près des bords, retour haptique à chaque changement de place.
+- Supprimer une substance crée d'abord une sauvegarde automatique, ce qui la rend récupérable.
+
+### Prises
+- Ajout depuis le bouton **+** : date et heure, dosage (optionnel) et commentaire (optionnel).
+- Modification et suppression depuis le calendrier ou la recherche.
+
+### Vue par substance et vue Global
+- Trois onglets : **Calendrier**, **Recherche** (historique filtrable) et **Stats**.
+- **Calendrier défilant** qui s'ouvre sur le mois en cours et commence à la première prise. Il propose un menu déroulant des mois, des chevrons mois par mois, un retour au présent, et des chevrons « prise précédente / suivante » avec surbrillance de la case.
+- **Stats** sur des fenêtres glissantes (30 j, 90 j, 180 j, 365 j, Tout ou période perso) :
+  - total, jours avec / sans, pause en cours, plus longue pause, plus longue série, intervalle moyen, prises par semaine ;
+  - courbe d’activité dans le temps (prises ou dosage), statistiques de dosage, répartition par heure de la journée et par jour de la semaine, camembert ;
+  - en vue Global : plusieurs courbes (une par substance cochée) et jours sobres consécutifs.
+
+### Sauvegardes, export et import
+- **Gestionnaire de sauvegardes** interne (snapshots), à restaurer ou fusionner avec les données actuelles.
+- Une sauvegarde automatique est faite avant chaque import, restauration ou suppression.
+- **Export chiffré `.almanac`** : choix des substances, code PIN à 4 chiffres, puis choix de l'emplacement du fichier à chaque export. Le fichier écrit est relu et sa taille vérifiée.
+- **Import** avec déchiffrement automatique au 4e chiffre du PIN, choix des substances et barre de progression.
+- **Fusion intelligente** : les substances de même nom sont fusionnées et les prises en double ignorées.
+- Noms de fichiers horodatés : `nom-JJ-MM-AAAA-HHhMM.almanac`.
+
+### Divers
+- Retours haptiques sur toute l'app.
+- Dons via le Play Store (Palier 1 à 6).
+- Zone de danger : remise à zéro complète, avec les données conservées dans le gestionnaire de sauvegardes.
+
+---
+
+## Chiffrement des exports
+
+- **AES-256-CBC**, clé dérivée du code PIN par **PBKDF2-SHA256, 10 000 itérations**, avec un sel et un IV aléatoires pour chaque fichier.
+- Le sel, l'IV et le nombre d'itérations sont dans l'en-tête du fichier, donc les anciens exports restent lisibles si le nombre d'itérations change.
+- Un PIN oublié rend le fichier illisible : il n'existe aucune porte dérobée.
+- La base SQLite locale n'est pas chiffrée. Seuls les exports le sont.
 
 ---
 
 ## Stack technique
 
-- **React Native + Expo SDK 54**
-- **expo-sqlite** — base de données locale
-- **Zustand** — état global
-- **expo-iap** — donations Play Store (palier 1 à 6)
-- **react-native-svg** — graphiques custom (BarChart, LineChart, MultiLineChart, PieChart)
-- **@react-navigation/native** + native-stack — navigation
-- **crypto-js + expo-crypto** — chiffrement AES-256 des exports
-- **expo-file-system + expo-sharing + expo-document-picker** — import/export
+| Rôle | Librairie |
+|---|---|
+| Framework | React Native 0.81 + **Expo SDK 54** |
+| Base de données | `expo-sqlite` |
+| État global | `zustand` |
+| Navigation | `@react-navigation/native` + `native-stack`, `react-native-pager-view` |
+| Gestes (réorganisation) | `react-native-gesture-handler` |
+| Graphiques | `react-native-svg` (composants maison) |
+| Chiffrement | `crypto-js`, `expo-crypto` |
+| Fichiers | `expo-file-system` (Storage Access Framework), `expo-document-picker` |
+| Préférences | `@react-native-async-storage/async-storage` |
+| Haptique | `expo-haptics` |
+| Dons | `expo-iap` |
+| Divers | `@react-native-community/datetimepicker`, `expo-keep-awake`, `@expo/vector-icons` (Material Community Icons) |
 
 ---
 
 ## Build
 
 ```bash
-eas build --platform android --profile preview
+eas build --platform android --profile production
 ```
 
-À chaque nouvelle version, incrémenter **versionCode** dans `app.json` sinon Android peut ne pas considérer le build comme une mise à jour.
+- Le profil `production` produit un **APK** (`eas.json` → `buildType: "apk"`).
+- À chaque version, il faut incrémenter `version` **et** `versionCode` dans `app.json`. La version affichée dans Paramètres est lue depuis `app.json`.
 
 ---
 
 ## Structure du projet
 
 ```
+App.js                         # Navigation + GestureHandlerRootView
+plugins/with-adi-registration.js
 src/
-├── components/
-│   ├── Charts.js              # BarChart, LineChart, MultiLineChart, PieChart, ChartCard
-│   ├── GlobalHistoryView.js   # Onglet Historique au global (avec pills multi-sélection)
-│   ├── LiveCounter.js          # Compteur temps écoulé (s, min, heures, jours, mois, an/ans)
-│   ├── LogConsumptionModal.js  # Modale ajout/édition conso
-│   ├── MonthCalendar.js        # Calendrier mensuel avec cercle vert jours sobres
-│   └── StatsView.js            # Vue stats (hero, grille 3x3, camembert, courbes)
 ├── screens/
-│   ├── MainScreen.js           # Wrapper pager Substances/Global
-│   ├── SubstancesPage.js       # Liste des substances avec compteur live
-│   ├── GlobalCalendarPage.js   # Page Global avec onglets Calendrier/Historique/Stats
-│   ├── SubstanceScreen.js      # Page d'une substance (Calendrier/Historique/Stats)
-│   ├── SettingsScreen.js       # Paramètres
-│   ├── ExportScreen.js         # Export AES-256
-│   ├── ImportScreen.js         # Import AES-256
-│   └── DonationsScreen.js      # 6 paliers de soutien
+│   ├── MainScreen.js           # Pager Substances / Global
+│   ├── SubstancesPage.js       # Liste, bandeau « Sobre de tout », réorganisation
+│   ├── GlobalCalendarPage.js   # Global : Calendrier / Recherche / Stats
+│   ├── SubstanceScreen.js      # Substance : Calendrier / Recherche / Stats
+│   ├── SettingsScreen.js       # Paramètres, sauvegardes, export / import
+│   └── DonationsScreen.js      # Paliers de soutien
+├── components/
+│   ├── ScrollableCalendar.js   # Calendrier défilant + navigation entre prises
+│   ├── StatsView.js, Charts.js # Stats et graphiques SVG
+│   ├── GlobalHistoryView.js    # Recherche au global
+│   ├── LiveCounter.js          # Compteurs « sobre depuis »
+│   ├── SubstanceIcon.js        # Icône de substance (MDI + icônes sur mesure)
+│   ├── ColorBannerAddModal.js  # Ajout d'un bandeau par couleur
+│   ├── ReorderList.js          # Glisser-déposer (gesture-handler)
+│   ├── ExportWizard.js         # Export chiffré
+│   ├── ImportWizard.js         # Import + fusion
+│   ├── RestoreWizard.js        # Restauration depuis le gestionnaire
+│   ├── PinField.js             # Saisie du code PIN
+│   ├── SubCard.js, SubstanceSelectModal.js
+│   ├── SubstanceFormModal.js   # Création / modification de substance
+│   ├── LogConsumptionModal.js, DayDetailModal.js
+│   └── ActionSheet.js, ConfirmModal.js, InfoModal.js, ResultModal.js, …
 ├── utils/
-│   ├── stats.js                # WINDOWS, computeStats, computeGlobalStats, formatDaysLong
-│   ├── duration.js             # formatDurationSince (mots complets fr)
-│   ├── dates.js                # formatDateLong, formatTime, dayKeyOf
-│   ├── exportImport.js         # Chiffrement export/import
-│   └── useBilling.js           # Hook expo-iap
-├── store/                       # Zustand store
-├── db/                          # SQLite (init, migrations, requêtes)
-└── theme.js                     # Palette 12 couleurs, espacements, typo
+│   ├── exportImport.js         # Format .almanac + chiffrement
+│   ├── fusion.js               # Fusion import / restauration
+│   ├── snapshots.js            # Sauvegardes internes
+│   ├── saf.js                  # Écriture via Storage Access Framework
+│   ├── stats.js, duration.js, dates.js
+│   ├── prefs.js                # Préférences locales (bandeaux)
+│   ├── haptics.js, useKeyboard.js, modalPosition.js, keepAwake.js
+│   └── useBilling.js           # Dons (expo-iap)
+├── store/index.js              # Store Zustand
+├── db/index.js                 # SQLite : schéma, migrations, requêtes
+├── icons.js                    # Les 40 icônes disponibles
+└── theme.js                    # Palette, espacements, typo
 ```
 
 ---
 
-## Release notes
+## Historique
 
-### v1.1.6 — actuelle
-- **Courbes/points jamais à 0** : points isolés à 30 % de hauteur, courbes scalées entre 5 % (min positif) et 100 % (max). Un humain voit d'un coup d'œil que "consommé" est visuellement au-dessus du fond.
-- **Liste substances** : layout sobre nom + compteur sur une ligne, weight light harmonisé.
-- **Pills filtres historique** : `flex-wrap` au lieu de scroll horizontal, toutes visibles d'un coup, plus de mouvement bizarre quand "aucune conso".
-- **Settings** : "fait par pigeon" → "développé par pigeon".
+### 1.22
+- **Bandeaux « Sobre depuis » par couleur** : ajout via la pilule +, tap pour aller à la dernière substance de la couleur, appui long pour réorganiser ou supprimer.
+- Réorganisation plus fluide : seules les lignes qui bougent sont redessinées, et elles glissent au lieu de sauter.
+- Icône xXx dessinée sur mesure (sans cadre).
+- Grille d'icônes revenue en 8×5.
+- Import : le champ PIN est vidé quand on revient à l'étape PIN.
 
-### v1.1.5
-- **Calendrier global jours sobres** : cercle vert (liseret) autour du chiffre, dimensions parfaitement carrées (32×32) pour garantir le rond.
-- **Pills historique = AND** : tap plusieurs substances → on ne voit que les jours où *toutes* ont été consommées. Sinon "Aucune conso correspondante".
-- **Fenêtre 30 jours en mode points** : sur une si courte période, pas de tendance possible — tout est affiché en points avec jitter horizontal anti-overlap.
-- **Liste substances layout D (temporaire)** : compteur dominant à droite.
-- **Format temps en mots complets** : `45 min` / `3 heures 12 min` / `5 jours 3 heures` / `2 mois 5 jours` / `1 an 2 mois` / `2 ans 5 mois`. Pluriel correct.
-- **Déduplication markers calendrier par couleur** : si 2 substances ont la même couleur, un seul point.
+### 1.21
+- Export : la correspondance des deux PIN est vérifiée dès que les deux champs sont pleins. Effacer sur le 2e champ vide ramène au 1er. Les champs sont remis à zéro au retour vers la sélection.
+- Import : déchiffrement automatique au 4e chiffre.
 
-### v1.1.4
-- **Courbes intelligentes** : ≥ 4 occurrences = courbe reliant tous les points actifs ; < 4 = points isolés.
-- **Suppression Activity Detail + pinch zoom + hint "Cliquer pour explorer"** : allégement du code, suppression des deps `gesture-handler` et `reanimated`.
+### 1.20
+- Réorganisation refaite avec `react-native-gesture-handler` : glisser-déposer fiable, défilement normal dans le mode et défilement automatique près des bords.
+- Le bandeau « Sobre de tout » centre la substance concernée à l'écran.
+- Les exports contiennent de nouveau les substances complètes (icône, ordre, date de création). À l'import, l'icône est récupérée si la substance actuelle a l'icône par défaut.
+- La grille d'icônes s'adapte pour que la création de substance tienne sans défiler. Correction d'une icône en double.
 
-### v1.1.3
-- **Onglet "Historique" au global** : Calendrier / Historique / Stats.
-- **Capsule glissante** Prises/Dosage avec hitbox unique.
-- **Format temps long** "1 mois 12 jours" dans la grille 3×3.
-- **Liste substances** : compteur en plus gros.
+### 1.1.16 → 1.1.19
+- Nouveaux **assistants d'export, d'import et de restauration** dans une fenêtre, avec sélection des substances par cartes.
+- Saisie du PIN par points, avec retours d'erreur (secousse et haptique).
+- Export via Storage Access Framework, avec choix de l'emplacement, relecture et vérification de la taille du fichier.
+- Fusion automatique par nom, avec dédoublonnage des prises et compteurs de résultat.
+- Le gestionnaire de sauvegardes est séparé des actions. Une sauvegarde automatique est faite avant import, restauration et suppression.
+- Nouveau menu par appui long sur une substance, et nouveau mode réorganisation.
+- Calendrier : ouverture sur le mois en cours, chevrons « prise précédente / suivante » relatifs au mois affiché, surbrillance des cases, butées.
+- Retours haptiques dans toute l'app. Horodatage `JJ-MM-AAAA-HHhMM`.
 
-### v1.1.2
-- Fix rendu des courbes : segments propres, plus de cercles dispersés.
-- Page Activité dans le temps charge ses propres données depuis la DB.
+### 1.1.7 → 1.1.15
+- Système de **sauvegardes internes** (snapshots), **calendrier défilant**, courbes segmentées, bouton flottant **+** et premier **export chiffré par code PIN**.
 
-### v1.1.0 – v1.1.1
-- Page dédiée Activité dans le temps avec pinch zoom (retirée en v1.1.4).
-- Mode Doses sans dosage renseigné → plateau plat à 0.5.
-
-### v1.0.9
-- **Multi-courbes au global** : une courbe par substance cochée dans le camembert.
-- **Hero global LiveCounter** "Temps depuis la dernière" toutes substances confondues.
-- **Tendance → Jours consommés %** dans la grille 3×3.
-
-### v1.0.8
-- Switch Prises/Jours dans le titre du graphique d'activité.
-
-### v1.0.7
-- Graduations temporelles sous la courbe (3 dates).
-- Hero "Jours sobres consécutifs" au global.
-
-### v1.0.5 – v1.0.6
-- Arc-en-ciel par segment au global (substance dominante par jour).
-- Bandeau date harmonisé, plus bas pour centrage vertical.
-- Checkboxes triées par couleur, sélection conservée au switch de fenêtre.
-
-### v1.0.4
-- Décocher une substance au global → exclue du timeline, heure, jour de semaine.
-- Bouton "Perso" + date picker natif Android.
-- Pause en cours + plus longue pause sur historique complet.
-
-### v1.0.3
-- Checkboxes camembert scrollables.
-- Couleur dominante sur le timeline au global.
-
-### v1.0.2
-- Fenêtres glissantes : 30j / 90j / 180j / 365j / Tout.
-
-### v1.0.1
-- Logo final : "a" Termes serif + 4 points colorés.
-- Donations renommées Palier 1 à 6.
-- Vérification ADI via plugin `withDangerousMod`.
-
-### v1.0.0
-- Migration `expo-in-app-purchases` → `expo-iap`.
-- Premier build prêt pour publication.
+### 1.0.0 → 1.1.6
+- Base de l'app : SQLite local, substances et prises, calendrier mensuel, stats sur fenêtres glissantes, courbes, camembert, vue Global, dons via `expo-iap`, logo, vérification ADI.
 
 ---
 
-## Status Google Play Console
+## Prévu
 
-- [x] Vérification d'identité
-- [x] Package `com.jeunepigeon.almanac` enregistré
-- [x] Vérification ADI signée
-- [x] Privacy policy hébergée (emilio.website/almanac/privacy)
-- [ ] Créer les 6 in-app products (Palier 1 à 6, consumables)
-- [ ] Upload APK en Internal Testing
-- [ ] 12 testeurs pendant 14 jours
-- [ ] Soumission publication publique
-
----
-
-## Pour aller plus loin
-
-- **i18n** FR/EN/IT/ES avec détection auto et fallback anglais
-- **Bloquer la navigation future** dans les calendriers
-- **Build local** comme alternative à EAS Cloud (limite 15 builds/mois)
-- **SQLCipher** pour chiffrer la DB elle-même (actuellement seuls les exports sont AES-256)
+- **Chiffrement natif** (`react-native-quick-crypto`) pour un déchiffrement quasi instantané.
+- **Notifications de paliers de sobriété** (24 h, 48 h, 1 semaine, 15 jours, puis chaque mois), par substance ou pour « Sobre de tout ».
+- **Session d'optimisation** : cache central des prises, statistiques précalculées, nettoyage du code hérité.
 
 ---
 

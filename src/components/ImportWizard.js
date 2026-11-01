@@ -84,8 +84,8 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
     if (!visible) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (step === 'pick') { onClose?.(); return true; }
-      if (step === 'pin') { Keyboard.dismiss(); setStep('pick'); return true; }
-      if (step === 'select') { setStep('pin'); return true; }
+      if (step === 'pin') { Keyboard.dismiss(); setPin(''); setStep('pick'); return true; }
+      if (step === 'select') { setPin(''); setStep('pin'); return true; }
       if (step === 'result') { onClose?.(); return true; }
       return true;
     });
@@ -226,7 +226,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
                 onSubmitEditing={submitPin}
               />
               <View style={styles.actions}>
-                <TouchableOpacity onPress={() => { Keyboard.dismiss(); setStep('pick'); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <TouchableOpacity onPress={() => { Keyboard.dismiss(); setPin(''); setStep('pick'); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                   <Text style={styles.cancelText}>Retour</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={submitPin} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
@@ -271,7 +271,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
                 ))}
               </ScrollView>
               <View style={styles.actions}>
-                <TouchableOpacity onPress={() => setStep('pin')}>
+                <TouchableOpacity onPress={() => { setPin(''); setStep('pin'); }}>
                   <Text style={styles.cancelText}>Retour</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={doImport} disabled={noneSelected}>

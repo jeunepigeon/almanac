@@ -18,9 +18,9 @@
 //  - « Terminé » ou retour Android → sortie + enregistrement de l'ordre.
 // Aucune priorité d'affichage (zIndex/elevation) dans la liste.
 
-import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, memo } from 'react';
 import {
-  View, Text, StyleSheet, Pressable, Animated, TouchableOpacity, BackHandler,
+  View, Text, StyleSheet, Pressable, Animated, TouchableOpacity, BackHandler, Easing,
 } from 'react-native';
 import { Gesture, GestureDetector, ScrollView } from 'react-native-gesture-handler';
 import { theme } from '../theme';
@@ -52,9 +52,26 @@ function WiggleContent({ children, isWiggling, phase }) {
 
 // Ligne en mode actif : geste natif (Pan après appui long). Le conteneur porte le séparateur
 // et le décalage ; seul le contenu vibre / devient invisible quand la ligne est saisie.
-function ActiveRow({ item, index, itemHeight, offsetY, isPicked, isWiggling, handlersRef, renderItem }) {
+//
+// Perf (1.22) :
+//  - memo : à chaque changement de place pendant le drag, seules les lignes dont le décalage
+//    change sont redessinées (avant : toute la liste) ;
+//  - décalage animé côté natif (glisse en 140 ms au lieu de sauter) PENDANT le drag ;
+//  - hors drag, décalage statique 0 : au lâcher, le nouvel ordre et la remise à 0 arrivent dans
+//    le même rendu (pas de saut d'une frame).
+const ActiveRow = memo(function ActiveRow({
+  item, index, itemHeight, offsetY, dragging, isPicked, isWiggling, handlersRef, renderItem,
+}) {
   const indexRef = useRef(index);
   indexRef.current = index;
+  const offAnim = useRef(new Animated.Value(0)).current;
+
+  useLayoutEffect(() => {
+    if (!dragging) { offAnim.stopAnimation(); offAnim.setValue(0); return; }
+    Animated.timing(offAnim, {
+      toValue: offsetY, duration: 140, easing: Easing.out(Easing.cubic), useNativeDriver: true,
+    }).start();
+  }, [offsetY, dragging, offAnim]);
 
   const gesture = useMemo(() => Gesture.Pan()
     .activateAfterLongPress(LONG_PRESS_MS)
@@ -64,11 +81,13 @@ function ActiveRow({ item, index, itemHeight, offsetY, isPicked, isWiggling, han
     .onEnd(() => handlersRef.current.end())
     .onFinalize(() => handlersRef.current.finalize()), [handlersRef]);
 
+  const translateY = dragging && !isPicked ? offAnim : 0;
+
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View
         collapsable={false}
-        style={[styles.rowContainer, { height: itemHeight, transform: [{ translateY: isPicked ? 0 : offsetY }] }]}
+        style={[styles.rowContainer, { height: itemHeight, transform: [{ translateY }] }]}
       >
         <View style={{ opacity: isPicked ? 0 : 1 }}>
           <WiggleContent isWiggling={isWiggling} phase={index % 3}>
@@ -78,7 +97,7 @@ function ActiveRow({ item, index, itemHeight, offsetY, isPicked, isWiggling, han
       </Animated.View>
     </GestureDetector>
   );
-}
+});
 
 function moveItem(arr, from, to) {
   const next = [...arr];
@@ -100,6 +119,7 @@ export default function ReorderList({
   active,
   onDeactivate,
   headerComponent = null,
+  footerComponent = null,  // affiché sous la liste (ex. substances grisées pendant la réorg des bandeaux)
   scrollRef = null,
 }) {
   const [localIds, setLocalIds] = useState(data.map((d) => d.id));
@@ -254,8 +274,16 @@ export default function ReorderList({
     barTop = hoverIdx < pickupIdx ? hoverIdx * itemHeight : (hoverIdx + 1) * itemHeight;
   }
 
-  const items = localIds.map((id) => data.find((d) => d.id === id)).filter(Boolean);
+  let items = localIds.map((id) => data.find((d) => d.id === id)).filter(Boolean);
+  // Changement de jeu de données (ex. substances → bandeaux) : on suit data tout de suite
+  if (items.length !== data.length) items = data;
   const pickedItem = pickupIdx != null ? items[pickupIdx] : null;
+  // Copie qui suit le doigt : construite une fois par saisie (pas à chaque changement de place)
+  const cloneContent = useMemo(() => (pickedItem ? (
+    <WiggleContent isWiggling phase={0}>
+      {renderItem({ item: pickedItem, index: pickupIdx, isWiggling: true, isPickup: true, inReorder: true })}
+    </WiggleContent>
+  ) : null), [pickedItem, pickupIdx, renderItem]);
 
   return (
     <View
@@ -292,6 +320,7 @@ export default function ReorderList({
                   index={idx}
                   itemHeight={itemHeight}
                   offsetY={offsetFor(idx)}
+                  dragging={pickupIdx != null}
                   isPicked={isPicked}
                   isWiggling={pickupIdx == null}
                   handlersRef={handlersRef}
@@ -332,14 +361,11 @@ export default function ReorderList({
                 },
               ]}
             >
-              {pickedItem && (
-                <WiggleContent isWiggling phase={0}>
-                  {renderItem({ item: pickedItem, index: pickupIdx, isWiggling: true, isPickup: true, inReorder: true })}
-                </WiggleContent>
-              )}
+              {cloneContent}
             </Animated.View>
           )}
         </View>
+        {footerComponent}
       </ScrollView>
 
       {active && (

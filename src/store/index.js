@@ -28,6 +28,9 @@ function normalizeName(name) {
 }
 import { dbGetSnapshotData } from '../db';
 import * as Crypto from 'expo-crypto';
+import { getJSON, setJSON } from '../utils/prefs';
+
+const COLOR_BANNERS_KEY = 'almanac.colorBanners';
 
 export const useStore = create((set, get) => ({
   substances: [],
@@ -42,6 +45,28 @@ export const useStore = create((set, get) => ({
   requestGotoGlobalStats: () => set((s) => ({ gotoGlobalStatsTick: s.gotoGlobalStatsTick + 1 })),
   pagerLocked: false,
   setPagerLocked: (locked) => set({ pagerLocked: !!locked }),
+
+  // Bandeaux « Sobre depuis » par couleur (1.22) : liste ordonnée de couleurs.
+  colorBanners: [],
+  addColorBanner: (color) => {
+    const cur = get().colorBanners;
+    if (cur.includes(color)) return;
+    const next = [...cur, color];
+    set({ colorBanners: next });
+    setJSON(COLOR_BANNERS_KEY, next);
+  },
+  removeColorBanner: (color) => {
+    const next = get().colorBanners.filter((c) => c !== color);
+    set({ colorBanners: next });
+    setJSON(COLOR_BANNERS_KEY, next);
+  },
+  // newOrder : couleurs visibles dans le nouvel ordre ; les couleurs masquées (0 substance) gardent leur place en fin
+  reorderColorBanners: (newOrder) => {
+    const rest = get().colorBanners.filter((c) => !newOrder.includes(c));
+    const next = [...newOrder, ...rest];
+    set({ colorBanners: next });
+    setJSON(COLOR_BANNERS_KEY, next);
+  },
   ready: false,
 
   loadAll: async () => {
@@ -49,7 +74,9 @@ export const useStore = create((set, get) => ({
     const lastTimestamps = await dbGetLastTimestampBySubstance();
     const snapshots = await dbGetAllSnapshots();
     const hasUnconsulted = snapshots.some((s) => !s.consulted);
+    const colorBanners = await getJSON(COLOR_BANNERS_KEY, []);
     set({
+      colorBanners: Array.isArray(colorBanners) ? colorBanners : [],
       substances: all.filter((s) => !s.archived),
       archivedSubstances: all.filter((s) => s.archived),
       lastTimestamps,

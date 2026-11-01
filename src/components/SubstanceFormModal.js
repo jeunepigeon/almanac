@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useWindowDimensions } from 'react-native';
 import {
   Modal,
   View,
@@ -15,6 +14,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { theme } from '../theme';
 import { ICONS, DEFAULT_ICON_ID } from '../icons';
+import SubstanceIcon from './SubstanceIcon';
 
 // Modal réutilisable :
 // - mode "create" : formulaire complet, callback onSubmit({ name, color, icon })
@@ -85,25 +85,6 @@ export default function SubstanceFormModal({
 
   const selectedColor = theme.substanceColors[colorIndex];
 
-  // --- Grille 5×8 qui tient sans défilement (v1.20) ---
-  // On mesure tout ce qui n'est pas la grille, puis on réduit les cases juste assez pour que la
-  // fenêtre entière tienne dans 85 % de l'écran. Si ça tient déjà (« Changer l'icône »), rien ne change.
-  const { height: winH } = useWindowDimensions();
-  const [m, setM] = useState({ titleH: 0, actionsH: 0, contentH: 0, gridH: 0, innerW: 0 });
-  const setMeasure = (k, v) => setM((prev) => (Math.abs((prev[k] || 0) - v) > 1 ? { ...prev, [k]: v } : prev));
-  let gridWidth = null;
-  let iconSize = 30;
-  if (m.innerW && m.gridH && m.contentH && m.titleH && m.actionsH) {
-    const fullCell = m.innerW / 5;
-    const nonGrid = (m.contentH - m.gridH) + m.titleH + m.actionsH + theme.spacing.lg * 2 + 40; // marges
-    const cell = Math.floor((winH * 0.85 - nonGrid) / 8);
-    if (cell < fullCell) {
-      const c = Math.max(30, cell);
-      gridWidth = c * 5;
-      iconSize = Math.max(16, Math.min(30, Math.round((c - 10) * 0.6)));
-    }
-  }
-
   return (
     <Modal
       visible={visible}
@@ -117,16 +98,8 @@ export default function SubstanceFormModal({
           style={styles.center}
         >
           <Pressable style={styles.card} onPress={() => {}}>
-            <Text style={styles.title} onLayout={(e) => setMeasure('titleH', e.nativeEvent.layout.height)}>{titles[mode]}</Text>
+            <Text style={styles.title}>{titles[mode]}</Text>
 
-            {/* Contenu scrollable (grille 5×8 plus haute) ; boutons fixes en bas */}
-            <ScrollView
-              style={styles.formScroll}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              onLayout={(e) => setMeasure('innerW', e.nativeEvent.layout.width)}
-              onContentSizeChange={(w, h) => setMeasure('contentH', h)}
-            >
             {showName && (
               <TextInput
                 value={name}
@@ -162,10 +135,7 @@ export default function SubstanceFormModal({
             {showIcon && (
               <>
                 <Text style={styles.fieldLabel}>Icône</Text>
-                <View
-                  style={[styles.iconGridStatic, gridWidth ? { width: gridWidth, alignSelf: 'center' } : null]}
-                  onLayout={(e) => setMeasure('gridH', e.nativeEvent.layout.height)}
-                >
+                <View style={styles.iconGridStatic}>
                   {ICONS.map((entry) => {
                     const selected = entry.id === iconId;
                     return (
@@ -180,9 +150,9 @@ export default function SubstanceFormModal({
                             },
                           ]}
                         >
-                          <MaterialCommunityIcons
-                            name={entry.icon}
-                            size={iconSize}
+                          <SubstanceIcon
+                            iconId={entry.id}
+                            size={18}
                             color={selected ? selectedColor : theme.colors.textMuted}
                           />
                         </TouchableOpacity>
@@ -192,9 +162,8 @@ export default function SubstanceFormModal({
                 </View>
               </>
             )}
-            </ScrollView>
 
-            <View style={styles.actions} onLayout={(e) => setMeasure('actionsH', e.nativeEvent.layout.height)}>
+            <View style={styles.actions}>
               <TouchableOpacity onPress={onClose} style={styles.actionBtn}>
                 <Text style={styles.actionMuted}>Annuler</Text>
               </TouchableOpacity>
@@ -286,14 +255,12 @@ const styles = StyleSheet.create({
   colorDotSelected: {
     borderColor: theme.colors.text,
   },
-  formScroll: { flexGrow: 0, flexShrink: 1 },
   iconScroll: {
     maxHeight: 180,
     marginBottom: theme.spacing.lg,
   },
-  // Grille icônes 5×8 (v1.1.19) : chaque cellule prend 1/5 de la largeur, carrée, icône 30.
-  // ROLLBACK 8×5 : iconCell.width '12.5%', padding 3, icône size 18.
-  // Pas de gap (sinon flex-wrap casse), le padding interne de iconCellInner fait l'espacement.
+  // Grille icônes 8×5 : chaque cellule prend 1/8 de la largeur, carrée.
+  // Pas de gap (sinon flex-wrap casse en 7 par ligne), le padding interne de iconCellInner fait l'espacement.
   iconGridStatic: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -306,18 +273,18 @@ const styles = StyleSheet.create({
     paddingBottom: theme.spacing.sm,
   },
   iconCell: {
-    width: '20%',
+    width: '12.5%',
     aspectRatio: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 5,
+    padding: 3,
   },
   iconCellInner: {
     width: '100%',
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 8,
+    borderRadius: 4,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
