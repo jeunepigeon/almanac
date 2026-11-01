@@ -47,7 +47,7 @@ export default function SubstanceFormModal({
       } else {
         setName('');
         setColorIndex(0);
-        setIconId(DEFAULT_ICON_ID);
+        setIconId(ICONS[0].id); // création : 1re icône de la liste (1.24)
       }
     }
   }, [visible, initial]);

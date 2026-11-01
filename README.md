@@ -4,7 +4,7 @@
 
 Tout reste **sur le téléphone** (SQLite local). Pas de compte, pas de serveur, pas de tracking. Les seules données qui sortent de l'appareil sont les exports que tu crées toi-même, chiffrés par un code PIN.
 
-**Version actuelle : 1.23** · Android · build APK via EAS · développement démarré le 26 avril 2026.
+**Version actuelle : 1.24** · Android · build APK via EAS · développement démarré le 26 avril 2026.
 
 ---
 
@@ -131,6 +131,12 @@ src/
 ---
 
 ## Historique
+
+### 1.24
+- Compteurs centrés dans une colonne (liste des substances et fenêtre d'un jour du calendrier).
+- Réorganisation : repère et haptique quand l'élément saisi arrive en butée de sa section.
+- Confirmation de suppression d'un bandeau avec sa pastille de couleur ; textes du choix de bandeau corrigés.
+- Création de substance : icône par défaut = la première de la liste.
 
 ### 1.23
 - **Un seul mode réorganisation**, ouvert par appui long sur une substance ou un bandeau, avec **poubelle** à droite (confirmation ; sauvegarde automatique avant suppression d'une substance). Le menu ⋯ ne garde que Renommer / Couleur / Icône.

@@ -97,7 +97,7 @@ function SubstanceRow({
           <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.danger} />
         </TouchableOpacity>
       )}
-      {!inReorder && <LiveCounter timestamp={lastTimestamp} style={styles.rowCounter} />}
+      {!inReorder && <LiveCounter timestamp={lastTimestamp} style={styles.rowCounter} numberOfLines={1} adjustsFontSizeToFit />}
       {!inReorder && (
         <TouchableOpacity
           onPress={onMenu}
@@ -377,9 +377,6 @@ export default function SubstancesPage() {
     );
   };
 
-  const pendingBannerNames = pendingBannerDelete
-    ? (bannerInfo.visible.find((b) => b.color === pendingBannerDelete)?.names || []).join(' · ')
-    : '';
 
   return (
     <View style={styles.container}>
@@ -441,7 +438,13 @@ export default function SubstancesPage() {
       <ConfirmModal
         visible={!!pendingBannerDelete}
         title="Supprimer ce bandeau ?"
-        message={`Le bandeau « ${pendingBannerNames} » sera retiré. Les substances et leurs prises ne sont pas touchées.`}
+        message={(
+          <Text>
+            {'Le bandeau '}
+            <Text style={{ color: pendingBannerDelete || theme.colors.text, fontSize: 18 }}>●</Text>
+            {' sera retiré. Les substances et leurs prises ne sont pas touchées.'}
+          </Text>
+        )}
         cancelLabel="Annuler"
         confirmLabel="Supprimer"
         destructive
@@ -558,9 +561,11 @@ const styles = StyleSheet.create({
   },
   rowMiddle: { flex: 1, marginRight: theme.spacing.sm, justifyContent: 'center' },
   rowName: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '300', letterSpacing: 0.5 },
+  // Colonne fixe, texte centré (1.24) : les compteurs s'alignent sur un même axe central
   rowCounter: {
+    width: 150, // texte réduit automatiquement s'il dépasse (ex. « 29 jours 23 heures »)
     color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '300',
-    fontVariant: ['tabular-nums'], letterSpacing: 0.5, textAlign: 'right',
+    fontVariant: ['tabular-nums'], letterSpacing: 0.5, textAlign: 'center',
   },
   menuBtn: { padding: theme.spacing.xs },
 

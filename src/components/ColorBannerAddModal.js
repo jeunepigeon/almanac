@@ -18,7 +18,7 @@ export default function ColorBannerAddModal({ visible, options, onPick, onClose 
             </Text>
           ) : (
             <>
-              <Text style={styles.message}>Choisis une couleur : le bandeau affiche le temps depuis la dernière prise parmi ses substances.</Text>
+              <Text style={styles.message}>Choisis une couleur : le bandeau affiche le temps depuis la dernière prise, par catégorie.</Text>
               <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
                 {options.map((o) => (
                   <TouchableOpacity
@@ -31,7 +31,7 @@ export default function ColorBannerAddModal({ visible, options, onPick, onClose 
                     <Text style={[styles.names, { color: o.color }]} numberOfLines={2}>
                       {o.names.map((n, i) => (
                         <Text key={`${n}-${i}`}>
-                          {i > 0 && <Text style={styles.sep}>{'  •  '}</Text>}
+                          {i > 0 && <Text style={styles.sep}>{' • '}</Text>}
                           {n}
                         </Text>
                       ))}

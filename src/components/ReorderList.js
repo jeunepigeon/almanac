@@ -41,6 +41,7 @@ const PICKUP_OPACITY = 0.92;
 const LONG_PRESS_MS = 400;
 const EDGE_ZONE = 90;       // px depuis le bord où l'auto-scroll démarre
 const EDGE_MAX_SPEED = 14;  // px par frame au plus près du bord
+const BOUND_PX = 6;         // dépassement (px) au-delà duquel on signale la butée
 
 function WiggleContent({ children, isWiggling, phase }) {
   const rot = useRef(new Animated.Value(0)).current;
@@ -138,6 +139,8 @@ export default function ReorderList({
   const [localIds, setLocalIds] = useState(data.map((d) => d.id));
   const [pickupIdx, setPickupIdx] = useState(null);
   const [hoverIdx, setHoverIdx] = useState(null);
+  // Butée atteinte pendant le drag : 'top' | 'bottom' | null → barre au bord de la section + haptic
+  const [bound, setBound] = useState(null);
 
   const localIdsRef = useRef(localIds);
   useEffect(() => { localIdsRef.current = localIds; }, [localIds]);
@@ -158,7 +161,7 @@ export default function ReorderList({
   });
 
   // État du drag (refs : lus dans les callbacks de geste)
-  const drag = useRef({ p: null, h: null, gStart: 0, gEnd: 0, transY: 0, fingerAbsY: 0, scrollAtPickup: 0, committed: false }).current;
+  const drag = useRef({ p: null, h: null, bound: null, gStart: 0, gEnd: 0, transY: 0, fingerAbsY: 0, scrollAtPickup: 0, committed: false }).current;
   const layoutRef = useRef({ items: [], tops: [], heights: [] });
   const autoTimerRef = useRef(null);
 
@@ -218,6 +221,13 @@ export default function ReorderList({
     const maxDelta = tops[drag.gEnd] - tops[p];
     const delta = Math.max(minDelta, Math.min(maxDelta, raw));
     panY.setValue(delta);
+    // On pousse au-delà du 1er / dernier élément de la section → repère + haptic (une fois par butée)
+    const b = raw < minDelta - BOUND_PX ? 'top' : raw > maxDelta + BOUND_PX ? 'bottom' : null;
+    if (b !== drag.bound) {
+      if (b) haptics.warning();
+      drag.bound = b;
+      setBound(b);
+    }
     const center = tops[p] + H / 2 + delta;
     let h = drag.gStart + Math.floor((center - tops[drag.gStart]) / H);
     h = Math.max(drag.gStart, Math.min(drag.gEnd, h));
@@ -263,6 +273,8 @@ export default function ReorderList({
       drag.gStart = gs; drag.gEnd = ge;
       drag.p = idx;
       drag.h = idx;
+      drag.bound = null;
+      setBound(null);
       drag.transY = 0;
       drag.fingerAbsY = e.absoluteY;
       drag.scrollAtPickup = scrollYRef.current;
@@ -296,6 +308,8 @@ export default function ReorderList({
       }
       setPickupIdx(null);
       setHoverIdx(null);
+      drag.bound = null;
+      setBound(null);
     },
     finalize: () => {
       // Geste annulé (pas de fin normale) → on remet en place sans rien changer
@@ -304,6 +318,8 @@ export default function ReorderList({
       drag.p = null;
       setPickupIdx(null);
       setHoverIdx(null);
+      drag.bound = null;
+      setBound(null);
     },
   };
 
@@ -329,7 +345,10 @@ export default function ReorderList({
   };
 
   let barTop = null;
-  if (pickupIdx != null && hoverIdx != null && hoverIdx !== pickupIdx) {
+  if (pickupIdx != null && bound) {
+    // Butée : barre au bord de la section (haut du 1er élément / bas du dernier)
+    barTop = bound === 'top' ? tops[drag.gStart] : tops[drag.gEnd] + heights[drag.gEnd];
+  } else if (pickupIdx != null && hoverIdx != null && hoverIdx !== pickupIdx) {
     barTop = hoverIdx < pickupIdx ? tops[hoverIdx] : tops[hoverIdx] + heights[pickupIdx];
   }
   const pickedItem = pickupIdx != null ? items[pickupIdx] : null;

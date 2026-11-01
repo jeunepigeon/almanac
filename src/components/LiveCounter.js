@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { Text } from 'react-native';
 import { formatDurationSince, getTickInterval } from '../utils/duration';
 
-export default function LiveCounter({ timestamp, style }) {
+export default function LiveCounter({ timestamp, style, ...textProps }) {
   // On initialise depuis le timestamp courant, et le useEffect se déclenche
   // dès que timestamp change ce qui force le recalcul immédiat.
   const [text, setText] = useState(() => formatDurationSince(timestamp));
@@ -38,5 +38,5 @@ export default function LiveCounter({ timestamp, style }) {
     };
   }, [timestamp]);
 
-  return <Text style={style}>{text}</Text>;
+  return <Text style={style} {...textProps}>{text}</Text>;
 }
