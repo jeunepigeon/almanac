@@ -24,19 +24,25 @@ const FADE_MS = 450;     // fondu d'un bandeau supprimé
 const COLLAPSE_MS = 260; // puis la place se referme en douceur (le séparateur glisse au lieu de sauter)
 const PILL_HALF = 6;       // demi-hauteur de la pilule (1.25 : plus basse et plus longue)
 
-// Flash d'un bandeau (tap sur une notification « Toutes » / catégorie) — animation native
+// Flash d'un bandeau (tap sur une notification « Toutes » / catégorie) — animation native.
+// 1.28 : le calque n'est MONTÉ que pendant le flash (comme le flash du calendrier), puis retiré :
+// un calque toujours présent à opacité 0 pouvait ne jamais s'afficher.
 function BannerFlash({ tick, color, max = 0.3 }) {
+  const [active, setActive] = useState(0);
   const op = useRef(new Animated.Value(0)).current;
+  useEffect(() => { if (tick) setActive(tick); }, [tick]);
   useEffect(() => {
-    if (!tick) return;
+    if (!active) return;
     op.setValue(0);
-    // 1.27 : plus visible (montée 200 ms, tenue 250 ms, fondu 700 ms)
-    Animated.sequence([
+    const anim = Animated.sequence([
       Animated.timing(op, { toValue: max, duration: 200, useNativeDriver: true }),
       Animated.delay(250),
       Animated.timing(op, { toValue: 0, duration: 700, useNativeDriver: true }),
-    ]).start();
-  }, [tick]); // eslint-disable-line
+    ]);
+    anim.start(({ finished }) => { if (finished) setActive(0); });
+    return () => anim.stop();
+  }, [active]); // eslint-disable-line
+  if (!active) return null;
   return <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: color, opacity: op }]} />;
 }
 
@@ -203,15 +209,26 @@ export default function SubstancesPage() {
     setReorderMode(false);
     const id = notifFocus.kind === 'color' && useStore.getState().colorBanners.includes(notifFocus.color)
       ? `banner:${notifFocus.color}` : '__sobre';
-    // On attend que l'app soit vraiment au premier plan (retour depuis le volet de notifications)
-    let t1 = null; let t2 = null; let sub = null;
+    // On attend que l'app soit au premier plan. 1.28 : filet de sécurité de 1,5 s (l'état « active »
+    // pouvait déjà être passé avant l'abonnement → plus jamais de flash).
+    let t1 = null; let t2 = null; let tFallback = null; let sub = null; let started = false;
     const go = () => {
+      if (started) return;
+      started = true;
+      sub?.remove(); sub = null;
+      clearTimeout(tFallback);
       t1 = setTimeout(() => scrollRef.current?.scrollTo?.({ y: 0, animated: true }), 300);
-      t2 = setTimeout(() => setBannerFlash({ id, tick: Date.now() }), 800);
+      t2 = setTimeout(() => {
+        setBannerFlash({ id, tick: Date.now() });
+        useStore.getState().setLastBannerFlash?.({ id, at: Date.now() });
+      }, 800);
     };
     if (AppState.currentState === 'active') go();
-    else sub = AppState.addEventListener('change', (st) => { if (st === 'active') { sub?.remove(); sub = null; go(); } });
-    return () => { clearTimeout(t1); clearTimeout(t2); sub?.remove(); };
+    else {
+      sub = AppState.addEventListener('change', (st) => { if (st === 'active') go(); });
+      tFallback = setTimeout(go, 1500);
+    }
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(tFallback); sub?.remove(); };
   }, [notifFocus?.tick]); // eslint-disable-line
   const [flashedSubId, setFlashedSubId] = useState(null);
 

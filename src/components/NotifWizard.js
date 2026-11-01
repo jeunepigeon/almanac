@@ -45,6 +45,7 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
   const [target, setTarget] = useState(null);       // { target, key }
   const [pendingDelete, setPendingDelete] = useState(null); // règle
   const [permDenied, setPermDenied] = useState(false);
+  const [fromPick, setFromPick] = useState(false); // nouvelle notif : cible choisie → palier directement
 
   useEffect(() => {
     if (!visible) return;
@@ -103,13 +104,16 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
   };
 
   const goBack = () => {
+    if (step === 'palier' && fromPick) { setStep('pick'); return; }
     if (step === 'confirm' || step === 'palier') { setStep('target'); return; }
     if (step === 'target') { if (initialTarget) onClose(); else setStep('list'); return; }
     if (step === 'pick') { setStep('list'); return; }
     onClose();
   };
 
-  const openTarget = (t) => { haptics.light(); setTarget(t); setStep('target'); };
+  const openTarget = (t) => { haptics.light(); setFromPick(false); setTarget(t); setStep('target'); };
+  // Depuis « + » de la liste : la cible choisie n'a encore aucune notification → choix du palier direct
+  const pickTarget = (t) => { haptics.light(); setFromPick(true); setPermDenied(false); setTarget(t); setStep('palier'); };
 
   const addPalier = async (palier) => {
     haptics.light();
@@ -117,7 +121,8 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
     if (!ok) { setPermDenied(true); return; }
     addNotifRule({ target: target.target, key: target.key, palier });
     haptics.success();
-    setStep('target');
+    setFromPick(false);
+    setStep('target'); // on atterrit sur l'écran de la cible pour voir la notification ajoutée
   };
 
   const confirmDelete = () => {
@@ -161,10 +166,14 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
       </>
     );
   } else if (step === 'pick') {
-    body = (
+    // Seulement les cibles qui n'ont encore AUCUNE notification (les autres : depuis la liste)
+    const free = allTargets.filter((t) => rulesOf(t).length === 0);
+    body = free.length === 0 ? (
+      <Text style={styles.empty}>Toutes les cibles ont déjà des notifications</Text>
+    ) : (
       <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
-        {allTargets.map((t) => (
-          <TouchableOpacity key={`${t.target}:${t.key}`} style={[styles.row, rowTint(colorOf(t))]} onPress={() => openTarget(t)} activeOpacity={0.7}>
+        {free.map((t) => (
+          <TouchableOpacity key={`${t.target}:${t.key}`} style={[styles.row, rowTint(colorOf(t))]} onPress={() => pickTarget(t)} activeOpacity={0.7}>
             {renderTargetLabel(t, null, true)}
             <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.textMuted} />
           </TouchableOpacity>
@@ -191,7 +200,7 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
           ))}
         </ScrollView>
         {rules.length < PALIERS.length && (
-          <AddBox color={colorOf(target)} onPress={() => { haptics.light(); setPermDenied(false); setStep('palier'); }} />
+          <AddBox color={colorOf(target)} onPress={() => { haptics.light(); setPermDenied(false); setFromPick(false); setStep('palier'); }} />
         )}
       </>
     );
@@ -284,8 +293,9 @@ const styles = StyleSheet.create({
   titleWrap: { flex: 1, alignItems: 'center' },
   title: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '600', letterSpacing: 0.3 },
   list: { flexGrow: 0, flexShrink: 1 },
-  bodyFixed: { height: 292 },
-  bodyPick: { maxHeight: 460 },
+  // Contenu centré verticalement (messages vides, bouton +, confirmation)
+  bodyFixed: { height: 292, justifyContent: 'center' },
+  bodyPick: { maxHeight: 460, minHeight: 120, justifyContent: 'center' },
   empty: { color: theme.colors.textMuted, textAlign: 'center', fontSize: theme.font.sizes.sm, paddingVertical: theme.spacing.lg },
   // Lignes plus fines (1.26), fond pâle + liseré à la couleur de la cible
   row: {
@@ -307,7 +317,7 @@ const styles = StyleSheet.create({
   permText: { color: theme.colors.danger, fontSize: theme.font.sizes.sm, textAlign: 'center', marginBottom: theme.spacing.sm },
   permBtn: { borderWidth: 1, borderColor: theme.colors.border, borderRadius: 6, paddingVertical: 6, paddingHorizontal: theme.spacing.md },
   permBtnText: { color: theme.colors.text, fontSize: theme.font.sizes.sm },
-  confirmText: { marginTop: theme.spacing.xl, color: theme.colors.textMuted, fontSize: theme.font.sizes.sm, lineHeight: 22, textAlign: 'center', marginBottom: theme.spacing.md },
+  confirmText: { color: theme.colors.textMuted, fontSize: theme.font.sizes.sm, lineHeight: 22, textAlign: 'center', marginBottom: theme.spacing.md },
   confirmActions: { flexDirection: 'row', justifyContent: 'center', gap: theme.spacing.xl },
   actionBtn: { paddingVertical: theme.spacing.sm, paddingHorizontal: theme.spacing.md },
   actionMuted: { color: theme.colors.textMuted, fontSize: theme.font.sizes.md, letterSpacing: 1 },

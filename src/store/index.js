@@ -83,6 +83,8 @@ export const useStore = create((set, get) => ({
   notifFocus: null, // { kind: 'all' | 'color', color, tick }
   lastNotifTap: null, // debug : { target, key, at, via }
   setLastNotifTap: (v) => set({ lastNotifTap: v }),
+  lastBannerFlash: null, // debug : { id, at }
+  setLastBannerFlash: (v) => set({ lastBannerFlash: v }),
   requestNotifFocus: (kind, color = null) => set((s) => ({
     notifFocus: { kind, color, tick: (s.notifFocus?.tick || 0) + 1 },
   })),

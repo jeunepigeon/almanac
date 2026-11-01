@@ -4,7 +4,7 @@
 
 Tout reste **sur le téléphone** (SQLite local). Pas de compte, pas de serveur, pas de tracking. Les seules données qui sortent de l'appareil sont les exports que tu crées toi-même, chiffrés par un code PIN.
 
-**Version actuelle : 1.27** · Android · build APK via EAS · développement démarré le 26 avril 2026.
+**Version actuelle : 1.28** · Android · build APK via EAS · développement démarré le 26 avril 2026.
 
 ---
 
@@ -143,6 +143,12 @@ src/
 ---
 
 ## Historique
+
+### 1.28
+- Flash du bandeau au tap sur une notification : calque monté seulement pendant le flash + filet de sécurité si le retour au premier plan est manqué ; Debug affiche le dernier flash.
+- Nouvelle notification : la sélection ne propose que les cibles sans notification et mène directement au choix du palier, puis à l'écran de la cible.
+- Contenu des fenêtres de notifications centré verticalement.
+- Retours à la ligne dans trois messages (permission refusée, sauvegarde créée, base verrouillée).
 
 ### 1.27
 - Tap sur une notification : prise en charge renforcée (app lancée ou ramenée) et flash du bandeau plus visible ; Debug affiche le dernier tap reçu.

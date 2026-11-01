@@ -60,6 +60,7 @@ export default function SettingsScreen() {
   const appLockEnabled = useStore((s) => s.appLockEnabled);
   const notifRules = useStore((s) => s.notifRules);
   const lastNotifTap = useStore((s) => s.lastNotifTap);
+  const lastBannerFlash = useStore((s) => s.lastBannerFlash);
 
   // --- Debug notifications (1.26) : Toutes / bandeau violet / une substance / 1re notif active ---
   const debugNotifTargets = () => {
@@ -195,7 +196,7 @@ export default function SettingsScreen() {
       {
         kind: 'result-ko',
         title: "La sauvegarde n'a pas pu aboutir",
-        message: "Permission d'écriture refusée ou dossier non sélectionné.",
+        message: "Permission d'écriture refusée\nou dossier non sélectionné.",
       },
       {
         kind: 'result-ko',
@@ -225,12 +226,12 @@ export default function SettingsScreen() {
       {
         kind: 'info',
         title: 'Sauvegarde créée',
-        message: 'Une sauvegarde a été créée. Vous pouvez la restaurer ou la supprimer définitivement via Paramètres.',
+        message: 'Une sauvegarde a été créée.\nVous pouvez la restaurer ou la supprimer définitivement via Paramètres.',
       },
       {
         kind: 'info',
         title: 'Erreur création sauvegarde',
-        message: 'Database locked. Réessayez dans quelques secondes.',
+        message: 'Database locked.\nRéessayez dans quelques secondes.',
       },
       {
         kind: 'info',
@@ -375,6 +376,14 @@ export default function SettingsScreen() {
             : 'aucun'}
         </Text>
       </View>
+      <View style={styles.row}>
+        <Text style={styles.rowLabel}>Dernier flash bandeau</Text>
+        <Text style={styles.rowValue}>
+          {lastBannerFlash
+            ? `${lastBannerFlash.id === '__sobre' ? 'sobre de tout' : lastBannerFlash.id.replace('banner:', 'bandeau ')} · ${new Date(lastBannerFlash.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+            : 'aucun'}
+        </Text>
+      </View>
       {/* Vraies notifications (même logique que les paliers), envoyées dans 10 s */}
       {debugNotifTargets().map((d) => (
         <TouchableOpacity key={d.id} style={styles.row} onPress={() => sendDebugNotif(d)}>
@@ -494,7 +503,7 @@ export default function SettingsScreen() {
       <InfoModal
         visible={wipeToastVisible}
         title="Sauvegarde créée"
-        message="Une sauvegarde a été créée. Vous pouvez la restaurer ou la supprimer définitivement via Paramètres."
+        message={'Une sauvegarde a été créée.\nVous pouvez la restaurer ou la supprimer définitivement via Paramètres.'}
         onClose={() => { setWipeToastVisible(false); navigation.goBack(); }}
       />
 
