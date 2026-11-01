@@ -81,6 +81,8 @@ export const useStore = create((set, get) => ({
 
   // Tap sur une notification « Toutes » / catégorie → liste des substances + flash du bandeau
   notifFocus: null, // { kind: 'all' | 'color', color, tick }
+  lastNotifTap: null, // debug : { target, key, at, via }
+  setLastNotifTap: (v) => set({ lastNotifTap: v }),
   requestNotifFocus: (kind, color = null) => set((s) => ({
     notifFocus: { kind, color, tick: (s.notifFocus?.tick || 0) + 1 },
   })),

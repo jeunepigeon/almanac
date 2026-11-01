@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, Pressable, Alert, Animated,
+  View, Text, StyleSheet, FlatList, TouchableOpacity, Pressable, Alert, Animated, AppState,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -20,8 +20,9 @@ const ROW_HEIGHT = 68; // doit matcher le style de SubstanceRow (padding + conte
 const BANNER_HEIGHT = 102; // bandeau par couleur (≈ hauteur du bandeau « Sobre de tout »)
 const SPACER_HEIGHT = 16;  // espace entre bandeaux et substances (pilule « + » posée sur le séparateur)
 let lastHandledNotifTick = 0;
-const FADE_MS = 450; // fondu d'un bandeau supprimé
-const PILL_HALF = 7;       // demi-hauteur de la pilule (1.25 : plus basse et plus longue)
+const FADE_MS = 450;     // fondu d'un bandeau supprimé
+const COLLAPSE_MS = 260; // puis la place se referme en douceur (le séparateur glisse au lieu de sauter)
+const PILL_HALF = 6;       // demi-hauteur de la pilule (1.25 : plus basse et plus longue)
 
 // Flash d'un bandeau (tap sur une notification « Toutes » / catégorie) — animation native
 function BannerFlash({ tick, color, max = 0.3 }) {
@@ -29,9 +30,11 @@ function BannerFlash({ tick, color, max = 0.3 }) {
   useEffect(() => {
     if (!tick) return;
     op.setValue(0);
+    // 1.27 : plus visible (montée 200 ms, tenue 250 ms, fondu 700 ms)
     Animated.sequence([
-      Animated.timing(op, { toValue: max, duration: 150, useNativeDriver: true }),
-      Animated.timing(op, { toValue: 0, duration: 650, useNativeDriver: true }),
+      Animated.timing(op, { toValue: max, duration: 200, useNativeDriver: true }),
+      Animated.delay(250),
+      Animated.timing(op, { toValue: 0, duration: 700, useNativeDriver: true }),
     ]).start();
   }, [tick]); // eslint-disable-line
   return <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: color, opacity: op }]} />;
@@ -42,7 +45,7 @@ function SobreBanner({ lastGlobalTimestamp, onPress, flashTick }) {
   return (
     <Pressable onPress={onPress} style={styles.bannerPress}>
       <View style={styles.banner}>
-        <BannerFlash tick={flashTick} color="#FFFFFF" max={0.22} />
+        <BannerFlash tick={flashTick} color="#FFFFFF" max={0.35} />
         <Text style={styles.bannerLabel}>SOBRE DE TOUT DEPUIS</Text>
         {lastGlobalTimestamp ? (
           <View style={styles.bannerCounterWrap}>
@@ -70,7 +73,7 @@ function ColorBanner({ color, lastTimestamp, inReorder, isWiggling, phase, onDel
   }, [fading, fade]);
   return (
     <Animated.View style={[styles.colorBanner, { opacity: fade }]} pointerEvents={fading ? 'none' : 'auto'}>
-      <BannerFlash tick={flashTick} color={color} max={0.3} />
+      <BannerFlash tick={flashTick} color={color} max={0.45} />
       <WiggleContent isWiggling={!!isWiggling} phase={phase || 0} style={styles.colorBannerContent}>
         <Text style={[styles.bannerLabel, { color }]}>SOBRE DEPUIS</Text>
         <View style={styles.bannerCounterWrap}>
@@ -200,9 +203,15 @@ export default function SubstancesPage() {
     setReorderMode(false);
     const id = notifFocus.kind === 'color' && useStore.getState().colorBanners.includes(notifFocus.color)
       ? `banner:${notifFocus.color}` : '__sobre';
-    const t1 = setTimeout(() => scrollRef.current?.scrollTo?.({ y: 0, animated: true }), 250);
-    const t2 = setTimeout(() => setBannerFlash({ id, tick: Date.now() }), 650);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    // On attend que l'app soit vraiment au premier plan (retour depuis le volet de notifications)
+    let t1 = null; let t2 = null; let sub = null;
+    const go = () => {
+      t1 = setTimeout(() => scrollRef.current?.scrollTo?.({ y: 0, animated: true }), 300);
+      t2 = setTimeout(() => setBannerFlash({ id, tick: Date.now() }), 800);
+    };
+    if (AppState.currentState === 'active') go();
+    else sub = AppState.addEventListener('change', (st) => { if (st === 'active') { sub?.remove(); sub = null; go(); } });
+    return () => { clearTimeout(t1); clearTimeout(t2); sub?.remove(); };
   }, [notifFocus?.tick]); // eslint-disable-line
   const [flashedSubId, setFlashedSubId] = useState(null);
 
@@ -245,7 +254,13 @@ export default function SubstancesPage() {
     const curIds = new Set(cur.map((b) => b.id));
     prevBannersRef.current.forEach((b, i) => {
       if (!curIds.has(b.id) && !b.fading && !ghostsRef.current[b.id]) {
-        ghostsRef.current[b.id] = { item: { ...b, fading: true }, index: i, until: now + FADE_MS };
+        // Hauteur animée : reste pleine pendant le fondu, puis se referme
+        const collapse = new Animated.Value(BANNER_HEIGHT);
+        Animated.sequence([
+          Animated.delay(FADE_MS),
+          Animated.timing(collapse, { toValue: 0, duration: COLLAPSE_MS, useNativeDriver: false }),
+        ]).start();
+        ghostsRef.current[b.id] = { item: { ...b, fading: true, collapse }, index: i, until: now + FADE_MS + COLLAPSE_MS };
       }
     });
     for (const id of Object.keys(ghostsRef.current)) {
@@ -259,7 +274,7 @@ export default function SubstancesPage() {
   }, [bannerInfo, ghostTick]);
   useEffect(() => {
     if (!displayedBanners.some((b) => b.fading)) return;
-    const t = setTimeout(() => setGhostTick((x) => x + 1), FADE_MS + 30);
+    const t = setTimeout(() => setGhostTick((x) => x + 1), FADE_MS + COLLAPSE_MS + 30);
     return () => clearTimeout(t);
   }, [displayedBanners]);
 
@@ -457,7 +472,7 @@ export default function SubstancesPage() {
           hitSlop={{ top: 10, bottom: 10, left: 14, right: 14 }}
           activeOpacity={0.6}
         >
-          <MaterialCommunityIcons name="plus" size={11} color={theme.colors.background} />
+          <MaterialCommunityIcons name="plus" size={10} color={theme.colors.background} />
         </TouchableOpacity>
       </View>
     );
@@ -597,12 +612,12 @@ const styles = StyleSheet.create({
   // Pilule « + » (overlay au-dessus de la liste)
   pillOverlay: { position: 'absolute', left: 0, right: 0, height: PILL_HALF * 2, alignItems: 'center' },
   pill: {
-    height: PILL_HALF * 2, width: 40, borderRadius: PILL_HALF,
+    height: PILL_HALF * 2, width: 32, borderRadius: PILL_HALF,
     backgroundColor: theme.colors.text,
     alignItems: 'center', justifyContent: 'center',
   },
   colorBannerContent: { alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch' },
-  rowWiggle: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
+  rowWiggle: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
   rowTools: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
   bannerTrash: {
     position: 'absolute', right: theme.spacing.lg, top: 0, bottom: 0,
@@ -637,22 +652,23 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.xs,
   },
 
+  // 1.27 : marges réduites pour laisser ~20 caractères au nom (limite de saisie : 20)
   row: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.md,
+    paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.md,
     // Séparateur : porté par le conteneur de ligne dans ReorderList (ne vibre pas)
-    gap: theme.spacing.md,
+    gap: 12,
     height: ROW_HEIGHT - StyleSheet.hairlineWidth,
   },
   iconWrap: {
     width: 36, height: 36, borderRadius: 18, borderWidth: 1.5,
     justifyContent: 'center', alignItems: 'center',
   },
-  rowMiddle: { flex: 1, marginRight: theme.spacing.sm, justifyContent: 'center' },
+  rowMiddle: { flex: 1, justifyContent: 'center' },
   rowName: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '300', letterSpacing: 0.5 },
   // Colonne fixe, texte centré (1.24) : les compteurs s'alignent sur un même axe central
   rowCounter: {
-    width: 150, // texte réduit automatiquement s'il dépasse (ex. « 29 jours 23 heures »)
+    width: 142, // « 29 jours 23 heures » tient en taille normale ; au-delà d'un an, réduit automatiquement
     color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '300',
     fontVariant: ['tabular-nums'], letterSpacing: 0.5, textAlign: 'center',
   },

@@ -56,19 +56,25 @@ export default function App() {
     navRef.navigate('Main');
     st.requestNotifFocus(t.target === 'color' ? 'color' : 'all', t.target === 'color' ? t.key : null);
   };
-  const handleResponse = (response) => {
+  const handleResponse = (response, via = 'listener') => {
     const t = readNotificationTarget(response);
     if (!t) return;
     if (t.id && handledIdsRef.current.has(t.id)) return;
     if (t.id) handledIdsRef.current.add(t.id);
+    useStore.getState().setLastNotifTap({ target: t.target, key: t.key, at: Date.now(), via });
     try { Notifications.clearLastNotificationResponse?.(); } catch (e) { /* rien */ }
     openTarget(t);
   };
+  // Deux chemins (dédoublonnés par identifiant) :
+  //  - le hook officiel useLastNotificationResponse (app lancée OU ramenée par le tap) ;
+  //  - l'écouteur de réponses (app déjà ouverte).
+  const lastResponse = Notifications.useLastNotificationResponse();
+  useEffect(() => {
+    if (booted && lastResponse) handleResponse(lastResponse, 'hook');
+  }, [booted, lastResponse]); // eslint-disable-line
   useEffect(() => {
     if (!booted) return;
-    const sub = Notifications.addNotificationResponseReceivedListener(handleResponse);
-    // App lancée par un tap sur une notification ; on efface ensuite pour ne pas la rejouer
-    try { handleResponse(Notifications.getLastNotificationResponse?.()); } catch (e) { /* rien */ }
+    const sub = Notifications.addNotificationResponseReceivedListener((r) => handleResponse(r, 'listener'));
     return () => sub.remove();
   }, [booted]); // eslint-disable-line
   useEffect(() => {

@@ -81,7 +81,7 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
     return substances.find((s) => s.id === t.key)?.color || theme.colors.text;
   };
 
-  const renderTargetLabel = (t, style) => {
+  const renderTargetLabel = (t, style, forPick = false) => {
     if (t.target === 'sub') {
       const sub = substances.find((s) => s.id === t.key);
       return (
@@ -94,7 +94,9 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
     // « Toutes substances » / « Toutes les ● »
     return (
       <View style={styles.labelRow}>
-        <Text style={[styles.label, style]} numberOfLines={1}>{t.target === 'color' ? 'Toutes les' : 'Toutes substances'}</Text>
+        <Text style={[styles.label, style]} numberOfLines={1}>
+          {t.target === 'color' ? 'Toutes les' : (forPick ? 'Toutes les substances' : 'Toutes substances')}
+        </Text>
         {t.target === 'color' && <Dot color={t.key} size={12} />}
       </View>
     );
@@ -163,7 +165,7 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
       <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
         {allTargets.map((t) => (
           <TouchableOpacity key={`${t.target}:${t.key}`} style={[styles.row, rowTint(colorOf(t))]} onPress={() => openTarget(t)} activeOpacity={0.7}>
-            {renderTargetLabel(t)}
+            {renderTargetLabel(t, null, true)}
             <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.textMuted} />
           </TouchableOpacity>
         ))}
@@ -242,15 +244,15 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
   }
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={goBack}>
+    // Retour Android : ferme complètement ; le chevron « < » revient d'un écran (ferme depuis la liste)
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}>
         <Pressable style={styles.card} onPress={() => {}}>
           <View style={styles.header}>
-            {step !== 'list' && !(step === 'target' && initialTarget) ? (
-              <TouchableOpacity onPress={goBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} style={styles.back}>
-                <MaterialCommunityIcons name="chevron-left" size={22} color={theme.colors.textMuted} />
-              </TouchableOpacity>
-            ) : <View style={styles.back} />}
+            {/* Chevron toujours au même endroit (on peut l'enchaîner) */}
+            <TouchableOpacity onPress={goBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={styles.back}>
+              <MaterialCommunityIcons name="chevron-left" size={24} color={theme.colors.textMuted} />
+            </TouchableOpacity>
             <View style={styles.titleWrap}>
               {step === 'target' && target
                 ? renderTargetLabel(target, styles.title)
@@ -258,10 +260,9 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
             </View>
             <View style={styles.back} />
           </View>
-          {body}
-          <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-            <Text style={styles.closeText}>Fermer</Text>
-          </TouchableOpacity>
+          {/* Taille fixe pour tous les écrans (celle d'une cible avec ses 5 paliers), sauf la
+              sélection d'une nouvelle cible qui peut être plus haute */}
+          <View style={step === 'pick' ? styles.bodyPick : styles.bodyFixed}>{body}</View>
         </Pressable>
       </Pressable>
     </Modal>
@@ -282,7 +283,9 @@ const styles = StyleSheet.create({
   back: { width: 28 },
   titleWrap: { flex: 1, alignItems: 'center' },
   title: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '600', letterSpacing: 0.3 },
-  list: { flexGrow: 0 },
+  list: { flexGrow: 0, flexShrink: 1 },
+  bodyFixed: { height: 292 },
+  bodyPick: { maxHeight: 460 },
   empty: { color: theme.colors.textMuted, textAlign: 'center', fontSize: theme.font.sizes.sm, paddingVertical: theme.spacing.lg },
   // Lignes plus fines (1.26), fond pâle + liseré à la couleur de la cible
   row: {
@@ -304,7 +307,7 @@ const styles = StyleSheet.create({
   permText: { color: theme.colors.danger, fontSize: theme.font.sizes.sm, textAlign: 'center', marginBottom: theme.spacing.sm },
   permBtn: { borderWidth: 1, borderColor: theme.colors.border, borderRadius: 6, paddingVertical: 6, paddingHorizontal: theme.spacing.md },
   permBtnText: { color: theme.colors.text, fontSize: theme.font.sizes.sm },
-  confirmText: { color: theme.colors.textMuted, fontSize: theme.font.sizes.sm, lineHeight: 22, textAlign: 'center', marginBottom: theme.spacing.md },
+  confirmText: { marginTop: theme.spacing.xl, color: theme.colors.textMuted, fontSize: theme.font.sizes.sm, lineHeight: 22, textAlign: 'center', marginBottom: theme.spacing.md },
   confirmActions: { flexDirection: 'row', justifyContent: 'center', gap: theme.spacing.xl },
   actionBtn: { paddingVertical: theme.spacing.sm, paddingHorizontal: theme.spacing.md },
   actionMuted: { color: theme.colors.textMuted, fontSize: theme.font.sizes.md, letterSpacing: 1 },

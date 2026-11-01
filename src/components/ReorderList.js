@@ -18,6 +18,8 @@
 //  - « Terminé » ou retour Android → sortie + enregistrement de l'ordre.
 // Aucune priorité d'affichage (zIndex/elevation) dans la liste.
 //
+// 1.27 — item.collapse (Animated.Value, optionnel) : hauteur animée de la ligne.
+//
 // 1.23 — plusieurs GROUPES dans une seule liste et un seul mode (ex. bandeaux puis substances) :
 //  - chaque élément peut avoir `group` (même groupe = peuvent s'échanger) et `static: true`
 //    (élément fixe, ex. l'espace avec la pilule « + » entre bandeaux et substances), avec un
@@ -101,7 +103,7 @@ const ActiveRow = memo(function ActiveRow({
     <GestureDetector gesture={gesture}>
       <Animated.View
         collapsable={false}
-        style={[styles.rowContainer, { height: itemHeight, transform: [{ translateY }] }]}
+        style={[styles.rowContainer, { height: item.collapse || itemHeight, transform: [{ translateY }] }, item.collapse && { overflow: 'hidden' }]}
       >
         <View style={{ opacity: isPicked ? 0 : 1 }}>
           {renderItem({ item, index, isWiggling, phase: index % 3, isPickup: false, inReorder: true })}
@@ -408,7 +410,8 @@ export default function ReorderList({
               );
             }
             return (
-              <View key={item.id} style={[styles.rowContainer, { height: heights[idx] }]}>
+              // item.collapse (Animated.Value) : hauteur animée (ex. bandeau supprimé qui se referme)
+              <Animated.View key={item.id} style={[styles.rowContainer, { height: item.collapse || heights[idx] }, item.collapse && { overflow: 'hidden' }]}>
                 <Pressable
                   onPress={() => onItemTap?.(item, idx)}
                   onLongPress={() => { haptics.medium(); onItemLongPress?.(item, idx); }}
@@ -416,7 +419,7 @@ export default function ReorderList({
                 >
                   {renderItem({ item, index: idx, isWiggling: false, isPickup: false, inReorder: false })}
                 </Pressable>
-              </View>
+              </Animated.View>
             );
           })}
 

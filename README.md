@@ -4,7 +4,7 @@
 
 Tout reste **sur le téléphone** (SQLite local). Pas de compte, pas de serveur, pas de tracking. Les seules données qui sortent de l'appareil sont les exports que tu crées toi-même, chiffrés par un code PIN.
 
-**Version actuelle : 1.26** · Android · build APK via EAS · développement démarré le 26 avril 2026.
+**Version actuelle : 1.27** · Android · build APK via EAS · développement démarré le 26 avril 2026.
 
 ---
 
@@ -42,7 +42,7 @@ Tout reste **sur le téléphone** (SQLite local). Pas de compte, pas de serveur,
 - Cibles : **toutes les substances**, une **catégorie** (couleur avec au moins 2 substances) ou une **substance**.
 - Une prise ne déclenche qu'une notification par palier (priorité substance > catégorie > toutes).
 - Notifications **silencieuses** (ni son ni vibration), texte neutre ; un tap ouvre le compteur concerné.
-- Accès : cloche sous « settings » sur Global, cloche colorée dans le calendrier d'une substance, et Paramètres. Cloche pleine dès qu'une notification est active.
+- Accès : cloche sous « settings » (liste et Global), cloche colorée dans le calendrier d'une substance, et Paramètres. Cloche pleine dès qu'une notification est active.
 - 100 % locales (pas de serveur) ; sans l'autorisation « Alarmes et rappels », Android peut les livrer jusqu'à ~1 h après le palier.
 
 ### Verrouillage (option)
@@ -143,6 +143,13 @@ src/
 ---
 
 ## Historique
+
+### 1.27
+- Tap sur une notification : prise en charge renforcée (app lancée ou ramenée) et flash du bandeau plus visible ; Debug affiche le dernier tap reçu.
+- Assistant notifications : même taille pour tous les écrans (sauf la sélection d'une cible), chevron « < » toujours au même endroit, plus de bouton Fermer ; « Toutes les substances » dans la sélection.
+- Cloche de nouveau sur la liste des substances ; pilule + plus petite ; icône de notification agrandie.
+- Bandeau supprimé : fondu puis la place se referme en douceur.
+- Noms de substances : 20 caractères max, plus de place à l'affichage ; retour à la ligne des noms avec le séparateur en début de ligne.
 
 ### 1.26
 - **Déchiffrement / chiffrement quasi instantanés** : PBKDF2 en natif (`react-native-quick-crypto`), format de fichier inchangé.

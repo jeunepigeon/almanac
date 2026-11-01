@@ -59,6 +59,7 @@ export default function SettingsScreen() {
   const [notifOpen, setNotifOpen] = useState(false);
   const appLockEnabled = useStore((s) => s.appLockEnabled);
   const notifRules = useStore((s) => s.notifRules);
+  const lastNotifTap = useStore((s) => s.lastNotifTap);
 
   // --- Debug notifications (1.26) : Toutes / bandeau violet / une substance / 1re notif active ---
   const debugNotifTargets = () => {
@@ -364,6 +365,15 @@ export default function SettingsScreen() {
       <View style={styles.row}>
         <Text style={styles.rowLabel}>Chiffrement natif</Text>
         <Text style={styles.rowValue}>{KDF_NATIVE_AVAILABLE ? 'disponible' : 'indisponible'} · dernier : {getLastKdfEngine()}</Text>
+      </View>
+      {/* Diagnostic : dernier tap reçu sur une notification (cible + heure + chemin) */}
+      <View style={styles.row}>
+        <Text style={styles.rowLabel}>Dernier tap notif</Text>
+        <Text style={styles.rowValue}>
+          {lastNotifTap
+            ? `${lastNotifTap.target} · ${new Date(lastNotifTap.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })} · ${lastNotifTap.via}`
+            : 'aucun'}
+        </Text>
       </View>
       {/* Vraies notifications (même logique que les paliers), envoyées dans 10 s */}
       {debugNotifTargets().map((d) => (

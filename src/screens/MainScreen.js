@@ -101,15 +101,15 @@ export default function MainScreen() {
         {[0, 1].map((i) => (
           <View key={i} style={[styles.dot, page === i && styles.dotActive]} />
         ))}
-        {/* Cloche (Global uniquement, sous « settings ») : vide si aucune notification, pleine sinon */}
-        {page === 1 && <TouchableOpacity
+        {/* Cloche sous « settings » (liste et Global) : vide si aucune notification, pleine sinon */}
+        <TouchableOpacity
           style={[styles.bellBtn, pagerLocked && { opacity: 0.3 }]}
           onPress={() => setNotifOpen(true)}
           disabled={pagerLocked}
           hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
         >
           <MaterialCommunityIcons name={hasAnyNotif ? 'bell' : 'bell-outline'} size={18} color={theme.colors.textMuted} />
-        </TouchableOpacity>}
+        </TouchableOpacity>
       </View>
 
       <PagerView

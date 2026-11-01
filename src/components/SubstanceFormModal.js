@@ -109,6 +109,7 @@ export default function SubstanceFormModal({
                 value={name}
                 onChangeText={setName}
                 placeholder="Nom"
+                maxLength={20} // 1.27 : nom limité à 20 caractères
                 placeholderTextColor={theme.colors.textFaint}
                 style={styles.input}
                 autoFocus={mode === 'create' || mode === 'rename'}
