@@ -114,8 +114,9 @@ export default function SettingsScreen() {
 
   const openExportLive = async () => {
     const consos = await dbGetAllConsumptions();
-    const subs = [...substances, ...archivedSubstances]
-      .map((s) => ({ id: s.id, name: s.name, color: s.color }));
+    // Substances COMPLÈTES (icône, position, date de création…) — bug 1.16 → 1.19 : seuls id/nom/couleur
+    // étaient transmis, d'où des exports sans icônes ni ordre.
+    const subs = [...substances, ...archivedSubstances].map((s) => ({ ...s }));
     setExportSource({ subs, consos, statsById: statsFromConsos(consos) });
   };
 
@@ -126,7 +127,7 @@ export default function SettingsScreen() {
       return;
     }
     const parsed = parseSnapshot(data);
-    const subs = parsed.substances.map((s) => ({ id: s.id, name: s.name, color: s.color }));
+    const subs = parsed.substances.map((s) => ({ ...s })); // complètes (icône, position, date…)
     const consos = parsed.consumptions.map((c) => ({
       id: c.id, substance_id: c.substanceId, timestamp: c.timestamp,
       dosage: c.dosage, notes: c.notes, created_at: c.createdAt,

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useWindowDimensions } from 'react-native';
 import {
   Modal,
   View,
@@ -84,6 +85,25 @@ export default function SubstanceFormModal({
 
   const selectedColor = theme.substanceColors[colorIndex];
 
+  // --- Grille 5×8 qui tient sans défilement (v1.20) ---
+  // On mesure tout ce qui n'est pas la grille, puis on réduit les cases juste assez pour que la
+  // fenêtre entière tienne dans 85 % de l'écran. Si ça tient déjà (« Changer l'icône »), rien ne change.
+  const { height: winH } = useWindowDimensions();
+  const [m, setM] = useState({ titleH: 0, actionsH: 0, contentH: 0, gridH: 0, innerW: 0 });
+  const setMeasure = (k, v) => setM((prev) => (Math.abs((prev[k] || 0) - v) > 1 ? { ...prev, [k]: v } : prev));
+  let gridWidth = null;
+  let iconSize = 30;
+  if (m.innerW && m.gridH && m.contentH && m.titleH && m.actionsH) {
+    const fullCell = m.innerW / 5;
+    const nonGrid = (m.contentH - m.gridH) + m.titleH + m.actionsH + theme.spacing.lg * 2 + 40; // marges
+    const cell = Math.floor((winH * 0.85 - nonGrid) / 8);
+    if (cell < fullCell) {
+      const c = Math.max(30, cell);
+      gridWidth = c * 5;
+      iconSize = Math.max(16, Math.min(30, Math.round((c - 10) * 0.6)));
+    }
+  }
+
   return (
     <Modal
       visible={visible}
@@ -97,10 +117,16 @@ export default function SubstanceFormModal({
           style={styles.center}
         >
           <Pressable style={styles.card} onPress={() => {}}>
-            <Text style={styles.title}>{titles[mode]}</Text>
+            <Text style={styles.title} onLayout={(e) => setMeasure('titleH', e.nativeEvent.layout.height)}>{titles[mode]}</Text>
 
             {/* Contenu scrollable (grille 5×8 plus haute) ; boutons fixes en bas */}
-            <ScrollView style={styles.formScroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={styles.formScroll}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              onLayout={(e) => setMeasure('innerW', e.nativeEvent.layout.width)}
+              onContentSizeChange={(w, h) => setMeasure('contentH', h)}
+            >
             {showName && (
               <TextInput
                 value={name}
@@ -136,7 +162,10 @@ export default function SubstanceFormModal({
             {showIcon && (
               <>
                 <Text style={styles.fieldLabel}>Icône</Text>
-                <View style={styles.iconGridStatic}>
+                <View
+                  style={[styles.iconGridStatic, gridWidth ? { width: gridWidth, alignSelf: 'center' } : null]}
+                  onLayout={(e) => setMeasure('gridH', e.nativeEvent.layout.height)}
+                >
                   {ICONS.map((entry) => {
                     const selected = entry.id === iconId;
                     return (
@@ -153,7 +182,7 @@ export default function SubstanceFormModal({
                         >
                           <MaterialCommunityIcons
                             name={entry.icon}
-                            size={30}
+                            size={iconSize}
                             color={selected ? selectedColor : theme.colors.textMuted}
                           />
                         </TouchableOpacity>
@@ -165,7 +194,7 @@ export default function SubstanceFormModal({
             )}
             </ScrollView>
 
-            <View style={styles.actions}>
+            <View style={styles.actions} onLayout={(e) => setMeasure('actionsH', e.nativeEvent.layout.height)}>
               <TouchableOpacity onPress={onClose} style={styles.actionBtn}>
                 <Text style={styles.actionMuted}>Annuler</Text>
               </TouchableOpacity>

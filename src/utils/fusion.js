@@ -6,11 +6,13 @@
 // `onProgress(current, total)` optionnel pour afficher une barre de progression.
 
 import {
+  dbUpdateSubstance,
   dbInsertSubstanceRaw,
   dbInsertConsumptionRaw,
   dbGetConsumptionsBySubstance,
   uuid,
 } from '../db';
+import { DEFAULT_ICON_ID } from '../icons';
 
 function normalizeName(name) {
   return (name || '').trim().toLowerCase();
@@ -47,6 +49,12 @@ export async function performFusion({ parsed, activeSubs, substanceIds, onProgre
     if (existing) {
       idMap[sub.id] = existing.id;
       subIsNew[sub.id] = false;
+      // Icône : on reprend celle de la source UNIQUEMENT si l'actuelle est celle par défaut (ou vide)
+      const curIcon = existing.icon || '';
+      const srcIcon = sub.icon || '';
+      if ((curIcon === '' || curIcon === DEFAULT_ICON_ID) && srcIcon && srcIcon !== DEFAULT_ICON_ID) {
+        await dbUpdateSubstance(existing.id, { icon: srcIcon });
+      }
     } else {
       const newId = sub.id || uuid();
       await dbInsertSubstanceRaw({

@@ -3,6 +3,7 @@ import { View, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import MainScreen from './src/screens/MainScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import SubstanceScreen from './src/screens/SubstanceScreen';
@@ -42,6 +43,8 @@ export default function App() {
   }
 
   return (
+    // Racine gesture-handler : nécessaire pour les gestes natifs (réorganisation par drag).
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.colors.background }}>
     <NavigationContainer>
       <StatusBar style="light" />
       <Stack.Navigator
@@ -59,5 +62,6 @@ export default function App() {
         <Stack.Screen name="Donations" component={DonationsScreen} options={{ title: 'Soutenir le projet' }} />
       </Stack.Navigator>
     </NavigationContainer>
+    </GestureHandlerRootView>
   );
 }

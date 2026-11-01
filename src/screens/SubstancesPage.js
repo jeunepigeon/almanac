@@ -148,21 +148,28 @@ export default function SubstancesPage() {
     if (f) f();
   };
 
+  // Mesures de la liste (zone visible, contenu, position des lignes) fournies par ReorderList
+  const metricsRef = useRef({ viewportH: 0, contentH: 0, listTop: 0 });
+
   const handleBannerPress = () => {
     if (!lastGlobalSubId) return;
     haptics.medium();
     const idx = substances.findIndex((s) => s.id === lastGlobalSubId);
     if (idx < 0) return;
-    const bannerH = bannerHeightRef.current || 110;
-    const y = Math.max(0, bannerH + idx * ROW_HEIGHT - 100);
+    const { viewportH, contentH, listTop } = metricsRef.current;
+    const listStart = listTop || bannerHeightRef.current || 110;
+    // Centre de la ligne au centre de la zone visible ;
+    // trop bas → tout en bas, trop haut → tout en haut.
+    const rowCenter = listStart + idx * ROW_HEIGHT + ROW_HEIGHT / 2;
+    const maxY = Math.max(0, contentH - viewportH);
+    const y = Math.max(0, Math.min(maxY, rowCenter - viewportH / 2));
     const flash = () => {
       setFlashedSubId(lastGlobalSubId);
       setTimeout(() => setFlashedSubId(null), 520);
     };
-    if (Math.abs(scrollYRef.current - y) <= 10) { flash(); return; }
+    if (Math.abs(scrollYRef.current - y) <= 2) { flash(); return; }
     pendingBannerFlashRef.current = flash;
     scrollRef.current?.scrollTo?.({ y, animated: true });
-    // Filet de sécurité (cible hors limite de scroll, pas d'event…)
     bannerFallbackRef.current = setTimeout(firePendingBannerFlash, 700);
   };
 
@@ -261,6 +268,7 @@ export default function SubstancesPage() {
           onItemTap={(sub) => navigation.navigate('Substance', { substanceId: sub.id })}
           onScrollY={handleScroll}
           onScrollEnd={handleScrollEnd}
+          onMetrics={(m) => { metricsRef.current = m; }}
           headerComponent={banner}
           scrollRef={scrollRef}
           renderItem={({ item, inReorder }) => (
@@ -380,9 +388,9 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border,
+    // Séparateur : porté par le conteneur de ligne dans ReorderList (ne vibre pas)
     gap: theme.spacing.md,
-    height: ROW_HEIGHT,
+    height: ROW_HEIGHT - StyleSheet.hairlineWidth,
   },
   iconWrap: {
     width: 36, height: 36, borderRadius: 18, borderWidth: 1.5,
