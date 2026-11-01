@@ -29,10 +29,13 @@ export default function ColorBannerAddModal({ visible, options, onPick, onClose 
                   >
                     <View style={[styles.dot, { backgroundColor: o.color }]} />
                     <Text style={[styles.names, { color: o.color }]} numberOfLines={2}>
+                      {/* Séparateur collé au nom précédent (espace insécable) : une ligne peut finir par
+                          « • » mais jamais en commencer une */}
                       {o.names.map((n, i) => (
                         <Text key={`${n}-${i}`}>
-                          {i > 0 && <Text style={styles.sep}>{' • '}</Text>}
                           {n}
+                          {i < o.names.length - 1 && <Text style={styles.sep}>{'\u00A0•'}</Text>}
+                          {i < o.names.length - 1 ? ' ' : ''}
                         </Text>
                       ))}
                     </Text>

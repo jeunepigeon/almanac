@@ -48,6 +48,7 @@ export default function SubstanceScreen() {
   const [dayDetail, setDayDetail] = useState(null);
   const [prefilledDate, setPrefilledDate] = useState(null);
   const [notifOpen, setNotifOpen] = useState(false);
+  const hasSubNotif = useStore((s) => s.notifRules.some((r) => r.target === 'sub' && r.key === substanceId));
 
   useEffect(() => {
     if (substanceId && consumptions === null) {
@@ -61,11 +62,11 @@ export default function SubstanceScreen() {
       // Cloche à la couleur de la substance : notifications de CETTE substance (sélection sautée)
       headerRight: () => (substance ? (
         <TouchableOpacity onPress={() => setNotifOpen(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <MaterialCommunityIcons name="bell-outline" size={20} color={substance.color} />
+          <MaterialCommunityIcons name={hasSubNotif ? 'bell' : 'bell-outline'} size={20} color={substance.color} />
         </TouchableOpacity>
       ) : null),
     });
-  }, [navigation, substance]);
+  }, [navigation, substance, hasSubNotif]);
 
   useEffect(() => {
     if (focusDate && consumptions !== null) {

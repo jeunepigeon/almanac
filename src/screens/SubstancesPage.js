@@ -20,6 +20,7 @@ const ROW_HEIGHT = 68; // doit matcher le style de SubstanceRow (padding + conte
 const BANNER_HEIGHT = 102; // bandeau par couleur (≈ hauteur du bandeau « Sobre de tout »)
 const SPACER_HEIGHT = 16;  // espace entre bandeaux et substances (pilule « + » posée sur le séparateur)
 let lastHandledNotifTick = 0;
+const FADE_MS = 450; // fondu d'un bandeau supprimé
 const PILL_HALF = 7;       // demi-hauteur de la pilule (1.25 : plus basse et plus longue)
 
 // Flash d'un bandeau (tap sur une notification « Toutes » / catégorie) — animation native
@@ -60,9 +61,15 @@ function SobreBanner({ lastGlobalTimestamp, onPress, flashTick }) {
 
 // Bandeau « Sobre depuis » d'une couleur : libellé + compteur dans la couleur.
 // En réorganisation : seuls libellé et compteur vibrent ; poubelle fixe à droite.
-function ColorBanner({ color, lastTimestamp, inReorder, isWiggling, phase, onDelete, flashTick }) {
+function ColorBanner({ color, lastTimestamp, inReorder, isWiggling, phase, onDelete, flashTick, fading }) {
+  // Bandeau supprimé (catégorie dissoute ou poubelle) : fondu avant de disparaître
+  const fade = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (fading) Animated.timing(fade, { toValue: 0, duration: FADE_MS, useNativeDriver: true }).start();
+    else fade.setValue(1);
+  }, [fading, fade]);
   return (
-    <View style={styles.colorBanner}>
+    <Animated.View style={[styles.colorBanner, { opacity: fade }]} pointerEvents={fading ? 'none' : 'auto'}>
       <BannerFlash tick={flashTick} color={color} max={0.3} />
       <WiggleContent isWiggling={!!isWiggling} phase={phase || 0} style={styles.colorBannerContent}>
         <Text style={[styles.bannerLabel, { color }]}>SOBRE DEPUIS</Text>
@@ -79,7 +86,7 @@ function ColorBanner({ color, lastTimestamp, inReorder, isWiggling, phase, onDel
           <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.danger} />
         </TouchableOpacity>
       )}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -227,13 +234,43 @@ export default function SubstancesPage() {
     return { visible, addOptions };
   }, [substances, lastTimestamps, colorBanners]);
 
-  // Liste unique : « Sobre de tout » (fixe) · bandeaux (groupe) · espace + pilule (fixe) · substances (groupe)
+  // Bandeaux qui viennent de disparaître : gardés FADE_MS en fondu à leur place (pas de
+  // disparition sèche qui ressemblerait à un bug), puis retirés.
+  const prevBannersRef = useRef([]);
+  const ghostsRef = useRef({}); // id → { item, index, until }
+  const [ghostTick, setGhostTick] = useState(0);
+  const displayedBanners = useMemo(() => {
+    const now = Date.now();
+    const cur = bannerInfo.visible;
+    const curIds = new Set(cur.map((b) => b.id));
+    prevBannersRef.current.forEach((b, i) => {
+      if (!curIds.has(b.id) && !b.fading && !ghostsRef.current[b.id]) {
+        ghostsRef.current[b.id] = { item: { ...b, fading: true }, index: i, until: now + FADE_MS };
+      }
+    });
+    for (const id of Object.keys(ghostsRef.current)) {
+      if (curIds.has(id) || ghostsRef.current[id].until <= now) delete ghostsRef.current[id];
+    }
+    const out = [...cur];
+    Object.values(ghostsRef.current).sort((a, b) => a.index - b.index)
+      .forEach((g) => out.splice(Math.min(g.index, out.length), 0, g.item));
+    prevBannersRef.current = out;
+    return out;
+  }, [bannerInfo, ghostTick]);
+  useEffect(() => {
+    if (!displayedBanners.some((b) => b.fading)) return;
+    const t = setTimeout(() => setGhostTick((x) => x + 1), FADE_MS + 30);
+    return () => clearTimeout(t);
+  }, [displayedBanners]);
+
+  // Liste unique : « Sobre de tout » (fixe) · bandeaux (groupe) · espace (fixe) · substances (groupe)
+  // La pilule « + » est dessinée par-dessus la liste (renderOverlay) : jamais cachée par un bandeau saisi.
   const listData = useMemo(() => [
     { id: '__sobre', static: true, kind: 'sobre' },
-    ...bannerInfo.visible.map((b) => ({ ...b, kind: 'banner', group: 'banners' })),
-    { id: '__spacer', static: true, kind: 'spacer', containerStyle: { marginTop: -PILL_HALF, height: PILL_HALF + SPACER_HEIGHT } },
+    ...displayedBanners.map((b) => ({ ...b, kind: 'banner', group: 'banners' })),
+    { id: '__spacer', static: true, kind: 'spacer' },
     ...substances.map((sub) => ({ id: sub.id, kind: 'sub', group: 'subs', sub })),
-  ], [bannerInfo, substances]);
+  ], [displayedBanners, substances]);
 
   const getItemHeight = (item) => (
     item.kind === 'sobre' ? sobreH
@@ -267,7 +304,7 @@ export default function SubstancesPage() {
     if (idx < 0) return;
     const { viewportH, contentH, listTop } = metricsRef.current;
     // Haut des substances = Sobre de tout + bandeaux + espace
-    const listStart = (listTop || 0) + sobreH + bannerInfo.visible.length * BANNER_HEIGHT + SPACER_HEIGHT;
+    const listStart = (listTop || 0) + sobreH + displayedBanners.length * BANNER_HEIGHT + SPACER_HEIGHT;
     // Centre de la ligne au centre de la zone visible ;
     // trop bas → tout en bas, trop haut → tout en haut.
     const rowCenter = listStart + idx * ROW_HEIGHT + ROW_HEIGHT / 2;
@@ -353,7 +390,8 @@ export default function SubstancesPage() {
 
   // « Terminé » : enregistre l'ordre de chaque section séparément (seulement si elle a changé)
   const handleReorder = (newIds) => {
-    const newBanners = newIds.filter((id) => id.startsWith('banner:')).map((id) => id.slice(7));
+    const kept = new Set(useStore.getState().colorBanners);
+    const newBanners = newIds.filter((id) => id.startsWith('banner:')).map((id) => id.slice(7)).filter((c) => kept.has(c));
     const newSubs = newIds.filter((id) => !id.startsWith('banner:') && !id.startsWith('__'));
     const curBanners = bannerInfo.visible.map((b) => b.color);
     const curSubs = substances.map((x) => x.id);
@@ -376,24 +414,7 @@ export default function SubstancesPage() {
         </View>
       );
     }
-    if (item.kind === 'spacer') {
-      // Remonte de PILL_HALF sur le séparateur : pilule centrée dessus et entièrement touchable
-      return (
-        <View pointerEvents="box-none" style={styles.pillSpacer}>
-          {(
-            // Visible et active aussi en réorganisation (on y reste après l'ajout / l'annulation)
-            <TouchableOpacity
-              style={styles.pill}
-              onPress={() => { haptics.light(); setAddBannerOpen(true); }}
-              hitSlop={{ top: 10, bottom: 10, left: 14, right: 14 }}
-              activeOpacity={0.6}
-            >
-              <MaterialCommunityIcons name="plus" size={11} color={theme.colors.background} />
-            </TouchableOpacity>
-          )}
-        </View>
-      );
-    }
+    if (item.kind === 'spacer') return <View />;
     if (item.kind === 'banner') {
       return (
         <ColorBanner
@@ -404,6 +425,7 @@ export default function SubstancesPage() {
           phase={phase}
           onDelete={() => setPendingBannerDelete(item.color)}
           flashTick={bannerFlash?.id === item.id ? bannerFlash.tick : 0}
+          fading={!!item.fading}
         />
       );
     }
@@ -421,6 +443,25 @@ export default function SubstancesPage() {
     );
   };
 
+
+  // Pilule « + » posée sur le séparateur au-dessus de l'espace bandeaux / substances.
+  // Dessinée par-dessus la liste ET la copie saisie : un bandeau déplacé ne la cache plus.
+  const renderOverlay = ({ items, tops }) => {
+    const idx = items.findIndex((it) => it.kind === 'spacer');
+    if (idx < 0) return null;
+    return (
+      <View pointerEvents="box-none" style={[styles.pillOverlay, { top: tops[idx] - PILL_HALF }]}>
+        <TouchableOpacity
+          style={styles.pill}
+          onPress={() => { haptics.light(); setAddBannerOpen(true); }}
+          hitSlop={{ top: 10, bottom: 10, left: 14, right: 14 }}
+          activeOpacity={0.6}
+        >
+          <MaterialCommunityIcons name="plus" size={11} color={theme.colors.background} />
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -445,6 +486,7 @@ export default function SubstancesPage() {
           onMetrics={(m) => { metricsRef.current = m; }}
           scrollRef={scrollRef}
           renderItem={renderItem}
+          renderOverlay={renderOverlay}
         />
       )}
 
@@ -552,8 +594,8 @@ const styles = StyleSheet.create({
     height: BANNER_HEIGHT - StyleSheet.hairlineWidth,
     alignItems: 'center', justifyContent: 'center',
   },
-  // Conteneur (marge négative PILL_HALF) fourni par ReorderList via containerStyle ; pilule en haut
-  pillSpacer: { flex: 1, alignItems: 'center' },
+  // Pilule « + » (overlay au-dessus de la liste)
+  pillOverlay: { position: 'absolute', left: 0, right: 0, height: PILL_HALF * 2, alignItems: 'center' },
   pill: {
     height: PILL_HALF * 2, width: 40, borderRadius: PILL_HALF,
     backgroundColor: theme.colors.text,

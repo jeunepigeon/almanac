@@ -10,7 +10,13 @@ export default function ActionSheet({ visible, title, items, onClose }) {
       <Pressable style={styles.backdrop} onPress={onClose}>
         <View style={styles.bottomWrap}>
           <Pressable style={styles.sheet} onPress={() => {}}>
-            {title ? <Text style={styles.title}>{title}</Text> : null}
+            {/* En-tête : croix de fermeture en haut à gauche, titre centré verticalement (1.26) */}
+            <View style={styles.header}>
+              <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <MaterialCommunityIcons name="close" size={20} color={theme.colors.textMuted} />
+              </TouchableOpacity>
+              {title ? <Text style={styles.title} numberOfLines={1}>{title}</Text> : null}
+            </View>
             {items.map((item, i) => (
               <TouchableOpacity
                 key={item.id}
@@ -61,9 +67,17 @@ const styles = StyleSheet.create({
   sheet: {
     backgroundColor: theme.colors.surface,
     borderRadius: 6,
-    paddingVertical: theme.spacing.sm,
+    paddingBottom: theme.spacing.sm,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.border,
+  },
+  header: {
+    height: 52, justifyContent: 'center', alignItems: 'center',
+    paddingHorizontal: 52, // place pour la croix, titre bien centré
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border,
+  },
+  closeBtn: {
+    position: 'absolute', left: theme.spacing.md, top: 0, bottom: 0, justifyContent: 'center',
   },
   title: {
     color: theme.colors.textMuted,
@@ -71,9 +85,7 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     letterSpacing: 1,
     textTransform: 'uppercase',
-    paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.sm,
-    paddingBottom: theme.spacing.sm,
+    textAlign: 'center',
   },
   item: {
     flexDirection: 'row',

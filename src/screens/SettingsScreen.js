@@ -19,6 +19,8 @@ import ImportWizard from '../components/ImportWizard';
 import RestoreWizard from '../components/RestoreWizard';
 import NotifWizard from '../components/NotifWizard';
 import { deviceHasLock, authenticate } from '../components/AppLock';
+import { scheduleTestNotification } from '../utils/notifications';
+import { KDF_NATIVE_AVAILABLE, getLastKdfEngine } from '../utils/exportImport';
 import { fmtDateTiretHM, fmtSize, parseSnapshot, withNotifCounts } from '../utils/snapshots';
 import { useKeepAwake } from '../utils/keepAwake';
 import appJson from '../../app.json';
@@ -56,6 +58,28 @@ export default function SettingsScreen() {
   const [infoModal, setInfoModal] = useState(null);
   const [notifOpen, setNotifOpen] = useState(false);
   const appLockEnabled = useStore((s) => s.appLockEnabled);
+  const notifRules = useStore((s) => s.notifRules);
+
+  // --- Debug notifications (1.26) : Toutes / bandeau violet / une substance / 1re notif active ---
+  const debugNotifTargets = () => {
+    const subs = substances;
+    const count = {};
+    for (const x of subs) count[x.color] = (count[x.color] || 0) + 1;
+    const cats = Object.keys(count).filter((c) => count[c] >= 2);
+    const violet = cats.includes('#9C28B1') ? '#9C28B1' : cats[0];
+    const out = [{ id: 'all', label: 'Notif test : toutes substances', target: { target: 'all', key: null }, color: theme.colors.text }];
+    if (violet) out.push({ id: 'color', label: `Notif test : catégorie${violet === '#9C28B1' ? ' violette' : ''}`, target: { target: 'color', key: violet }, color: violet });
+    if (subs[0]) out.push({ id: 'sub', label: `Notif test : ${subs[0].name}`, target: { target: 'sub', key: subs[0].id }, color: subs[0].color });
+    const r = notifRules[0];
+    if (r) out.push({ id: 'rule', label: 'Notif test : 1re notification active', target: { target: r.target, key: r.key }, color: theme.colors.textMuted });
+    return out;
+  };
+  const sendDebugNotif = async (d) => {
+    const ok = await scheduleTestNotification(d.target, 10);
+    setInfoModal(ok
+      ? { title: 'Notification programmée', message: 'Elle arrive dans 10 secondes. Tu peux fermer l\'app pour tester le tap depuis l\'extérieur.' }
+      : { title: 'Notifications désactivées', message: "Autorise les notifications d'Almanac dans les réglages du téléphone." });
+  };
   const setAppLockEnabled = useStore((s) => s.setAppLockEnabled);
 
   // Activer / désactiver le verrouillage : confirmé par le déverrouillage du téléphone
@@ -226,15 +250,15 @@ export default function SettingsScreen() {
     // et ferme le clavier au lieu de déclencher le bouton.
     <View style={styles.container}>
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      {/* ===== SOUTENIR ===== */}
-      <Text style={styles.sectionTitle}>Soutenir le projet</Text>
+      {/* ===== SOUTENIR (sans titre, 1.26) ===== */}
+      <View style={{ height: theme.spacing.md }} />
       <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('Donations')}>
         <Text style={styles.rowLabel}>Soutenir le développement</Text>
         <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
       </TouchableOpacity>
 
-      {/* ===== VERROUILLAGE (1.25) ===== */}
-      <Text style={styles.sectionTitle}>Verrouillage</Text>
+      {/* ===== VERROUILLAGE + NOTIFICATIONS (sans titre) ===== */}
+      <View style={{ height: theme.spacing.lg }} />
       <View style={styles.row}>
         <View style={[styles.rowLeft, { paddingRight: theme.spacing.md }]}>
           <MaterialCommunityIcons name="lock-outline" size={20} color={theme.colors.text} style={styles.rowIcon} />
@@ -251,11 +275,10 @@ export default function SettingsScreen() {
         />
       </View>
 
-      {/* ===== NOTIFICATIONS (1.25) ===== */}
-      <Text style={styles.sectionTitle}>Notifications</Text>
       <TouchableOpacity style={styles.row} onPress={() => setNotifOpen(true)}>
         <View style={styles.rowLeft}>
-          <MaterialCommunityIcons name="bell-outline" size={20} color={theme.colors.text} style={styles.rowIcon} />
+          {/* Cloche pleine dès qu'au moins une notification est active */}
+          <MaterialCommunityIcons name={notifRules.length > 0 ? 'bell' : 'bell-outline'} size={20} color={theme.colors.text} style={styles.rowIcon} />
           <Text style={styles.rowLabel}>Gérer les notifications</Text>
         </View>
         <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
@@ -321,8 +344,8 @@ export default function SettingsScreen() {
         })
       )}
 
-      {/* ===== ZONE DE DANGER ===== */}
-      <Text style={styles.sectionTitle}>Zone de danger</Text>
+      {/* ===== ZONE DE DANGER (sans titre : la ligne rouge suffit) ===== */}
+      <View style={{ height: theme.spacing.lg }} />
       <TouchableOpacity style={styles.row} onPress={() => setPendingWipeStep(1)}>
         <View style={{ flex: 1 }}>
           <Text style={styles.rowLabelDanger}>Remise à zéro complète</Text>
@@ -337,6 +360,21 @@ export default function SettingsScreen() {
         <Text style={styles.rowLabel}>Afficher toutes les modals textuelles</Text>
         <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
       </TouchableOpacity>
+      {/* Chiffrement : module natif détecté ? moteur utilisé au dernier export / import */}
+      <View style={styles.row}>
+        <Text style={styles.rowLabel}>Chiffrement natif</Text>
+        <Text style={styles.rowValue}>{KDF_NATIVE_AVAILABLE ? 'disponible' : 'indisponible'} · dernier : {getLastKdfEngine()}</Text>
+      </View>
+      {/* Vraies notifications (même logique que les paliers), envoyées dans 10 s */}
+      {debugNotifTargets().map((d) => (
+        <TouchableOpacity key={d.id} style={styles.row} onPress={() => sendDebugNotif(d)}>
+          <View style={styles.rowLeft}>
+            <MaterialCommunityIcons name="bell-ring-outline" size={18} color={d.color} style={styles.rowIcon} />
+            <Text style={styles.rowLabel}>{d.label}</Text>
+          </View>
+          <Text style={styles.rowValue}>10 s</Text>
+        </TouchableOpacity>
+      ))}
 
       {/* ===== À PROPOS ===== */}
       <Text style={styles.sectionTitle}>À propos</Text>

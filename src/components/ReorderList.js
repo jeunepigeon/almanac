@@ -132,6 +132,7 @@ export default function ReorderList({
   active,
   onDeactivate,
   headerComponent = null,
+  renderOverlay = null,    // ({ items, tops, heights }) → élément dessiné PAR-DESSUS la liste et la copie
   footerComponent = null,  // affiché sous la liste (ex. substances grisées pendant la réorg des bandeaux)
   scrollRef = null,
 }) {
@@ -446,6 +447,7 @@ export default function ReorderList({
               style={[styles.indicatorBar, { top: (barTop ?? 0) - 1, opacity: barTop != null ? 1 : 0 }]}
             />
           )}
+          {renderOverlay?.({ items, tops, heights })}
         </View>
         {footerComponent}
       </ScrollView>

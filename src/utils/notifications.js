@@ -118,22 +118,53 @@ export function computeSchedule({ notifRules = [], substances = [], lastTimestam
   return [...byRecord.values()].sort((a, b) => a.time - b.time).slice(0, MAX_SCHEDULED);
 }
 
+// Contenu d'une notification de palier (texte neutre) — partagé avec le debug
+function buildContent(data) {
+  return {
+    title: 'Almanac',
+    body: "Nouveau palier atteint, cliquez pour plus d'info",
+    data,
+  };
+}
+
+// Annule les notifications programmées, sauf celles de test du debug (elles doivent partir)
+async function cancelScheduledPaliers() {
+  const list = await Notifications.getAllScheduledNotificationsAsync();
+  for (const n of list) {
+    if (n?.content?.data?.debugTest) continue;
+    await Notifications.cancelScheduledNotificationAsync(n.identifier);
+  }
+}
+
+// Debug (1.26) : vraie notification, même canal / texte / données, qui part dans `delaySec` secondes.
+// target : { target: 'all' | 'color' | 'sub', key }
+export async function scheduleTestNotification(target, delaySec = 10) {
+  const ok = await ensureNotifPermission();
+  if (!ok) return false;
+  await configureNotifications();
+  await Notifications.scheduleNotificationAsync({
+    content: buildContent({ target: target.target, key: target.key ?? null, palier: 'debug', debugTest: true }),
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: Date.now() + delaySec * 1000,
+      channelId: CHANNEL_ID,
+    },
+  });
+  return true;
+}
+
 // Reprogrammation complète (sérialisée : un seul passage à la fois)
 let chain = Promise.resolve();
 export function rescheduleAll(state) {
   chain = chain.then(async () => {
     try {
-      await Notifications.cancelAllScheduledNotificationsAsync();
+      await cancelScheduledPaliers();
       if (!state.notifRules || state.notifRules.length === 0) return;
       if (!(await hasNotifPermission())) return;
       const list = computeSchedule(state);
       for (const n of list) {
         await Notifications.scheduleNotificationAsync({
-          content: {
-            title: 'Almanac',
-            body: "Nouveau palier atteint, cliquez pour plus d'info",
-            data: n.data,
-          },
+          content: buildContent(n.data),
           trigger: {
             type: Notifications.SchedulableTriggerInputTypes.DATE,
             date: n.time,

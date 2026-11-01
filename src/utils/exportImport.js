@@ -6,6 +6,49 @@
 import CryptoJS from 'crypto-js';
 import * as Crypto from 'expo-crypto';
 
+// --- Dérivation de clé (1.26) : PBKDF2-SHA256 en NATIF via react-native-quick-crypto ---
+// C'était l'étape qui bloquait l'app plusieurs secondes (crypto-js = JavaScript pur).
+// Même algorithme, mêmes paramètres → fichiers identiques et compatibles dans les deux sens.
+// Filet de sécurité : si le module natif est absent ou échoue, repli sur crypto-js (lent mais sûr).
+let quickCrypto = null;
+try {
+  // require paresseux : une absence du module natif ne doit jamais faire planter l'app
+  const mod = require('react-native-quick-crypto');
+  quickCrypto = mod?.default || mod;
+} catch (e) { quickCrypto = null; }
+
+let lastKdfEngine = 'aucun'; // 'natif' | 'javascript' — affiché dans Debug
+export function getLastKdfEngine() { return lastKdfEngine; }
+export const KDF_NATIVE_AVAILABLE = !!quickCrypto?.pbkdf2Sync;
+
+function wordArrayToBytes(wa) {
+  const hex = CryptoJS.enc.Hex.stringify(wa);
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(i * 2, 2), 16);
+  return out;
+}
+function bytesToWordArray(bytes) {
+  let hex = '';
+  for (let i = 0; i < bytes.length; i++) hex += (bytes[i] < 16 ? '0' : '') + bytes[i].toString(16);
+  return CryptoJS.enc.Hex.parse(hex);
+}
+
+function deriveKey(password, salt, iterations) {
+  if (quickCrypto?.pbkdf2Sync) {
+    try {
+      const buf = quickCrypto.pbkdf2Sync(String(password), wordArrayToBytes(salt), iterations, KEY_SIZE_BITS / 8, 'sha256');
+      const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+      if (bytes.length === KEY_SIZE_BITS / 8) { lastKdfEngine = 'natif'; return bytesToWordArray(bytes); }
+    } catch (e) { /* repli JS ci-dessous */ }
+  }
+  lastKdfEngine = 'javascript';
+  return CryptoJS.PBKDF2(password, salt, {
+    keySize: KEY_SIZE_BITS / 32,
+    iterations,
+    hasher: CryptoJS.algo.SHA256,
+  });
+}
+
 const HEADER_VERSION = 'ALMANAC_EXPORT_v1';
 const ITERATIONS = 10_000;
 const KEY_SIZE_BITS = 256;
@@ -160,11 +203,7 @@ export async function buildExportFile(substances, consumptions, password, banner
   const salt = await randomWordArrayAsync(SALT_BYTES);
   const iv = await randomWordArrayAsync(IV_BYTES);
 
-  const key = CryptoJS.PBKDF2(password, salt, {
-    keySize: KEY_SIZE_BITS / 32,
-    iterations: ITERATIONS,
-    hasher: CryptoJS.algo.SHA256,
-  });
+  const key = deriveKey(password, salt, ITERATIONS);
 
   const encrypted = CryptoJS.AES.encrypt(payload, key, {
     iv,
@@ -217,11 +256,7 @@ export function parseExportFile(content, password) {
 
   const salt = CryptoJS.enc.Base64.parse(saltB64);
   const iv = CryptoJS.enc.Base64.parse(ivB64);
-  const key = CryptoJS.PBKDF2(password, salt, {
-    keySize: KEY_SIZE_BITS / 32,
-    iterations,
-    hasher: CryptoJS.algo.SHA256,
-  });
+  const key = deriveKey(password, salt, iterations);
 
   const ciphertext = CryptoJS.enc.Base64.parse(cipherB64);
   const cipherParams = CryptoJS.lib.CipherParams.create({ ciphertext });

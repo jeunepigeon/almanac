@@ -8,8 +8,9 @@
 //   < 1 mois -> "5 jours 3 heures"
 //   < 1 an   -> "1 mois 12 jours" (toujours jours, même à 0)
 //   >= 1 an  -> "1 an 2 mois 3 jours" / "1 an 0 jours" / "1 an 5 mois 0 jours"
-//   On skip uniquement les niveaux intermédiaires à 0 (mois si 0 et année > 0)
-//   Le niveau "jours" est toujours affiché dès qu'il y a au moins un mois ou une année.
+//   1.26 : quand la 2e unité vaut 0, on descend d'une unité (plus parlant que « 0 ») :
+//     1 heure 0 min → « 1 heure » ; 1 jour 0 heure → « 1 jour 59 min » ;
+//     2 mois 0 jour → « 2 mois 5 heures » ; 1 an 0 mois → « 1 an 12 jours » (déjà le cas).
 
 const MS_PER_SEC = 1000;
 const MS_PER_MIN = 60 * MS_PER_SEC;
@@ -45,6 +46,7 @@ export function formatDurationSince(timestamp, now = Date.now()) {
   if (diff < MS_PER_DAY) {
     const h = Math.floor(diff / MS_PER_HOUR);
     const m = Math.floor((diff % MS_PER_HOUR) / MS_PER_MIN);
+    if (m === 0) return plural(h, 'heure', 'heures');
     return `${plural(h, 'heure', 'heures')} ${m} min`;
   }
 
@@ -52,6 +54,10 @@ export function formatDurationSince(timestamp, now = Date.now()) {
   if (diff < MS_PER_MONTH) {
     const d = Math.floor(diff / MS_PER_DAY);
     const h = Math.floor((diff % MS_PER_DAY) / MS_PER_HOUR);
+    if (h === 0) {
+      const m = Math.floor((diff % MS_PER_HOUR) / MS_PER_MIN);
+      return m > 0 ? `${plural(d, 'jour', 'jours')} ${m} min` : plural(d, 'jour', 'jours');
+    }
     return `${plural(d, 'jour', 'jours')} ${plural(h, 'heure', 'heures')}`;
   }
 
@@ -60,6 +66,10 @@ export function formatDurationSince(timestamp, now = Date.now()) {
     const months = Math.floor(diff / MS_PER_MONTH);
     const remAfterMonths = diff - months * MS_PER_MONTH;
     const d = Math.floor(remAfterMonths / MS_PER_DAY);
+    if (d === 0) {
+      const h = Math.floor(remAfterMonths / MS_PER_HOUR);
+      return h > 0 ? `${months} mois ${plural(h, 'heure', 'heures')}` : `${months} mois`;
+    }
     return `${months} mois ${plural(d, 'jour', 'jours')}`;
   }
 
@@ -74,10 +84,14 @@ export function formatDurationSince(timestamp, now = Date.now()) {
   const daysStr = plural(d, 'jour', 'jours');
 
   if (months > 0) {
-    // 1 an 5 mois 3 jours / 1 an 5 mois 0 jours
-    return `${yearsStr} ${months} mois ${daysStr}`;
+    // 1 an 5 mois 3 jours / 1 an 5 mois (jours à 0 : pas de « 0 jour »)
+    return d > 0 ? `${yearsStr} ${months} mois ${daysStr}` : `${yearsStr} ${months} mois`;
   }
-  // 1 an 0 jours / 1 an 12 jours (skip mois à 0)
+  // 1 an 12 jours (mois à 0 → jours) ; 1 an 0 jour → 1 an 5 heures
+  if (d === 0) {
+    const h = Math.floor(remAfterMonths / MS_PER_HOUR);
+    return h > 0 ? `${yearsStr} ${plural(h, 'heure', 'heures')}` : yearsStr;
+  }
   return `${yearsStr} ${daysStr}`;
 }
 

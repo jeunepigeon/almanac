@@ -4,7 +4,7 @@
 
 Tout reste **sur le téléphone** (SQLite local). Pas de compte, pas de serveur, pas de tracking. Les seules données qui sortent de l'appareil sont les exports que tu crées toi-même, chiffrés par un code PIN.
 
-**Version actuelle : 1.25** · Android · build APK via EAS · développement démarré le 26 avril 2026.
+**Version actuelle : 1.26** · Android · build APK via EAS · développement démarré le 26 avril 2026.
 
 ---
 
@@ -42,7 +42,7 @@ Tout reste **sur le téléphone** (SQLite local). Pas de compte, pas de serveur,
 - Cibles : **toutes les substances**, une **catégorie** (couleur avec au moins 2 substances) ou une **substance**.
 - Une prise ne déclenche qu'une notification par palier (priorité substance > catégorie > toutes).
 - Notifications **silencieuses** (ni son ni vibration), texte neutre ; un tap ouvre le compteur concerné.
-- Accès : cloche sous « settings » (liste et Global), cloche colorée dans le calendrier d'une substance, et Paramètres.
+- Accès : cloche sous « settings » sur Global, cloche colorée dans le calendrier d'une substance, et Paramètres. Cloche pleine dès qu'une notification est active.
 - 100 % locales (pas de serveur) ; sans l'autorisation « Alarmes et rappels », Android peut les livrer jusqu'à ~1 h après le palier.
 
 ### Verrouillage (option)
@@ -57,7 +57,7 @@ Tout reste **sur le téléphone** (SQLite local). Pas de compte, pas de serveur,
 
 ## Chiffrement des exports
 
-- **AES-256-CBC**, clé dérivée du code PIN par **PBKDF2-SHA256, 10 000 itérations**, avec un sel et un IV aléatoires pour chaque fichier.
+- **AES-256-CBC**, clé dérivée du code PIN par **PBKDF2-SHA256, 10 000 itérations** (calcul natif via `react-native-quick-crypto`, repli JavaScript), avec un sel et un IV aléatoires pour chaque fichier.
 - Le sel, l'IV et le nombre d'itérations sont dans l'en-tête du fichier, donc les anciens exports restent lisibles si le nombre d'itérations change.
 - Un PIN oublié rend le fichier illisible : il n'existe aucune porte dérobée.
 - La base SQLite locale n'est pas chiffrée. Seuls les exports le sont.
@@ -74,7 +74,7 @@ Tout reste **sur le téléphone** (SQLite local). Pas de compte, pas de serveur,
 | Navigation | `@react-navigation/native` + `native-stack`, `react-native-pager-view` |
 | Gestes (réorganisation) | `react-native-gesture-handler` |
 | Graphiques | `react-native-svg` (composants maison) |
-| Chiffrement | `crypto-js`, `expo-crypto` |
+| Chiffrement | `react-native-quick-crypto` (PBKDF2 natif), `crypto-js` (AES), `expo-crypto` |
 | Fichiers | `expo-file-system` (Storage Access Framework), `expo-document-picker` |
 | Préférences | `@react-native-async-storage/async-storage` |
 | Haptique | `expo-haptics` |
@@ -144,6 +144,15 @@ src/
 
 ## Historique
 
+### 1.26
+- **Déchiffrement / chiffrement quasi instantanés** : PBKDF2 en natif (`react-native-quick-crypto`), format de fichier inchangé.
+- Assistant notifications : lignes plus fines à fond pâle + liseré, « Toutes substances » / « Toutes les ● », bouton + rond centré.
+- Cloches vides / pleines ; plus de cloche sur la liste des substances.
+- Paramètres épurés (titres seulement pour Gestionnaire, Debug, À propos) ; Debug : notifications de test réelles (10 s) et état du chiffrement natif.
+- Menu du crayon : croix de fermeture, titre centré.
+- Bandeaux supprimés en fondu ; pilule + toujours au-dessus d'un bandeau saisi ; retour à la ligne propre des noms.
+- Compteurs : « 1 jour 59 min » au lieu de « 1 jour 0 heure » (même règle pour heures, mois, années).
+
 ### 1.25
 - **Notifications de paliers de sobriété** (voir plus haut), incluses dans les sauvegardes et exports.
 - **Verrouillage de l'app** (option, déverrouillage du téléphone).
@@ -201,7 +210,7 @@ src/
 
 ## Prévu
 
-- **Chiffrement natif** (`react-native-quick-crypto`) pour un déchiffrement quasi instantané.
+- **Verrouillage natif à l'extinction de l'écran** (petit module Android) si les 5 min ne suffisent pas.
 - **Session d'optimisation** : cache central des prises, statistiques précalculées, nettoyage du code hérité.
 
 ---

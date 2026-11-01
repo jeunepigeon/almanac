@@ -2,7 +2,7 @@
   "expo": {
     "name": "Almanac",
     "slug": "almanac",
-    "version": "1.25",
+    "version": "1.26",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -25,7 +25,8 @@
         {
           "faceIDPermission": "Almanac utilise Face ID pour déverrouiller l'app."
         }
-      ]
+      ],
+      "react-native-quick-crypto"
     ],
     "ios": {
       "supportsTablet": false,
@@ -37,7 +38,7 @@
         "backgroundColor": "#0E0E0E"
       },
       "package": "com.jeunepigeon.almanac",
-      "versionCode": 138
+      "versionCode": 139
     },
     "web": {
       "favicon": "./assets/favicon.png"

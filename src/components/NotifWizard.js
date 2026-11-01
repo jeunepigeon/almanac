@@ -20,6 +20,14 @@ import SubstanceIcon from './SubstanceIcon';
 import haptics from '../utils/haptics';
 import { PALIERS, PALIER_ORDER, palierLabel, ensureNotifPermission } from '../utils/notifications';
 
+// Couleur hex → rgba (fond pâle / liseré des lignes, style B de la planche)
+function rgba(hex, a) {
+  const h = (hex || '#EDEDED').replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16); const g = parseInt(h.slice(2, 4), 16); const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+const rowTint = (c) => ({ backgroundColor: rgba(c, 0.14), borderColor: rgba(c, 0.7) });
+
 const sameTarget = (a, b) => a && b && a.target === b.target && (a.key || null) === (b.key || null);
 
 function Dot({ color, size = 10 }) {
@@ -83,9 +91,10 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
         </View>
       );
     }
+    // « Toutes substances » / « Toutes les ● »
     return (
       <View style={styles.labelRow}>
-        <Text style={[styles.label, style]} numberOfLines={1}>Toutes les substances</Text>
+        <Text style={[styles.label, style]} numberOfLines={1}>{t.target === 'color' ? 'Toutes les' : 'Toutes substances'}</Text>
         {t.target === 'color' && <Dot color={t.key} size={12} />}
       </View>
     );
@@ -122,9 +131,10 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
     confirm: 'Supprimer la notification ?',
   };
 
+  // Bouton « + » rond à liseré, centré (option 1 de la planche)
   const AddBox = ({ color, onPress }) => (
-    <TouchableOpacity style={[styles.addBox, { borderColor: color }]} onPress={onPress} activeOpacity={0.7}>
-      <MaterialCommunityIcons name="plus" size={22} color={color} />
+    <TouchableOpacity style={[styles.addBox, { borderColor: color }]} onPress={onPress} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+      <MaterialCommunityIcons name="plus" size={20} color={color} />
     </TouchableOpacity>
   );
 
@@ -137,7 +147,7 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
           {activeTargets.map((t) => {
             const n = rulesOf(t).length;
             return (
-              <TouchableOpacity key={`${t.target}:${t.key}`} style={[styles.row, { borderColor: colorOf(t) }]} onPress={() => openTarget(t)} activeOpacity={0.7}>
+              <TouchableOpacity key={`${t.target}:${t.key}`} style={[styles.row, rowTint(colorOf(t))]} onPress={() => openTarget(t)} activeOpacity={0.7}>
                 {renderTargetLabel(t)}
                 <Text style={styles.count}>{n} notif{n > 1 ? 's' : ''}</Text>
                 <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.textMuted} />
@@ -152,7 +162,7 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
     body = (
       <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
         {allTargets.map((t) => (
-          <TouchableOpacity key={`${t.target}:${t.key}`} style={[styles.row, { borderColor: colorOf(t) }]} onPress={() => openTarget(t)} activeOpacity={0.7}>
+          <TouchableOpacity key={`${t.target}:${t.key}`} style={[styles.row, rowTint(colorOf(t))]} onPress={() => openTarget(t)} activeOpacity={0.7}>
             {renderTargetLabel(t)}
             <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.textMuted} />
           </TouchableOpacity>
@@ -166,7 +176,7 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
         <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
           {rules.length === 0 && <Text style={styles.empty}>Aucune notification</Text>}
           {rules.map((r) => (
-            <View key={notifRuleId(r)} style={[styles.row, { borderColor: colorOf(target) }]}>
+            <View key={notifRuleId(r)} style={[styles.row, rowTint(colorOf(target))]}>
               <MaterialCommunityIcons name="bell-outline" size={18} color={colorOf(target)} />
               <Text style={[styles.label, { flex: 1 }]}>{palierLabel(r.palier)}</Text>
               <TouchableOpacity
@@ -189,7 +199,7 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
       <>
         <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
           {PALIERS.filter((p) => !active.has(p.id)).map((p) => (
-            <TouchableOpacity key={p.id} style={[styles.row, { borderColor: colorOf(target) }]} onPress={() => addPalier(p.id)} activeOpacity={0.7}>
+            <TouchableOpacity key={p.id} style={[styles.row, rowTint(colorOf(target))]} onPress={() => addPalier(p.id)} activeOpacity={0.7}>
               <Text style={[styles.label, { flex: 1 }]}>{p.label}</Text>
               <MaterialCommunityIcons name="plus" size={18} color={colorOf(target)} />
             </TouchableOpacity>
@@ -214,7 +224,7 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
           {'« '}{palierLabel(pendingDelete.palier)}{' » pour '}
           {target?.target === 'sub'
             ? (substances.find((s) => s.id === target.key)?.name || '—')
-            : 'toutes les substances'}
+            : (target?.target === 'color' ? 'toutes les' : 'toutes substances')}
           {target?.target === 'color' ? ' ' : ''}
           {target?.target === 'color' && <Text style={{ color: target.key, fontSize: 18 }}>●</Text>}
           {' sera supprimée.'}
@@ -274,18 +284,20 @@ const styles = StyleSheet.create({
   title: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '600', letterSpacing: 0.3 },
   list: { flexGrow: 0 },
   empty: { color: theme.colors.textMuted, textAlign: 'center', fontSize: theme.font.sizes.sm, paddingVertical: theme.spacing.lg },
+  // Lignes plus fines (1.26), fond pâle + liseré à la couleur de la cible
   row: {
     flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md,
     borderWidth: 1, borderRadius: 8,
-    paddingVertical: theme.spacing.md, paddingHorizontal: theme.spacing.md,
-    marginBottom: theme.spacing.sm,
+    paddingVertical: 9, paddingHorizontal: theme.spacing.md,
+    marginBottom: 7,
   },
   labelRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
   label: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '300', letterSpacing: 0.3, flexShrink: 1 },
   count: { color: theme.colors.textMuted, fontSize: theme.font.sizes.sm },
   addBox: {
-    borderWidth: 1, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
-    paddingVertical: theme.spacing.sm, marginTop: theme.spacing.xs,
+    width: 36, height: 36, borderRadius: 18, borderWidth: 1,
+    alignSelf: 'center', alignItems: 'center', justifyContent: 'center',
+    marginTop: theme.spacing.sm,
   },
   hint: { color: theme.colors.textMuted, fontSize: theme.font.sizes.xs, textAlign: 'center', marginTop: theme.spacing.sm, lineHeight: 16 },
   permBox: { alignItems: 'center', marginTop: theme.spacing.sm },
