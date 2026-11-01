@@ -3,6 +3,9 @@
 // et inclut nativement cannabis, smoking, pill, beer, etc.
 
 export const ICONS = [
+  // Point (icône par défaut, sélectionnée à la création) — en tête de liste (1.25)
+  { id: 'circle', icon: 'circle' },
+
   // Plantes / fumée
   { id: 'cannabis', icon: 'cannabis' },
   { id: 'smoking', icon: 'smoking' },
@@ -53,7 +56,6 @@ export const ICONS = [
   { id: 'cellphone', icon: 'cellphone' },
 
   // Formes neutres / abstrait
-  { id: 'circle', icon: 'circle' },
   { id: 'circle-outline', icon: 'circle-outline' },
   { id: 'triangle', icon: 'triangle' },
   { id: 'square', icon: 'square' },

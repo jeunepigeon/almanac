@@ -31,6 +31,27 @@ import * as Crypto from 'expo-crypto';
 import { getJSON, setJSON } from '../utils/prefs';
 
 const COLOR_BANNERS_KEY = 'almanac.colorBanners';
+const NOTIF_RULES_KEY = 'almanac.notifRules';
+const APP_LOCK_KEY = 'almanac.appLock';
+
+// Notifications de paliers (1.25). Une règle = { target: 'all' | 'color' | 'sub', key, palier }
+//  - key : null pour 'all', la couleur pour 'color', l'id de substance pour 'sub'
+//  - palier : '24h' | '48h' | '7d' | '15d' | 'monthly'
+export const notifRuleId = (r) => `${r.target}:${r.key || ''}:${r.palier}`;
+function normalizeRules(list) {
+  const seen = new Set();
+  const out = [];
+  for (const r of Array.isArray(list) ? list : []) {
+    if (!r || !r.target || !r.palier) continue;
+    const rule = { target: r.target, key: r.target === 'all' ? null : (r.key || null), palier: r.palier };
+    if (rule.target !== 'all' && !rule.key) continue;
+    const id = notifRuleId(rule);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(rule);
+  }
+  return out;
+}
 
 export const useStore = create((set, get) => ({
   substances: [],
@@ -45,6 +66,46 @@ export const useStore = create((set, get) => ({
   requestGotoGlobalStats: () => set((s) => ({ gotoGlobalStatsTick: s.gotoGlobalStatsTick + 1 })),
   pagerLocked: false,
   setPagerLocked: (locked) => set({ pagerLocked: !!locked }),
+
+  // --- Notifications (1.25) ---
+  notifRules: [],
+  setNotifRules: (list) => {
+    const next = normalizeRules(list);
+    set({ notifRules: next });
+    setJSON(NOTIF_RULES_KEY, next);
+  },
+  addNotifRule: (rule) => get().setNotifRules([...get().notifRules, rule]),
+  removeNotifRule: (rule) => get().setNotifRules(get().notifRules.filter((r) => notifRuleId(r) !== notifRuleId(rule))),
+  // Import / restauration : ajoute les règles absentes (les doublons sont ignorés)
+  mergeNotifRules: (list = []) => get().setNotifRules([...get().notifRules, ...list]),
+
+  // Tap sur une notification « Toutes » / catégorie → liste des substances + flash du bandeau
+  notifFocus: null, // { kind: 'all' | 'color', color, tick }
+  requestNotifFocus: (kind, color = null) => set((s) => ({
+    notifFocus: { kind, color, tick: (s.notifFocus?.tick || 0) + 1 },
+  })),
+
+  // Verrouillage de l'app (1.25) : désactivé par défaut
+  appLockEnabled: false,
+  setAppLockEnabled: (on) => { set({ appLockEnabled: !!on }); setJSON(APP_LOCK_KEY, !!on); },
+
+  // Catégorie = couleur avec au moins 2 substances. Si une couleur passe sous 2 (suppression,
+  // changement de couleur, remise à zéro…), son bandeau et ses notifications sont SUPPRIMÉS.
+  // Les notifications de substances qui n'existent plus sont supprimées aussi.
+  pruneOrphans: () => {
+    const { substances, colorBanners, notifRules } = get();
+    const count = {};
+    for (const sub of substances) count[sub.color] = (count[sub.color] || 0) + 1;
+    const ids = new Set(substances.map((x) => x.id));
+    const banners = colorBanners.filter((c) => (count[c] || 0) >= 2);
+    const rules = notifRules.filter((r) => (
+      r.target === 'all'
+      || (r.target === 'color' && (count[r.key] || 0) >= 2)
+      || (r.target === 'sub' && ids.has(r.key))
+    ));
+    if (banners.length !== colorBanners.length) { set({ colorBanners: banners }); setJSON(COLOR_BANNERS_KEY, banners); }
+    if (rules.length !== notifRules.length) { set({ notifRules: rules }); setJSON(NOTIF_RULES_KEY, rules); }
+  },
 
   // Bandeaux « Sobre depuis » par couleur (1.22) : liste ordonnée de couleurs.
   colorBanners: [],
@@ -84,8 +145,12 @@ export const useStore = create((set, get) => ({
     const snapshots = await dbGetAllSnapshots();
     const hasUnconsulted = snapshots.some((s) => !s.consulted);
     const colorBanners = await getJSON(COLOR_BANNERS_KEY, []);
+    const notifRules = await getJSON(NOTIF_RULES_KEY, []);
+    const appLockEnabled = await getJSON(APP_LOCK_KEY, false);
     set({
       colorBanners: Array.isArray(colorBanners) ? colorBanners : [],
+      notifRules: normalizeRules(notifRules),
+      appLockEnabled: !!appLockEnabled,
       substances: all.filter((s) => !s.archived),
       archivedSubstances: all.filter((s) => s.archived),
       lastTimestamps,
@@ -94,6 +159,7 @@ export const useStore = create((set, get) => ({
       hasUnconsultedSnapshots: hasUnconsulted,
       ready: true,
     });
+    get().pruneOrphans();
   },
 
   loadSnapshots: async () => {
@@ -126,7 +192,7 @@ export const useStore = create((set, get) => ({
     }
     const uniqueName = await makeUniqueSnapshotName(baseName);
     const snap = await createSnapshot(
-      { substances: state.substances, archivedSubstances: state.archivedSubstances, consumptions: dbAllCons, banners: state.colorBanners },
+      { substances: state.substances, archivedSubstances: state.archivedSubstances, consumptions: dbAllCons, banners: state.colorBanners, notifs: state.notifRules },
       uniqueName,
       substanceIds
     );
@@ -252,6 +318,7 @@ export const useStore = create((set, get) => ({
       substances: updateInArray(state.substances),
       archivedSubstances: updateInArray(state.archivedSubstances),
     }));
+    if (fields.color) get().pruneOrphans(); // une couleur peut passer sous 2 substances
   },
 
   // Suppression d'une substance = archivage via snapshot + wipe de la DB
@@ -274,6 +341,7 @@ export const useStore = create((set, get) => ({
       consumptionsBySubstance: newCons,
       lastTimestamps: newLast,
     }));
+    get().pruneOrphans(); // notifs de la substance + catégorie éventuellement dissoute
   },
 
   archiveSubstance: async (id) => {
@@ -373,6 +441,7 @@ export const useStore = create((set, get) => ({
       lastTimestamps: {},
       consumptionsBySubstance: {},
     });
+    get().pruneOrphans();
   },
 
   deleteConsumption: async (id, substanceId) => {

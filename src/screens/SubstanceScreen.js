@@ -16,6 +16,7 @@ import MonthCalendar from '../components/MonthCalendar';
 import ScrollableCalendar from '../components/ScrollableCalendar';
 import DayDetailModal from '../components/DayDetailModal';
 import StatsView from '../components/StatsView';
+import NotifWizard from '../components/NotifWizard';
 
 function pad2(n) { return n < 10 ? `0${n}` : `${n}`; }
 function dayKeyOf(ts) {
@@ -46,6 +47,7 @@ export default function SubstanceScreen() {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [dayDetail, setDayDetail] = useState(null);
   const [prefilledDate, setPrefilledDate] = useState(null);
+  const [notifOpen, setNotifOpen] = useState(false);
 
   useEffect(() => {
     if (substanceId && consumptions === null) {
@@ -54,7 +56,15 @@ export default function SubstanceScreen() {
   }, [substanceId, consumptions, loadConsumptionsForSubstance]);
 
   useEffect(() => {
-    navigation.setOptions({ title: substance?.name ?? 'Substance' });
+    navigation.setOptions({
+      title: substance?.name ?? 'Substance',
+      // Cloche à la couleur de la substance : notifications de CETTE substance (sélection sautée)
+      headerRight: () => (substance ? (
+        <TouchableOpacity onPress={() => setNotifOpen(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <MaterialCommunityIcons name="bell-outline" size={20} color={substance.color} />
+        </TouchableOpacity>
+      ) : null),
+    });
   }, [navigation, substance]);
 
   useEffect(() => {
@@ -132,6 +142,12 @@ export default function SubstanceScreen() {
           substanceId={substanceId}
         />
       )}
+
+      <NotifWizard
+        visible={notifOpen}
+        initialTarget={{ target: 'sub', key: substanceId }}
+        onClose={() => setNotifOpen(false)}
+      />
 
       <FAB color={substance.color} onPress={() => setLogOpen(true)} />
 

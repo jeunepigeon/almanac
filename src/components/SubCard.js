@@ -33,6 +33,7 @@ export default function SubCard({ sub, isChecked, onToggle, stats }) {
 
   const consCount = stats?.consCount ?? 0;
   const days = stats?.days ?? 0;
+  const notifCount = stats?.notifCount ?? 0;
 
   return (
     <View style={styles.outer}>
@@ -48,6 +49,13 @@ export default function SubCard({ sub, isChecked, onToggle, stats }) {
               {` prises · `}
               <Text style={styles.bold}>{days}</Text>
               {' jours'}
+              {notifCount > 0 && (
+                <>
+                  {' · '}
+                  <Text style={styles.bold}>{notifCount}</Text>
+                  {notifCount > 1 ? ' notifs' : ' notif'}
+                </>
+              )}
             </Text>
           </View>
           {isChecked && (

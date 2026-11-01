@@ -23,6 +23,7 @@ import PinField from './PinField';
 import SubCard from './SubCard';
 import haptics from '../utils/haptics';
 import { buildExportFile } from '../utils/exportImport';
+import { filterNotifsForSubs } from '../utils/snapshots';
 import {
   getOrPickExportDir, writeFileToDir, readBackLength, makeUniqueFilename, debugLastError,
 } from '../utils/saf';
@@ -36,7 +37,7 @@ function fmtBytes(n) {
   return `${Math.round(n / 1024)} Ko`;
 }
 
-export default function ExportWizard({ visible, substances = [], statsById = {}, consumptions = [], banners = [], onClose }) {
+export default function ExportWizard({ visible, substances = [], statsById = {}, consumptions = [], banners = [], notifs = [], onClose }) {
   const [step, setStep] = useState('select');
   const [selected, setSelected] = useState({});
   const [pin, setPin] = useState('');
@@ -167,7 +168,7 @@ export default function ExportWizard({ visible, substances = [], statsById = {},
       consCount = cons.length;
       subsCount = subs.length;
       const subColors = new Set(subs.map((s) => s.color));
-      fileContent = await buildExportFile(subs, cons, pin, banners.filter((c) => subColors.has(c)));
+      fileContent = await buildExportFile(subs, cons, pin, banners.filter((c) => subColors.has(c)), filterNotifsForSubs(notifs, subs));
     } catch (e) {
       fail(`Chiffrement impossible :\n${e.message || e}`);
       return;

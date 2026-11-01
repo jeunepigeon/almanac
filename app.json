@@ -2,7 +2,7 @@
   "expo": {
     "name": "Almanac",
     "slug": "almanac",
-    "version": "1.24",
+    "version": "1.25",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -12,7 +12,20 @@
       "backgroundColor": "#0E0E0E"
     },
     "plugins": [
-      "./plugins/with-adi-registration.js"
+      "./plugins/with-adi-registration.js",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#7A7A7A"
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Almanac utilise Face ID pour déverrouiller l'app."
+        }
+      ]
     ],
     "ios": {
       "supportsTablet": false,
@@ -24,7 +37,7 @@
         "backgroundColor": "#0E0E0E"
       },
       "package": "com.jeunepigeon.almanac",
-      "versionCode": 137
+      "versionCode": 138
     },
     "web": {
       "favicon": "./assets/favicon.png"

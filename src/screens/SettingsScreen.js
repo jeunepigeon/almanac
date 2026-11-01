@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, Switch,
 } from 'react-native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -17,7 +17,9 @@ import SubstanceSelectModal from '../components/SubstanceSelectModal';
 import ExportWizard from '../components/ExportWizard';
 import ImportWizard from '../components/ImportWizard';
 import RestoreWizard from '../components/RestoreWizard';
-import { fmtDateTiretHM, fmtSize, parseSnapshot } from '../utils/snapshots';
+import NotifWizard from '../components/NotifWizard';
+import { deviceHasLock, authenticate } from '../components/AppLock';
+import { fmtDateTiretHM, fmtSize, parseSnapshot, withNotifCounts } from '../utils/snapshots';
 import { useKeepAwake } from '../utils/keepAwake';
 import appJson from '../../app.json';
 
@@ -52,6 +54,19 @@ export default function SettingsScreen() {
   const [createSnapshotModal, setCreateSnapshotModal] = useState(false);
   const [snapshotStats, setSnapshotStats] = useState({});
   const [infoModal, setInfoModal] = useState(null);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const appLockEnabled = useStore((s) => s.appLockEnabled);
+  const setAppLockEnabled = useStore((s) => s.setAppLockEnabled);
+
+  // Activer / désactiver le verrouillage : confirmé par le déverrouillage du téléphone
+  const toggleAppLock = async (next) => {
+    if (next && !(await deviceHasLock())) {
+      setInfoModal({ title: 'Aucun verrouillage', message: "Ce téléphone n'a ni empreinte ni code configuré. Configure un verrouillage d'écran pour utiliser cette option." });
+      return;
+    }
+    const ok = await authenticate(next ? 'Activer le verrouillage' : 'Désactiver le verrouillage');
+    if (ok) setAppLockEnabled(next);
+  };
 
   // ExportWizard source : live ou snapshot
   const [exportSource, setExportSource] = useState(null);
@@ -117,7 +132,7 @@ export default function SettingsScreen() {
     // Substances COMPLÈTES (icône, position, date de création…) — bug 1.16 → 1.19 : seuls id/nom/couleur
     // étaient transmis, d'où des exports sans icônes ni ordre.
     const subs = [...substances, ...archivedSubstances].map((s) => ({ ...s }));
-    setExportSource({ subs, consos, statsById: statsFromConsos(consos), banners: useStore.getState().colorBanners });
+    setExportSource({ subs, consos, statsById: withNotifCounts(statsFromConsos(consos), useStore.getState().notifRules), banners: useStore.getState().colorBanners, notifs: useStore.getState().notifRules });
   };
 
   const openExportSnapshot = async (snapId) => {
@@ -132,14 +147,14 @@ export default function SettingsScreen() {
       id: c.id, substance_id: c.substanceId, timestamp: c.timestamp,
       dosage: c.dosage, notes: c.notes, created_at: c.createdAt,
     }));
-    setExportSource({ subs, consos, statsById: statsFromConsos(consos), banners: parsed.banners || [] });
+    setExportSource({ subs, consos, statsById: withNotifCounts(statsFromConsos(consos), parsed.notifs), banners: parsed.banners || [], notifs: parsed.notifs || [] });
   };
 
   const openImportWizard = () => setImportWizardVisible(true);
 
   const openCreateSnapshotModal = async () => {
     const consos = await dbGetAllConsumptions();
-    setLiveStatsById(statsFromConsos(consos));
+    setLiveStatsById(withNotifCounts(statsFromConsos(consos), useStore.getState().notifRules));
     setCreateSnapshotModal(true);
   };
 
@@ -215,6 +230,34 @@ export default function SettingsScreen() {
       <Text style={styles.sectionTitle}>Soutenir le projet</Text>
       <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('Donations')}>
         <Text style={styles.rowLabel}>Soutenir le développement</Text>
+        <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
+      </TouchableOpacity>
+
+      {/* ===== VERROUILLAGE (1.25) ===== */}
+      <Text style={styles.sectionTitle}>Verrouillage</Text>
+      <View style={styles.row}>
+        <View style={[styles.rowLeft, { paddingRight: theme.spacing.md }]}>
+          <MaterialCommunityIcons name="lock-outline" size={20} color={theme.colors.text} style={styles.rowIcon} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.rowLabel}>Verrouiller Almanac</Text>
+            <Text style={styles.rowDangerHint}>Empreinte ou code du téléphone à l'ouverture, puis après 5 min hors de l'app</Text>
+          </View>
+        </View>
+        <Switch
+          value={appLockEnabled}
+          onValueChange={toggleAppLock}
+          trackColor={{ false: theme.colors.border, true: theme.colors.textMuted }}
+          thumbColor={appLockEnabled ? theme.colors.text : theme.colors.textMuted}
+        />
+      </View>
+
+      {/* ===== NOTIFICATIONS (1.25) ===== */}
+      <Text style={styles.sectionTitle}>Notifications</Text>
+      <TouchableOpacity style={styles.row} onPress={() => setNotifOpen(true)}>
+        <View style={styles.rowLeft}>
+          <MaterialCommunityIcons name="bell-outline" size={20} color={theme.colors.text} style={styles.rowIcon} />
+          <Text style={styles.rowLabel}>Gérer les notifications</Text>
+        </View>
         <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
       </TouchableOpacity>
 
@@ -398,6 +441,8 @@ export default function SettingsScreen() {
         }}
       />
 
+      <NotifWizard visible={notifOpen} onClose={() => setNotifOpen(false)} />
+
       <InfoModal
         visible={wipeToastVisible}
         title="Sauvegarde créée"
@@ -412,6 +457,7 @@ export default function SettingsScreen() {
         statsById={exportSource?.statsById || {}}
         consumptions={exportSource?.consos || []}
         banners={exportSource?.banners || []}
+        notifs={exportSource?.notifs || []}
         onClose={() => setExportSource(null)}
       />
 

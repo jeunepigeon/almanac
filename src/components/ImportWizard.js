@@ -18,7 +18,7 @@ import SubCard from './SubCard';
 import haptics from '../utils/haptics';
 import { parseExportFile } from '../utils/exportImport';
 import { performFusion } from '../utils/fusion';
-import { fmtDateTiretHM } from '../utils/snapshots';
+import { fmtDateTiretHM, withNotifCounts } from '../utils/snapshots';
 import { useStore } from '../store';
 import { useKeepAwake } from '../utils/keepAwake';
 import { yieldToUI } from '../utils/useKeyboard';
@@ -39,7 +39,7 @@ function statsFromParsed(parsed) {
     const days = b.firstTs ? Math.max(1, Math.round((now - b.firstTs) / 86400000)) : 0;
     result[id] = { consCount: b.consCount, days };
   }
-  return result;
+  return withNotifCounts(result, parsed.notifs);
 }
 
 function formatFusionResult(fused) {
@@ -171,6 +171,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
         onProgress: (cur, tot) => setProgress({ current: cur, total: tot }),
       });
       useStore.getState().mergeColorBanners(fused.banners);
+      useStore.getState().mergeNotifRules(fused.notifs);
       await useStore.getState().loadAll();
       haptics.success();
       setResult({ ok: true, message: formatFusionResult(fused) });

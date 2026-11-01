@@ -119,5 +119,19 @@ export async function performFusion({ parsed, activeSubs, substanceIds, onProgre
   );
   const banners = (parsed.banners || []).filter((c) => importedColors.has(c));
 
-  return { added, merged, alreadyPresent, consosAdded, consosSkipped, banners };
+  // Notifications (1.25) : celles d'une substance suivent son nouvel id ; « Toutes » et catégories
+  // telles quelles (une catégorie sans 2 substances après l'import est retirée par pruneOrphans).
+  const notifs = [];
+  for (const r of parsed.notifs || []) {
+    if (r.target === 'sub') {
+      if (substanceIds && !substanceIds.has(r.key)) continue;
+      if (idMap[r.key]) notifs.push({ target: 'sub', key: idMap[r.key], palier: r.palier });
+    } else if (r.target === 'color') {
+      if (importedColors.has(r.key)) notifs.push({ target: 'color', key: r.key, palier: r.palier });
+    } else if (r.target === 'all') {
+      notifs.push({ target: 'all', key: null, palier: r.palier });
+    }
+  }
+
+  return { added, merged, alreadyPresent, consosAdded, consosSkipped, banners, notifs };
 }

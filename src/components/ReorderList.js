@@ -43,7 +43,8 @@ const EDGE_ZONE = 90;       // px depuis le bord où l'auto-scroll démarre
 const EDGE_MAX_SPEED = 14;  // px par frame au plus près du bord
 const BOUND_PX = 6;         // dépassement (px) au-delà duquel on signale la butée
 
-function WiggleContent({ children, isWiggling, phase }) {
+// Exporté (1.25) : c'est renderItem qui choisit QUOI vibre (ex. icône + nom, pas les boutons)
+export function WiggleContent({ children, isWiggling, phase, style }) {
   const rot = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (!isWiggling) { rot.stopAnimation(); rot.setValue(0); return; }
@@ -56,7 +57,7 @@ function WiggleContent({ children, isWiggling, phase }) {
     return () => seq.stop();
   }, [isWiggling, phase, rot]);
   const rotate = rot.interpolate({ inputRange: [-1, 1], outputRange: [`-${WIGGLE_ANGLE}deg`, `${WIGGLE_ANGLE}deg`] });
-  return <Animated.View style={{ transform: [{ rotate }] }}>{children}</Animated.View>;
+  return <Animated.View style={[style, { transform: [{ rotate }] }]}>{children}</Animated.View>;
 }
 
 // Ligne en mode actif : geste natif (Pan après appui long). Le conteneur porte le séparateur
@@ -103,9 +104,7 @@ const ActiveRow = memo(function ActiveRow({
         style={[styles.rowContainer, { height: itemHeight, transform: [{ translateY }] }]}
       >
         <View style={{ opacity: isPicked ? 0 : 1 }}>
-          <WiggleContent isWiggling={isWiggling} phase={index % 3}>
-            {renderItem({ item, index, isWiggling, isPickup: false, inReorder: true })}
-          </WiggleContent>
+          {renderItem({ item, index, isWiggling, phase: index % 3, isPickup: false, inReorder: true })}
         </View>
       </Animated.View>
     </GestureDetector>
@@ -224,7 +223,7 @@ export default function ReorderList({
     // On pousse au-delà du 1er / dernier élément de la section → repère + haptic (une fois par butée)
     const b = raw < minDelta - BOUND_PX ? 'top' : raw > maxDelta + BOUND_PX ? 'bottom' : null;
     if (b !== drag.bound) {
-      if (b) haptics.warning();
+      if (b) haptics.medium(); // un seul coup (le motif « warning » d'Android en fait deux)
       drag.bound = b;
       setBound(b);
     }
@@ -353,11 +352,9 @@ export default function ReorderList({
   }
   const pickedItem = pickupIdx != null ? items[pickupIdx] : null;
   // Copie qui suit le doigt : construite une fois par saisie (pas à chaque changement de place)
-  const cloneContent = useMemo(() => (pickedItem ? (
-    <WiggleContent isWiggling phase={0}>
-      {renderItem({ item: pickedItem, index: pickupIdx, isWiggling: true, isPickup: true, inReorder: true })}
-    </WiggleContent>
-  ) : null), [pickedItem, pickupIdx, renderItem]);
+  const cloneContent = useMemo(() => (pickedItem
+    ? renderItem({ item: pickedItem, index: pickupIdx, isWiggling: true, phase: 0, isPickup: true, inReorder: true })
+    : null), [pickedItem, pickupIdx, renderItem]);
 
   return (
     <View
@@ -422,13 +419,8 @@ export default function ReorderList({
             );
           })}
 
-          {/* Barre + copie montées en fin de liste, en permanence en mode actif (opacité) */}
-          {active && (
-            <View
-              pointerEvents="none"
-              style={[styles.indicatorBar, { top: barTop ?? 0, opacity: barTop != null ? 1 : 0 }]}
-            />
-          )}
+          {/* Copie qui suit le doigt : fond NON agrandi (hauteur de ligne moins le séparateur, pour
+              ne pas recouvrir les séparateurs voisins), seul le contenu est agrandi. */}
           {active && (
             <Animated.View
               pointerEvents="none"
@@ -436,14 +428,23 @@ export default function ReorderList({
                 styles.floating,
                 {
                   top: pickupIdx != null ? tops[pickupIdx] : 0,
-                  height: pickupIdx != null ? heights[pickupIdx] : 0,
-                  opacity: pickedItem ? PICKUP_OPACITY : 0,
-                  transform: [{ translateY: panY }, { scale: PICKUP_SCALE }],
+                  height: pickupIdx != null ? heights[pickupIdx] - StyleSheet.hairlineWidth : 0,
+                  opacity: pickedItem ? 1 : 0,
+                  transform: [{ translateY: panY }],
                 },
               ]}
             >
-              {cloneContent}
+              <View style={{ flex: 1, opacity: PICKUP_OPACITY, transform: [{ scale: PICKUP_SCALE }] }}>
+                {cloneContent}
+              </View>
             </Animated.View>
+          )}
+          {/* Barre blanche PAR-DESSUS la copie et posée sur le séparateur (place visée ou butée) */}
+          {active && (
+            <View
+              pointerEvents="none"
+              style={[styles.indicatorBar, { top: (barTop ?? 0) - 1, opacity: barTop != null ? 1 : 0 }]}
+            />
           )}
         </View>
         {footerComponent}

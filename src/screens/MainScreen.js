@@ -1,7 +1,8 @@
 import { useRef, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, BackHandler } from 'react-native';
 import PagerView from 'react-native-pager-view';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import NotifWizard from '../components/NotifWizard';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useCallback } from 'react';
 import { theme } from '../theme';
@@ -16,6 +17,13 @@ export default function MainScreen() {
   const hasUnconsulted = useStore((s) => s.hasUnconsultedSnapshots);
   const gotoGlobalStatsTick = useStore((s) => s.gotoGlobalStatsTick);
   const pagerLocked = useStore((s) => s.pagerLocked);
+  const notifFocus = useStore((s) => s.notifFocus);
+  const [notifOpen, setNotifOpen] = useState(false);
+
+  // Tap sur une notification « Toutes » / catégorie → page Substances
+  useEffect(() => {
+    if (notifFocus?.tick) pagerRef.current?.setPage(0);
+  }, [notifFocus?.tick]);
 
   // Switcher vers la page Global quand le store signale un gotoGlobalStats
   useEffect(() => {
@@ -92,6 +100,15 @@ export default function MainScreen() {
         {[0, 1].map((i) => (
           <View key={i} style={[styles.dot, page === i && styles.dotActive]} />
         ))}
+        {/* Cloche : gestion de toutes les notifications (sous « settings », liste et Global) */}
+        <TouchableOpacity
+          style={[styles.bellBtn, pagerLocked && { opacity: 0.3 }]}
+          onPress={() => setNotifOpen(true)}
+          disabled={pagerLocked}
+          hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+        >
+          <MaterialCommunityIcons name="bell-outline" size={18} color={theme.colors.textMuted} />
+        </TouchableOpacity>
       </View>
 
       <PagerView
@@ -108,6 +125,8 @@ export default function MainScreen() {
           <GlobalCalendarPage />
         </View>
       </PagerView>
+
+      <NotifWizard visible={notifOpen} onClose={() => setNotifOpen(false)} />
     </View>
   );
 }
@@ -139,7 +158,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF3B30',
     marginLeft: 4, marginBottom: 8,
   },
-  indicator: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: theme.spacing.xs, gap: 6 },
+  indicator: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', height: 26, gap: 6 },
+  bellBtn: { position: 'absolute', right: theme.spacing.md + theme.spacing.xs, top: 0, bottom: 0, justifyContent: 'center' },
   dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: theme.colors.textFaint },
   dotActive: { backgroundColor: theme.colors.text },
   pager: { flex: 1 },

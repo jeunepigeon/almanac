@@ -4,7 +4,7 @@
 
 Tout reste **sur le téléphone** (SQLite local). Pas de compte, pas de serveur, pas de tracking. Les seules données qui sortent de l'appareil sont les exports que tu crées toi-même, chiffrés par un code PIN.
 
-**Version actuelle : 1.24** · Android · build APK via EAS · développement démarré le 26 avril 2026.
+**Version actuelle : 1.25** · Android · build APK via EAS · développement démarré le 26 avril 2026.
 
 ---
 
@@ -14,8 +14,7 @@ Tout reste **sur le téléphone** (SQLite local). Pas de compte, pas de serveur,
 - Liste des substances avec compteur en direct « sobre depuis » pour chacune, et bandeau **« Sobre de tout depuis »** en haut. Un tap sur le bandeau fait défiler jusqu'à la substance de la dernière prise et la met en surbrillance.
 - Chaque substance a un nom, une couleur (palette de 12) et une icône (grille de 40, dont une xXx dessinée sur mesure).
 - **Bandeaux par couleur** : sous « Sobre de tout », un bandeau « Sobre depuis » par couleur choisie (couleurs ayant au moins 2 substances), ajouté via la pilule **+**. Tap → défile jusqu'à la dernière substance consommée de cette couleur. « Sobre de tout » reste toujours en tête. Les bandeaux et leur ordre sont inclus dans les sauvegardes et les exports.
-- Bouton **⋯** d'une substance → Renommer · Changer la couleur · Changer l'icône.
-- **Appui long** (substance ou bandeau) → **mode réorganisation** : tout vibre, une petite poubelle apparaît à droite de chaque élément (suppression avec confirmation). Appui long pour saisir puis glisser ; bandeaux et substances restent chacun dans leur section, avec butées en haut / en bas ; défilement automatique près des bords.
+- **Appui long** (substance ou bandeau) → **mode réorganisation** : icônes, noms et compteurs vibrent ; à droite, un **crayon** (substances : renommer, couleur, icône) et une **poubelle** (suppression avec confirmation). Appui long pour saisir puis glisser ; bandeaux et substances restent chacun dans leur section, avec butées en haut / en bas ; défilement automatique près des bords.
 - Supprimer une substance crée d'abord une sauvegarde automatique, ce qui la rend récupérable.
 
 ### Prises
@@ -37,6 +36,17 @@ Tout reste **sur le téléphone** (SQLite local). Pas de compte, pas de serveur,
 - **Import** avec déchiffrement automatique au 4e chiffre du PIN, choix des substances et barre de progression.
 - **Fusion intelligente** : les substances de même nom sont fusionnées et les prises en double ignorées.
 - Noms de fichiers horodatés : `nom-JJ-MM-AAAA-HHhMM.almanac`.
+
+### Notifications de paliers
+- Paliers **24 h, 48 h, 7 jours, 15 jours, tous les mois**, comptés depuis la dernière prise ; chaque nouvelle prise relance le compteur. Pas rétroactif.
+- Cibles : **toutes les substances**, une **catégorie** (couleur avec au moins 2 substances) ou une **substance**.
+- Une prise ne déclenche qu'une notification par palier (priorité substance > catégorie > toutes).
+- Notifications **silencieuses** (ni son ni vibration), texte neutre ; un tap ouvre le compteur concerné.
+- Accès : cloche sous « settings » (liste et Global), cloche colorée dans le calendrier d'une substance, et Paramètres.
+- 100 % locales (pas de serveur) ; sans l'autorisation « Alarmes et rappels », Android peut les livrer jusqu'à ~1 h après le palier.
+
+### Verrouillage (option)
+- Désactivé par défaut. Demande l'empreinte ou le code **du téléphone** à l'ouverture, puis après 5 min hors de l'app.
 
 ### Divers
 - Retours haptiques sur toute l'app.
@@ -68,6 +78,8 @@ Tout reste **sur le téléphone** (SQLite local). Pas de compte, pas de serveur,
 | Fichiers | `expo-file-system` (Storage Access Framework), `expo-document-picker` |
 | Préférences | `@react-native-async-storage/async-storage` |
 | Haptique | `expo-haptics` |
+| Notifications | `expo-notifications` (locales) |
+| Verrouillage | `expo-local-authentication` |
 | Dons | `expo-iap` |
 | Divers | `@react-native-community/datetimepicker`, `expo-keep-awake`, `@expo/vector-icons` (Material Community Icons) |
 
@@ -132,6 +144,13 @@ src/
 
 ## Historique
 
+### 1.25
+- **Notifications de paliers de sobriété** (voir plus haut), incluses dans les sauvegardes et exports.
+- **Verrouillage de l'app** (option, déverrouillage du téléphone).
+- Réorganisation : crayon + poubelle fixes (seuls icône / nom / compteur vibrent) ; plus de bouton ⋯ en mode normal ; la copie saisie ne masque plus les séparateurs ; barre blanche sur les séparateurs ; une seule vibration en butée.
+- Une couleur qui passe sous 2 substances n'est plus une catégorie : bandeau et notifications supprimés.
+- Pilule + plus longue et plus basse, utilisable en réorganisation. Le point est la 1re icône et celle par défaut.
+
 ### 1.24
 - Compteurs centrés dans une colonne (liste des substances et fenêtre d'un jour du calendrier).
 - Réorganisation : repère et haptique quand l'élément saisi arrive en butée de sa section.
@@ -183,7 +202,6 @@ src/
 ## Prévu
 
 - **Chiffrement natif** (`react-native-quick-crypto`) pour un déchiffrement quasi instantané.
-- **Notifications de paliers de sobriété** (24 h, 48 h, 1 semaine, 15 jours, puis chaque mois), par substance ou pour « Sobre de tout ».
 - **Session d'optimisation** : cache central des prises, statistiques précalculées, nettoyage du code hérité.
 
 ---

@@ -11,7 +11,7 @@ import { theme } from '../theme';
 import SubCard from './SubCard';
 import haptics from '../utils/haptics';
 import { performFusion } from '../utils/fusion';
-import { fmtDateTiretHM, parseSnapshot } from '../utils/snapshots';
+import { fmtDateTiretHM, parseSnapshot, withNotifCounts } from '../utils/snapshots';
 import { dbGetSnapshotData } from '../db';
 import { useStore } from '../store';
 import { useKeepAwake } from '../utils/keepAwake';
@@ -31,7 +31,7 @@ function statsFromParsed(parsed) {
     const days = b.firstTs ? Math.max(1, Math.round((now - b.firstTs) / 86400000)) : 0;
     result[id] = { consCount: b.consCount, days };
   }
-  return result;
+  return withNotifCounts(result, parsed.notifs);
 }
 
 export default function RestoreWizard({ visible, snapshotId, onClose, onComplete }) {
@@ -109,6 +109,7 @@ export default function RestoreWizard({ visible, snapshotId, onClose, onComplete
         onProgress: (cur, tot) => setProgress({ current: cur, total: tot }),
       });
       useStore.getState().mergeColorBanners(fused.banners);
+      useStore.getState().mergeNotifRules(fused.notifs);
       await useStore.getState().loadAll();
       haptics.success();
       setResult({

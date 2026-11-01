@@ -18,7 +18,7 @@ export default function ColorBannerAddModal({ visible, options, onPick, onClose 
             </Text>
           ) : (
             <>
-              <Text style={styles.message}>Choisis une couleur : le bandeau affiche le temps depuis la dernière prise, par catégorie.</Text>
+              <Text style={styles.message}>Choisis une couleur : le bandeau affiche le temps depuis la dernière prise par catégorie.</Text>
               <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
                 {options.map((o) => (
                   <TouchableOpacity
@@ -73,13 +73,13 @@ const styles = StyleSheet.create({
   },
   list: { alignSelf: 'stretch', flexGrow: 0 },
   option: {
-    flexDirection: 'row', alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     paddingVertical: theme.spacing.md, paddingHorizontal: theme.spacing.md,
     borderWidth: 1, borderRadius: 8, marginBottom: theme.spacing.sm,
   },
   dot: { width: 14, height: 14, borderRadius: 7, marginRight: theme.spacing.md },
   sep: { fontWeight: '900', fontSize: theme.font.sizes.lg },
-  names: { flex: 1, fontSize: theme.font.sizes.md, fontWeight: '300', letterSpacing: 0.3 },
+  names: { flexShrink: 1, textAlign: 'center', fontSize: theme.font.sizes.md, fontWeight: '300', letterSpacing: 0.3 },
   btn: { paddingVertical: theme.spacing.sm, paddingHorizontal: theme.spacing.xl, borderRadius: 6, marginTop: theme.spacing.sm },
   btnText: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '600', letterSpacing: 1 },
 });

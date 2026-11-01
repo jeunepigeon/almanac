@@ -12,20 +12,36 @@ import LiveCounter from '../components/LiveCounter';
 import SubstanceFormModal from '../components/SubstanceFormModal';
 import ActionSheet from '../components/ActionSheet';
 import ConfirmModal from '../components/ConfirmModal';
-import ReorderList from '../components/ReorderList';
+import ReorderList, { WiggleContent } from '../components/ReorderList';
 import ColorBannerAddModal from '../components/ColorBannerAddModal';
 import haptics from '../utils/haptics';
 
 const ROW_HEIGHT = 68; // doit matcher le style de SubstanceRow (padding + content)
 const BANNER_HEIGHT = 102; // bandeau par couleur (≈ hauteur du bandeau « Sobre de tout »)
 const SPACER_HEIGHT = 16;  // espace entre bandeaux et substances (pilule « + » posée sur le séparateur)
-const PILL_HALF = 9;       // demi-hauteur de la pilule
+let lastHandledNotifTick = 0;
+const PILL_HALF = 7;       // demi-hauteur de la pilule (1.25 : plus basse et plus longue)
+
+// Flash d'un bandeau (tap sur une notification « Toutes » / catégorie) — animation native
+function BannerFlash({ tick, color, max = 0.3 }) {
+  const op = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!tick) return;
+    op.setValue(0);
+    Animated.sequence([
+      Animated.timing(op, { toValue: max, duration: 150, useNativeDriver: true }),
+      Animated.timing(op, { toValue: 0, duration: 650, useNativeDriver: true }),
+    ]).start();
+  }, [tick]); // eslint-disable-line
+  return <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: color, opacity: op }]} />;
+}
 
 // Bannière "Sobre de tout depuis". Clic → scroll vers la dernière substance consommée + flash.
-function SobreBanner({ lastGlobalTimestamp, onPress }) {
+function SobreBanner({ lastGlobalTimestamp, onPress, flashTick }) {
   return (
     <Pressable onPress={onPress} style={styles.bannerPress}>
       <View style={styles.banner}>
+        <BannerFlash tick={flashTick} color="#FFFFFF" max={0.22} />
         <Text style={styles.bannerLabel}>SOBRE DE TOUT DEPUIS</Text>
         {lastGlobalTimestamp ? (
           <View style={styles.bannerCounterWrap}>
@@ -42,30 +58,36 @@ function SobreBanner({ lastGlobalTimestamp, onPress }) {
   );
 }
 
-// Bandeau « Sobre depuis » d'une couleur (1.22) : libellé + compteur dans la couleur.
-// Hauteur fixe (BANNER_HEIGHT, séparateur compris) pour pouvoir être réorganisé comme les substances.
-function ColorBanner({ color, lastTimestamp, inReorder, onDelete }) {
+// Bandeau « Sobre depuis » d'une couleur : libellé + compteur dans la couleur.
+// En réorganisation : seuls libellé et compteur vibrent ; poubelle fixe à droite.
+function ColorBanner({ color, lastTimestamp, inReorder, isWiggling, phase, onDelete, flashTick }) {
   return (
     <View style={styles.colorBanner}>
+      <BannerFlash tick={flashTick} color={color} max={0.3} />
+      <WiggleContent isWiggling={!!isWiggling} phase={phase || 0} style={styles.colorBannerContent}>
+        <Text style={[styles.bannerLabel, { color }]}>SOBRE DEPUIS</Text>
+        <View style={styles.bannerCounterWrap}>
+          {lastTimestamp ? (
+            <LiveCounter timestamp={lastTimestamp} style={[styles.bannerCounter, { color }]} />
+          ) : (
+            <Text style={[styles.bannerCounter, { color }]}>—</Text>
+          )}
+        </View>
+      </WiggleContent>
       {inReorder && (
         <TouchableOpacity onPress={onDelete} style={styles.bannerTrash} hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}>
           <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.danger} />
         </TouchableOpacity>
       )}
-      <Text style={[styles.bannerLabel, { color }]}>SOBRE DEPUIS</Text>
-      <View style={styles.bannerCounterWrap}>
-        {lastTimestamp ? (
-          <LiveCounter timestamp={lastTimestamp} style={[styles.bannerCounter, { color }]} />
-        ) : (
-          <Text style={[styles.bannerCounter, { color }]}>—</Text>
-        )}
-      </View>
     </View>
   );
 }
 
+// Ligne de substance.
+//  - Normal : icône · nom · compteur (plus de bouton ⋯ : place pour un long nom et du vide).
+//  - Réorganisation : icône + nom vibrent ; crayon (menu renommer / couleur / icône) et poubelle fixes.
 function SubstanceRow({
-  substance, lastTimestamp, inReorder, isFlashed, onMenu, onDelete,
+  substance, lastTimestamp, inReorder, isWiggling, phase, isFlashed, onEdit, onDelete,
 }) {
   const flashAnim = useRef(new Animated.Value(0)).current;
 
@@ -85,27 +107,24 @@ function SubstanceRow({
 
   return (
     <Animated.View style={[styles.row, { backgroundColor: bgInterp }]}>
-      <View style={[styles.iconWrap, { borderColor: substance.color }]}>
-        <SubstanceIcon iconId={substance.icon} size={18} color={substance.color} />
-      </View>
-      <View style={styles.rowMiddle}>
-        <Text style={styles.rowName} numberOfLines={1}>{substance.name}</Text>
-      </View>
-      {/* Mode réorganisation : compteur et ⋯ masqués, petite poubelle à la place */}
-      {inReorder && (
-        <TouchableOpacity onPress={onDelete} style={styles.menuBtn} hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}>
-          <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.danger} />
-        </TouchableOpacity>
-      )}
+      <WiggleContent isWiggling={!!isWiggling} phase={phase || 0} style={styles.rowWiggle}>
+        <View style={[styles.iconWrap, { borderColor: substance.color }]}>
+          <SubstanceIcon iconId={substance.icon} size={18} color={substance.color} />
+        </View>
+        <View style={styles.rowMiddle}>
+          <Text style={styles.rowName} numberOfLines={1}>{substance.name}</Text>
+        </View>
+      </WiggleContent>
       {!inReorder && <LiveCounter timestamp={lastTimestamp} style={styles.rowCounter} numberOfLines={1} adjustsFontSizeToFit />}
-      {!inReorder && (
-        <TouchableOpacity
-          onPress={onMenu}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          style={styles.menuBtn}
-        >
-          <MaterialCommunityIcons name="dots-horizontal" size={20} color={theme.colors.textMuted} />
-        </TouchableOpacity>
+      {inReorder && (
+        <View style={styles.rowTools}>
+          <TouchableOpacity onPress={onEdit} style={styles.menuBtn} hitSlop={{ top: 14, bottom: 14, left: 10, right: 10 }}>
+            <MaterialCommunityIcons name="pencil-outline" size={20} color={theme.colors.textMuted} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onDelete} style={styles.menuBtn} hitSlop={{ top: 14, bottom: 14, left: 10, right: 10 }}>
+            <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.danger} />
+          </TouchableOpacity>
+        </View>
       )}
     </Animated.View>
   );
@@ -163,6 +182,21 @@ export default function SubstancesPage() {
   const [pendingBannerDelete, setPendingBannerDelete] = useState(null); // couleur
   const [addBannerOpen, setAddBannerOpen] = useState(false);
   const [sobreH, setSobreH] = useState(110); // hauteur mesurée du bandeau « Sobre de tout »
+  const [bannerFlash, setBannerFlash] = useState(null); // { id, tick } — flash d'un bandeau
+
+  // Tap sur une notification « Toutes » / catégorie : liste en haut + flash du bandeau responsable
+  // (blanc pour « Sobre de tout », couleur pour un bandeau de catégorie ; à défaut « Sobre de tout »)
+  const notifFocus = useStore((s) => s.notifFocus);
+  useEffect(() => {
+    if (!notifFocus?.tick || notifFocus.tick === lastHandledNotifTick) return;
+    lastHandledNotifTick = notifFocus.tick; // pas de re-flash si la page est remontée
+    setReorderMode(false);
+    const id = notifFocus.kind === 'color' && useStore.getState().colorBanners.includes(notifFocus.color)
+      ? `banner:${notifFocus.color}` : '__sobre';
+    const t1 = setTimeout(() => scrollRef.current?.scrollTo?.({ y: 0, animated: true }), 250);
+    const t2 = setTimeout(() => setBannerFlash({ id, tick: Date.now() }), 650);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [notifFocus?.tick]); // eslint-disable-line
   const [flashedSubId, setFlashedSubId] = useState(null);
 
   // Verrouille le PagerView (swipe gauche/droite vers Global) tant qu'on est en mode réorg.
@@ -307,7 +341,7 @@ export default function SubstancesPage() {
     setPendingArchivedConflict(null);
   };
 
-  // Menu « ⋯ » d'une substance (bouton ⋯ uniquement) : renommer / couleur / icône.
+  // Menu d'une substance (crayon, en mode réorganisation uniquement) : renommer / couleur / icône.
   // Réorganiser et Supprimer passent par l'appui long (mode réorganisation + poubelle).
   const openActions = (sub) => setActionSheetFor(sub);
 
@@ -327,14 +361,18 @@ export default function SubstancesPage() {
     if (newSubs.join('|') !== curSubs.join('|')) reorderSubstances(newSubs);
   };
 
-  const renderItem = ({ item, inReorder }) => {
+  const renderItem = ({ item, inReorder, isWiggling, phase }) => {
     if (item.kind === 'sobre') {
       return (
         <View onLayout={(e) => {
           const h = Math.round(e.nativeEvent.layout.height);
           if (h > 0 && Math.abs(h - sobreH) > 1) setSobreH(h);
         }}>
-          <SobreBanner lastGlobalTimestamp={lastGlobalTimestamp} onPress={() => handleBannerPress(lastGlobalSubId)} />
+          <SobreBanner
+            lastGlobalTimestamp={lastGlobalTimestamp}
+            onPress={() => handleBannerPress(lastGlobalSubId)}
+            flashTick={bannerFlash?.id === '__sobre' ? bannerFlash.tick : 0}
+          />
         </View>
       );
     }
@@ -342,14 +380,15 @@ export default function SubstancesPage() {
       // Remonte de PILL_HALF sur le séparateur : pilule centrée dessus et entièrement touchable
       return (
         <View pointerEvents="box-none" style={styles.pillSpacer}>
-          {!reorderMode && (
+          {(
+            // Visible et active aussi en réorganisation (on y reste après l'ajout / l'annulation)
             <TouchableOpacity
               style={styles.pill}
               onPress={() => { haptics.light(); setAddBannerOpen(true); }}
               hitSlop={{ top: 10, bottom: 10, left: 14, right: 14 }}
               activeOpacity={0.6}
             >
-              <MaterialCommunityIcons name="plus" size={12} color={theme.colors.background} />
+              <MaterialCommunityIcons name="plus" size={11} color={theme.colors.background} />
             </TouchableOpacity>
           )}
         </View>
@@ -361,7 +400,10 @@ export default function SubstancesPage() {
           color={item.color}
           lastTimestamp={item.lastTs}
           inReorder={inReorder}
+          isWiggling={isWiggling}
+          phase={phase}
           onDelete={() => setPendingBannerDelete(item.color)}
+          flashTick={bannerFlash?.id === item.id ? bannerFlash.tick : 0}
         />
       );
     }
@@ -370,8 +412,10 @@ export default function SubstancesPage() {
         substance={item.sub}
         lastTimestamp={lastTimestamps[item.id]}
         inReorder={inReorder}
+        isWiggling={isWiggling}
+        phase={phase}
         isFlashed={flashedSubId === item.id}
-        onMenu={() => openActions(item.sub)}
+        onEdit={() => openActions(item.sub)}
         onDelete={() => setPendingDelete(item.sub)}
       />
     );
@@ -442,7 +486,7 @@ export default function SubstancesPage() {
           <Text>
             {'Le bandeau '}
             <Text style={{ color: pendingBannerDelete || theme.colors.text, fontSize: 18 }}>●</Text>
-            {' sera retiré. Les substances et leurs prises ne sont pas touchées.'}
+            {' sera retiré. Les substances et leurs prises ne sont pas affectées.'}
           </Text>
         )}
         cancelLabel="Annuler"
@@ -511,10 +555,13 @@ const styles = StyleSheet.create({
   // Conteneur (marge négative PILL_HALF) fourni par ReorderList via containerStyle ; pilule en haut
   pillSpacer: { flex: 1, alignItems: 'center' },
   pill: {
-    height: PILL_HALF * 2, width: 30, borderRadius: PILL_HALF,
+    height: PILL_HALF * 2, width: 40, borderRadius: PILL_HALF,
     backgroundColor: theme.colors.text,
     alignItems: 'center', justifyContent: 'center',
   },
+  colorBannerContent: { alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch' },
+  rowWiggle: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
+  rowTools: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
   bannerTrash: {
     position: 'absolute', right: theme.spacing.lg, top: 0, bottom: 0,
     justifyContent: 'center', padding: theme.spacing.xs,

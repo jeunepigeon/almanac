@@ -23,10 +23,36 @@ export function fmtDateTiretHM(ts = Date.now()) {
   return `${pad(d.getDate())}-${pad(d.getMonth() + 1)}-${d.getFullYear()}-${pad(d.getHours())}h${pad(d.getMinutes())}`;
 }
 
+// Règles de notification à garder pour un ensemble de substances sauvegardées :
+// substance → si elle est sauvegardée ; catégorie → si ≥ 2 substances de sa couleur sont sauvegardées ; « Toutes » → toujours.
+export function filterNotifsForSubs(notifs = [], subs = []) {
+  const ids = new Set(subs.map((s) => s.id));
+  const count = {};
+  for (const s of subs) count[s.color] = (count[s.color] || 0) + 1;
+  return (notifs || [])
+    .filter((r) => r.target === 'all'
+      || (r.target === 'sub' && ids.has(r.key))
+      || (r.target === 'color' && (count[r.key] || 0) >= 2))
+    .map((r) => ({ target: r.target, key: r.key ?? null, palier: r.palier }));
+}
+
+// Ajoute notifCount (règles de notification de chaque substance) aux stats des cartes de sélection
+export function withNotifCounts(statsById = {}, notifs = []) {
+  const out = { ...statsById };
+  for (const r of notifs || []) {
+    if (r.target !== 'sub' || !r.key) continue;
+    out[r.key] = { consCount: 0, days: 0, ...(out[r.key] || {}) };
+    out[r.key].notifCount = (out[r.key].notifCount || 0) + 1;
+  }
+  return out;
+}
+
 // Serialize substances + consumptions en JSON string.
 // substanceIds optionnel : si fourni, ne sérialise que ces substances (et leurs consos).
 // banners : couleurs des bandeaux dans l'ordre (1.23). Seuls ceux dont la couleur a une substance sauvegardée sont gardés.
-export function serializeSnapshot({ substances, archivedSubstances, consumptions, banners = [] }, substanceIds = null) {
+// notifs (1.25) : règles de notification. Celles d'une substance suivent la substance ; « Toutes » et
+// catégories (couleur avec ≥ 2 substances sauvegardées) sont sauvegardées à part.
+export function serializeSnapshot({ substances, archivedSubstances, consumptions, banners = [], notifs = [] }, substanceIds = null) {
   const allSubs = [...(substances || []), ...(archivedSubstances || [])];
   const filteredSubs = substanceIds
     ? allSubs.filter((s) => substanceIds.includes(s.id))
@@ -62,6 +88,7 @@ export function serializeSnapshot({ substances, archivedSubstances, consumptions
       const colors = new Set(filteredSubs.map((s) => s.color));
       return (banners || []).filter((c) => colors.has(c)).map((color, position) => ({ color, position }));
     })(),
+    notifs: filterNotifsForSubs(notifs, filteredSubs),
   };
   return JSON.stringify(payload);
 }
@@ -76,6 +103,7 @@ export function parseSnapshot(jsonStr) {
     substances: obj.substances || [],
     consumptions: obj.consumptions || [],
     // Bandeaux (1.23+) → liste de couleurs dans l'ordre ; absent des anciennes sauvegardes
+    notifs: Array.isArray(obj.notifs) ? obj.notifs : [],
     banners: (obj.banners || []).slice().sort((a, b) => (a.position ?? 0) - (b.position ?? 0)).map((b) => b.color).filter(Boolean),
   };
 }
@@ -83,8 +111,8 @@ export function parseSnapshot(jsonStr) {
 // Crée un snapshot en DB depuis l'état actuel du store.
 // name = nom déjà finalisé avec date (ex "remise-a-zero-27-07-2026").
 // substanceIds = optionnel pour filtrer.
-export async function createSnapshot({ substances, archivedSubstances, consumptions, banners = [] }, name, substanceIds = null) {
-  const data = serializeSnapshot({ substances, archivedSubstances, consumptions, banners }, substanceIds);
+export async function createSnapshot({ substances, archivedSubstances, consumptions, banners = [], notifs = [] }, name, substanceIds = null) {
+  const data = serializeSnapshot({ substances, archivedSubstances, consumptions, banners, notifs }, substanceIds);
   const id = await Crypto.randomUUID();
   const snap = {
     id,
