@@ -11,7 +11,7 @@ import { theme } from '../theme';
 import haptics from '../utils/haptics';
 
 const PinField = forwardRef(function PinField(
-  { value, onChangeText, autoFocus = false, onSubmitEditing, returnKeyType = 'next' },
+  { value, onChangeText, autoFocus = false, onSubmitEditing, returnKeyType = 'next', onBackspaceWhenEmpty },
   ref
 ) {
   const inputRef = useRef(null);
@@ -97,6 +97,10 @@ const PinField = forwardRef(function PinField(
           onSubmitEditing={onSubmitEditing}
           returnKeyType={returnKeyType}
           blurOnSubmit={false}
+          onKeyPress={(e) => {
+            // Effacer sur un champ déjà vide → revenir au champ précédent (ex. PIN2 → PIN1)
+            if (e.nativeEvent.key === 'Backspace' && value.length === 0) onBackspaceWhenEmpty?.();
+          }}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
         />

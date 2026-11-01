@@ -74,16 +74,24 @@ export default function ExportWizard({ visible, substances = [], statsById = {},
     if (step === 'password' && pin.length === 4) pin2Ref.current?.focus();
   }, [pin, step]);
 
-  // Toute modif de PIN1 efface l'erreur de PIN2 (sinon elle restait affichée même codes identiques)
+  // Correspondance vérifiée dès que les DEUX champs sont pleins, quel que soit le champ modifié
+  // (avant : modifier PIN1 alors que PIN2 était plein ne redéclenchait pas l'erreur).
   useEffect(() => {
-    if (step === 'password') pin2Ref.current?.clearError();
-  }, [pin, step]);
+    if (step !== 'password') return;
+    if (pin.length === 4 && pinConfirm.length === 4) {
+      if (pin !== pinConfirm) pin2Ref.current?.shake('Les codes ne correspondent pas');
+      else { pin1Ref.current?.clearError(); pin2Ref.current?.clearError(); }
+    } else {
+      pin2Ref.current?.clearError();
+    }
+  }, [pin, pinConfirm, step]);
 
-  // 4e chiffre de PIN2 : erreur immédiate si ça ne correspond pas
-  useEffect(() => {
-    if (step !== 'password' || pinConfirm.length !== 4 || pin.length !== 4) return;
-    if (pin !== pinConfirm) pin2Ref.current?.shake('Les codes ne correspondent pas');
-  }, [pinConfirm, step]); // eslint-disable-line
+  // Retour vers la sélection : champs remis à zéro
+  const backToSelect = () => {
+    Keyboard.dismiss();
+    setPin(''); setPinConfirm(''); setFilename('');
+    setStep('select');
+  };
 
   // Entrée sur PIN1 : si incomplet → erreur, sinon PIN2
   const onSubmitPin1 = () => {
@@ -102,7 +110,7 @@ export default function ExportWizard({ visible, substances = [], statsById = {},
     if (!visible) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (step === 'select' || step === 'result') { onClose?.(); return true; }
-      if (step === 'password') { Keyboard.dismiss(); setStep('select'); return true; }
+      if (step === 'password') { backToSelect(); return true; }
       return true;
     });
     return () => sub.remove();
@@ -242,7 +250,7 @@ export default function ExportWizard({ visible, substances = [], statsById = {},
               <PinField ref={pin1Ref} value={pin} onChangeText={setPin} returnKeyType="next" onSubmitEditing={onSubmitPin1} />
 
               <Text style={styles.fieldLabel}>Confirmer</Text>
-              <PinField ref={pin2Ref} value={pinConfirm} onChangeText={setPinConfirm} returnKeyType="next" onSubmitEditing={onSubmitPin2} />
+              <PinField ref={pin2Ref} value={pinConfirm} onChangeText={setPinConfirm} returnKeyType="next" onSubmitEditing={onSubmitPin2} onBackspaceWhenEmpty={() => pin1Ref.current?.focus()} />
 
               <Text style={styles.fieldLabel}>Nom du fichier (optionnel)</Text>
               <TextInput
@@ -265,7 +273,7 @@ export default function ExportWizard({ visible, substances = [], statsById = {},
               </View>
 
               <View style={styles.actions}>
-                <TouchableOpacity onPress={() => { Keyboard.dismiss(); setStep('select'); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <TouchableOpacity onPress={backToSelect} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                   <Text style={styles.cancelText}>Retour</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={handleExport} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>

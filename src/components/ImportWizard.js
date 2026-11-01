@@ -138,6 +138,11 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
     }
   };
 
+  // 4e chiffre tapé → déchiffrement automatique (Entrée et bouton restent disponibles)
+  useEffect(() => {
+    if (step === 'pin' && pin.length === 4) submitPin();
+  }, [pin]); // eslint-disable-line
+
   const toggleSub = (id) => setSelected((p) => ({ ...p, [id]: !p[id] }));
   const allSelected = parsed?.substances.every((s) => selected[s.id]);
   const noneSelected = parsed?.substances.every((s) => !selected[s.id]);
