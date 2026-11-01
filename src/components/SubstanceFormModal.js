@@ -55,6 +55,8 @@ export default function SubstanceFormModal({
   const showName = mode === 'create' || mode === 'edit' || mode === 'rename';
   const showColor = mode === 'create' || mode === 'edit' || mode === 'color';
   const showIcon = mode === 'create' || mode === 'edit' || mode === 'icon';
+  // « Changer l'icône » seul : grande grille 5×8 (icônes 30). Création / modification : grille 8×5 (icônes 18).
+  const bigGrid = mode === 'icon';
 
   const titles = {
     create: 'Nouvelle substance',
@@ -100,6 +102,8 @@ export default function SubstanceFormModal({
           <Pressable style={styles.card} onPress={() => {}}>
             <Text style={styles.title}>{titles[mode]}</Text>
 
+            <ScrollView style={styles.formScroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+
             {showName && (
               <TextInput
                 value={name}
@@ -139,11 +143,12 @@ export default function SubstanceFormModal({
                   {ICONS.map((entry) => {
                     const selected = entry.id === iconId;
                     return (
-                      <View key={entry.id} style={styles.iconCell}>
+                      <View key={entry.id} style={[styles.iconCell, bigGrid && styles.iconCellBig]}>
                         <TouchableOpacity
                           onPress={() => setIconId(entry.id)}
                           style={[
                             styles.iconCellInner,
+                            bigGrid && styles.iconCellInnerBig,
                             selected && {
                               borderColor: selectedColor,
                               backgroundColor: theme.colors.surfaceAlt,
@@ -152,7 +157,7 @@ export default function SubstanceFormModal({
                         >
                           <SubstanceIcon
                             iconId={entry.id}
-                            size={18}
+                            size={bigGrid ? 30 : 18}
                             color={selected ? selectedColor : theme.colors.textMuted}
                           />
                         </TouchableOpacity>
@@ -162,6 +167,8 @@ export default function SubstanceFormModal({
                 </View>
               </>
             )}
+
+            </ScrollView>
 
             <View style={styles.actions}>
               <TouchableOpacity onPress={onClose} style={styles.actionBtn}>
@@ -279,6 +286,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 3,
   },
+  // Grille 5×8 (« Changer l'icône ») : cases 1/5, plus aérées
+  iconCellBig: { width: '20%', padding: 5 },
+  iconCellInnerBig: { borderRadius: 8 },
+  formScroll: { flexGrow: 0, flexShrink: 1 },
   iconCellInner: {
     width: '100%',
     height: '100%',

@@ -117,7 +117,7 @@ export default function SettingsScreen() {
     // Substances COMPLÈTES (icône, position, date de création…) — bug 1.16 → 1.19 : seuls id/nom/couleur
     // étaient transmis, d'où des exports sans icônes ni ordre.
     const subs = [...substances, ...archivedSubstances].map((s) => ({ ...s }));
-    setExportSource({ subs, consos, statsById: statsFromConsos(consos) });
+    setExportSource({ subs, consos, statsById: statsFromConsos(consos), banners: useStore.getState().colorBanners });
   };
 
   const openExportSnapshot = async (snapId) => {
@@ -132,7 +132,7 @@ export default function SettingsScreen() {
       id: c.id, substance_id: c.substanceId, timestamp: c.timestamp,
       dosage: c.dosage, notes: c.notes, created_at: c.createdAt,
     }));
-    setExportSource({ subs, consos, statsById: statsFromConsos(consos) });
+    setExportSource({ subs, consos, statsById: statsFromConsos(consos), banners: parsed.banners || [] });
   };
 
   const openImportWizard = () => setImportWizardVisible(true);
@@ -411,6 +411,7 @@ export default function SettingsScreen() {
         substances={exportSource?.subs || []}
         statsById={exportSource?.statsById || {}}
         consumptions={exportSource?.consos || []}
+        banners={exportSource?.banners || []}
         onClose={() => setExportSource(null)}
       />
 

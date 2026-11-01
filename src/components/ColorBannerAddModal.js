@@ -29,7 +29,12 @@ export default function ColorBannerAddModal({ visible, options, onPick, onClose 
                   >
                     <View style={[styles.dot, { backgroundColor: o.color }]} />
                     <Text style={[styles.names, { color: o.color }]} numberOfLines={2}>
-                      {o.names.join(' · ')}
+                      {o.names.map((n, i) => (
+                        <Text key={`${n}-${i}`}>
+                          {i > 0 && <Text style={styles.sep}>{'  •  '}</Text>}
+                          {n}
+                        </Text>
+                      ))}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -73,6 +78,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderRadius: 8, marginBottom: theme.spacing.sm,
   },
   dot: { width: 14, height: 14, borderRadius: 7, marginRight: theme.spacing.md },
+  sep: { fontWeight: '900', fontSize: theme.font.sizes.lg },
   names: { flex: 1, fontSize: theme.font.sizes.md, fontWeight: '300', letterSpacing: 0.3 },
   btn: { paddingVertical: theme.spacing.sm, paddingHorizontal: theme.spacing.xl, borderRadius: 6, marginTop: theme.spacing.sm },
   btnText: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '600', letterSpacing: 1 },

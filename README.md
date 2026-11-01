@@ -4,7 +4,7 @@
 
 Tout reste **sur le téléphone** (SQLite local). Pas de compte, pas de serveur, pas de tracking. Les seules données qui sortent de l'appareil sont les exports que tu crées toi-même, chiffrés par un code PIN.
 
-**Version actuelle : 1.22** · Android · build APK via EAS · développement démarré le 26 avril 2026.
+**Version actuelle : 1.23** · Android · build APK via EAS · développement démarré le 26 avril 2026.
 
 ---
 
@@ -13,9 +13,9 @@ Tout reste **sur le téléphone** (SQLite local). Pas de compte, pas de serveur,
 ### Substances
 - Liste des substances avec compteur en direct « sobre depuis » pour chacune, et bandeau **« Sobre de tout depuis »** en haut. Un tap sur le bandeau fait défiler jusqu'à la substance de la dernière prise et la met en surbrillance.
 - Chaque substance a un nom, une couleur (palette de 12) et une icône (grille de 40, dont une xXx dessinée sur mesure).
-- **Bandeaux par couleur** : sous « Sobre de tout », un bandeau « Sobre depuis » par couleur choisie (couleurs ayant au moins 2 substances), ajouté via la pilule **+**. Tap → défile jusqu'à la dernière substance consommée de cette couleur ; appui long → Réorganiser (entre bandeaux, « Sobre de tout » reste en tête) / Supprimer.
-- Appui long sur une substance → menu : **Réorganiser** · Renommer · Changer la couleur · Changer l'icône · Supprimer.
-- **Réorganisation par glisser-déposer** : appui long pour saisir, défilement automatique près des bords, retour haptique à chaque changement de place.
+- **Bandeaux par couleur** : sous « Sobre de tout », un bandeau « Sobre depuis » par couleur choisie (couleurs ayant au moins 2 substances), ajouté via la pilule **+**. Tap → défile jusqu'à la dernière substance consommée de cette couleur. « Sobre de tout » reste toujours en tête. Les bandeaux et leur ordre sont inclus dans les sauvegardes et les exports.
+- Bouton **⋯** d'une substance → Renommer · Changer la couleur · Changer l'icône.
+- **Appui long** (substance ou bandeau) → **mode réorganisation** : tout vibre, une petite poubelle apparaît à droite de chaque élément (suppression avec confirmation). Appui long pour saisir puis glisser ; bandeaux et substances restent chacun dans leur section, avec butées en haut / en bas ; défilement automatique près des bords.
 - Supprimer une substance crée d'abord une sauvegarde automatique, ce qui la rend récupérable.
 
 ### Prises
@@ -131,6 +131,13 @@ src/
 ---
 
 ## Historique
+
+### 1.23
+- **Un seul mode réorganisation**, ouvert par appui long sur une substance ou un bandeau, avec **poubelle** à droite (confirmation ; sauvegarde automatique avant suppression d'une substance). Le menu ⋯ ne garde que Renommer / Couleur / Icône.
+- Glisser-déposer : un élément saisi ne peut pas sortir de sa section (butées).
+- **Bandeaux et leur ordre inclus dans les sauvegardes et les exports** ; ajoutés à l'import / la restauration s'ils manquent.
+- Pilule + plus petite (blanche, + noir) ; séparateurs plus visibles dans le choix d'un bandeau.
+- Icône xXx réduite. Grille 5×8 pour « Changer l'icône », 8×5 à la création.
 
 ### 1.22
 - **Bandeaux « Sobre depuis » par couleur** : ajout via la pilule +, tap pour aller à la dernière substance de la couleur, appui long pour réorganiser ou supprimer.

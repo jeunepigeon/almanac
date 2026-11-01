@@ -36,7 +36,7 @@ function fmtBytes(n) {
   return `${Math.round(n / 1024)} Ko`;
 }
 
-export default function ExportWizard({ visible, substances = [], statsById = {}, consumptions = [], onClose }) {
+export default function ExportWizard({ visible, substances = [], statsById = {}, consumptions = [], banners = [], onClose }) {
   const [step, setStep] = useState('select');
   const [selected, setSelected] = useState({});
   const [pin, setPin] = useState('');
@@ -166,7 +166,8 @@ export default function ExportWizard({ visible, substances = [], statsById = {},
         }));
       consCount = cons.length;
       subsCount = subs.length;
-      fileContent = await buildExportFile(subs, cons, pin);
+      const subColors = new Set(subs.map((s) => s.color));
+      fileContent = await buildExportFile(subs, cons, pin, banners.filter((c) => subColors.has(c)));
     } catch (e) {
       fail(`Chiffrement impossible :\n${e.message || e}`);
       return;

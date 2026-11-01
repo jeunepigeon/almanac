@@ -55,6 +55,15 @@ export const useStore = create((set, get) => ({
     set({ colorBanners: next });
     setJSON(COLOR_BANNERS_KEY, next);
   },
+  // Import / restauration : ajoute à la fin les bandeaux absents (l'ordre actuel est conservé)
+  mergeColorBanners: (colors = []) => {
+    const cur = get().colorBanners;
+    const add = colors.filter((c, i) => c && !cur.includes(c) && colors.indexOf(c) === i);
+    if (add.length === 0) return;
+    const next = [...cur, ...add];
+    set({ colorBanners: next });
+    setJSON(COLOR_BANNERS_KEY, next);
+  },
   removeColorBanner: (color) => {
     const next = get().colorBanners.filter((c) => c !== color);
     set({ colorBanners: next });
@@ -117,7 +126,7 @@ export const useStore = create((set, get) => ({
     }
     const uniqueName = await makeUniqueSnapshotName(baseName);
     const snap = await createSnapshot(
-      { substances: state.substances, archivedSubstances: state.archivedSubstances, consumptions: dbAllCons },
+      { substances: state.substances, archivedSubstances: state.archivedSubstances, consumptions: dbAllCons, banners: state.colorBanners },
       uniqueName,
       substanceIds
     );

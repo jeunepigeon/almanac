@@ -53,7 +53,8 @@ function csvParseLine(line) {
   return result;
 }
 
-function buildCsvPayload(substances, consumptions) {
+// banners : couleurs des bandeaux « Sobre depuis » dans l'ordre (1.23) — section # BANNERS en fin de fichier
+function buildCsvPayload(substances, consumptions, banners = []) {
   const subHeader = 'id,name,color,icon,created_at,archived,position';
   const subRows = substances.map((s) => [
     csvEscape(s.id), csvEscape(s.name), csvEscape(s.color), csvEscape(s.icon),
@@ -77,6 +78,9 @@ function buildCsvPayload(substances, consumptions) {
     '# SUBSTANCES', subHeader, ...subRows,
     '',
     '# CONSUMPTIONS', consHeader, ...consRows,
+    '',
+    '# BANNERS', 'color,position',
+    ...banners.map((c, i) => [csvEscape(c), i].join(',')),
   ].join('\n');
 }
 
@@ -86,12 +90,14 @@ function parseCsvPayload(text) {
   let header = null;
   const substances = [];
   const consumptions = [];
+  const bannerRows = [];
 
   for (const raw of lines) {
     const line = raw;
     if (!line.trim()) continue;
     if (line.startsWith('# SUBSTANCES')) { mode = 'sub'; header = null; continue; }
     if (line.startsWith('# CONSUMPTIONS')) { mode = 'cons'; header = null; continue; }
+    if (line.startsWith('# BANNERS')) { mode = 'banners'; header = null; continue; }
     if (header === null) { header = csvParseLine(line); continue; }
     const fields = csvParseLine(line);
     const obj = {};
@@ -110,9 +116,13 @@ function parseCsvPayload(text) {
         dosage: obj.dosage || null, notes: obj.notes || null,
         createdAt: parseInt(obj.created_at, 10),
       });
+    } else if (mode === 'banners' && obj.color) {
+      bannerRows.push({ color: obj.color, position: parseInt(obj.position, 10) || 0 });
     }
   }
-  return { substances, consumptions };
+  // Fichiers d'avant la 1.23 : pas de section → aucun bandeau
+  const banners = bannerRows.sort((a, b) => a.position - b.position).map((b) => b.color);
+  return { substances, consumptions, banners };
 }
 
 // Convertit un Uint8Array en CryptoJS WordArray
@@ -136,8 +146,8 @@ async function randomWordArrayAsync(bytes) {
 }
 
 // Crée le contenu complet du fichier export chiffré.
-export async function buildExportFile(substances, consumptions, password) {
-  const payload = buildCsvPayload(substances, consumptions);
+export async function buildExportFile(substances, consumptions, password, banners = []) {
+  const payload = buildCsvPayload(substances, consumptions, banners);
 
   const salt = await randomWordArrayAsync(SALT_BYTES);
   const iv = await randomWordArrayAsync(IV_BYTES);
@@ -158,7 +168,7 @@ export async function buildExportFile(substances, consumptions, password) {
   const saltB64 = CryptoJS.enc.Base64.stringify(salt);
   const ivB64 = CryptoJS.enc.Base64.stringify(iv);
 
-  const note = "Ce fichier contient des donnees personnelles chiffrees. Pour les lire, demande a l'utilisateur le mot de passe defini lors de l'export, puis applique le dechiffrement AES-256-CBC avec les parametres ci-dessus (cle derivee via PBKDF2-SHA256). Le contenu dechiffre est un texte tabulaire lisible (deux tables CSV : substances et consumptions).";
+  const note = "Ce fichier contient des donnees personnelles chiffrees. Pour les lire, demande a l'utilisateur le mot de passe defini lors de l'export, puis applique le dechiffrement AES-256-CBC avec les parametres ci-dessus (cle derivee via PBKDF2-SHA256). Le contenu dechiffre est un texte tabulaire lisible (tables CSV : substances, consumptions et banners).";
 
   const header = [
     HEADER_VERSION,

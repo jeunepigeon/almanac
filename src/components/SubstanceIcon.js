@@ -5,10 +5,10 @@ import Svg, { Path } from 'react-native-svg';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { getIconById } from '../icons';
 
-const XXX_W = 33.61; // largeur du viewBox (hauteur 24) → l'icône est ~1,4× plus large que haute
-const XXX_SMALL_LEFT = 'M5.34 9.68 7.28 6.24H10.57L7.29 11.88L10.71 17.76H7.41L5.35 14.14L3.31 17.76H0L3.42 11.88L0.15 6.24H3.45Z';
-const XXX_SMALL_RIGHT = 'M28.25 9.68 30.18 6.24H33.47L30.19 11.88L33.61 17.76H30.31L28.26 14.14L26.21 17.76H22.9L26.32 11.88L23.05 6.24H26.35Z';
-const XXX_BIG = 'M16.81 9.59 19.71 4.25H23.38L18.87 11.94L23.5 19.75H19.79L16.81 14.32L13.82 19.75H10.11L14.74 11.94L10.23 4.25H13.9Z';
+const XXX_W = 27.11; // largeur du viewBox (hauteur 24) ; X central haut de 12.5/24 (1.23 : réduit, avant 15.5)
+const XXX_SMALL_LEFT = 'M4.31 10.13 5.87 7.36H8.53L5.88 11.91L8.64 16.64H5.98L4.32 13.73L2.67 16.64H0L2.76 11.91L0.12 7.36H2.78Z';
+const XXX_SMALL_RIGHT = 'M22.78 10.13 24.34 7.36H26.99L24.35 11.91L27.11 16.64H24.44L22.79 13.73L21.14 16.64H18.47L21.22 11.91L18.59 7.36H21.25Z';
+const XXX_BIG = 'M13.55 10.06 15.9 5.75H18.86L15.22 11.95L18.95 18.25H15.96L13.55 13.87L11.15 18.25H8.15L11.89 11.95L8.25 5.75H11.21Z';
 
 function XxxIcon({ size, color }) {
   return (

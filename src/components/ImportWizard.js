@@ -170,6 +170,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
         substanceIds: new Set(selectedIds),
         onProgress: (cur, tot) => setProgress({ current: cur, total: tot }),
       });
+      useStore.getState().mergeColorBanners(fused.banners);
       await useStore.getState().loadAll();
       haptics.success();
       setResult({ ok: true, message: formatFusionResult(fused) });

@@ -108,6 +108,7 @@ export default function RestoreWizard({ visible, snapshotId, onClose, onComplete
         substanceIds: new Set(selectedIds),
         onProgress: (cur, tot) => setProgress({ current: cur, total: tot }),
       });
+      useStore.getState().mergeColorBanners(fused.banners);
       await useStore.getState().loadAll();
       haptics.success();
       setResult({

@@ -5,7 +5,9 @@ import * as Crypto from 'expo-crypto';
 import { dbGetAllConsumptions, dbInsertSnapshot, dbGetAllSnapshots, dbGetSnapshotData, dbGetSnapshotSize } from '../db';
 
 const SCHEMA_VERSION = 1;
-const APP_VERSION = '1.1.16';
+import appJson from '../../app.json';
+
+const APP_VERSION = appJson?.expo?.version || 'unknown'; // version réelle de l'app (avant : figée à 1.1.16)
 
 // Format DD-MM-YYYY (tirets partout)
 export function fmtDateTiret(ts = Date.now()) {
@@ -23,7 +25,8 @@ export function fmtDateTiretHM(ts = Date.now()) {
 
 // Serialize substances + consumptions en JSON string.
 // substanceIds optionnel : si fourni, ne sérialise que ces substances (et leurs consos).
-export function serializeSnapshot({ substances, archivedSubstances, consumptions }, substanceIds = null) {
+// banners : couleurs des bandeaux dans l'ordre (1.23). Seuls ceux dont la couleur a une substance sauvegardée sont gardés.
+export function serializeSnapshot({ substances, archivedSubstances, consumptions, banners = [] }, substanceIds = null) {
   const allSubs = [...(substances || []), ...(archivedSubstances || [])];
   const filteredSubs = substanceIds
     ? allSubs.filter((s) => substanceIds.includes(s.id))
@@ -55,6 +58,10 @@ export function serializeSnapshot({ substances, archivedSubstances, consumptions
       notes: c.notes ?? null,
       createdAt: c.createdAt ?? c.created_at ?? Date.now(),
     })),
+    banners: (() => {
+      const colors = new Set(filteredSubs.map((s) => s.color));
+      return (banners || []).filter((c) => colors.has(c)).map((color, position) => ({ color, position }));
+    })(),
   };
   return JSON.stringify(payload);
 }
@@ -68,14 +75,16 @@ export function parseSnapshot(jsonStr) {
     createdAt: obj.createdAt ?? Date.now(),
     substances: obj.substances || [],
     consumptions: obj.consumptions || [],
+    // Bandeaux (1.23+) → liste de couleurs dans l'ordre ; absent des anciennes sauvegardes
+    banners: (obj.banners || []).slice().sort((a, b) => (a.position ?? 0) - (b.position ?? 0)).map((b) => b.color).filter(Boolean),
   };
 }
 
 // Crée un snapshot en DB depuis l'état actuel du store.
 // name = nom déjà finalisé avec date (ex "remise-a-zero-27-07-2026").
 // substanceIds = optionnel pour filtrer.
-export async function createSnapshot({ substances, archivedSubstances, consumptions }, name, substanceIds = null) {
-  const data = serializeSnapshot({ substances, archivedSubstances, consumptions }, substanceIds);
+export async function createSnapshot({ substances, archivedSubstances, consumptions, banners = [] }, name, substanceIds = null) {
+  const data = serializeSnapshot({ substances, archivedSubstances, consumptions, banners }, substanceIds);
   const id = await Crypto.randomUUID();
   const snap = {
     id,

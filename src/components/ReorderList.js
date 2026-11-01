@@ -17,6 +17,14 @@
 //     • lâcher → nouvel ordre appliqué en une fois.
 //  - « Terminé » ou retour Android → sortie + enregistrement de l'ordre.
 // Aucune priorité d'affichage (zIndex/elevation) dans la liste.
+//
+// 1.23 — plusieurs GROUPES dans une seule liste et un seul mode (ex. bandeaux puis substances) :
+//  - chaque élément peut avoir `group` (même groupe = peuvent s'échanger) et `static: true`
+//    (élément fixe, ex. l'espace avec la pilule « + » entre bandeaux et substances), avec un
+//    `containerStyle` optionnel (ex. marge négative) ;
+//  - hauteurs variables via getItemHeight(item) ;
+//  - un élément saisi ne peut aller que dans SON groupe : la copie est bloquée en butée
+//    au premier / dernier élément du groupe.
 
 import { useState, useEffect, useLayoutEffect, useRef, useMemo, memo } from 'react';
 import {
@@ -83,6 +91,10 @@ const ActiveRow = memo(function ActiveRow({
 
   const translateY = dragging && !isPicked ? offAnim : 0;
 
+  if (item.static) {
+    return <View style={[{ height: itemHeight }, item.containerStyle]}>{renderItem({ item, index, isWiggling: false, isPickup: false, inReorder: true })}</View>;
+  }
+
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View
@@ -110,6 +122,7 @@ export default function ReorderList({
   data = [],
   renderItem,
   itemHeight = 68,
+  getItemHeight = null,    // (item) => hauteur ; sinon itemHeight pour tous
   onReorder,
   onItemTap = null,
   onItemLongPress = null,
@@ -145,11 +158,24 @@ export default function ReorderList({
   });
 
   // État du drag (refs : lus dans les callbacks de geste)
-  const drag = useRef({ p: null, h: null, transY: 0, fingerAbsY: 0, scrollAtPickup: 0, committed: false }).current;
+  const drag = useRef({ p: null, h: null, gStart: 0, gEnd: 0, transY: 0, fingerAbsY: 0, scrollAtPickup: 0, committed: false }).current;
+  const layoutRef = useRef({ items: [], tops: [], heights: [] });
   const autoTimerRef = useRef(null);
 
+  // Resync depuis data. En mode réorganisation, on garde l'ordre en cours (pas encore enregistré) :
+  // éléments supprimés retirés, nouveaux ajoutés à leur place d'origine.
   useEffect(() => {
-    if (drag.p == null) setLocalIds(data.map((d) => d.id));
+    if (drag.p != null) return;
+    const ids = data.map((d) => d.id);
+    if (!active) { setLocalIds(ids); return; }
+    setLocalIds((prev) => {
+      const set = new Set(ids);
+      const kept = prev.filter((id) => set.has(id));
+      if (kept.length === 0) return ids;
+      const next = [...kept];
+      ids.forEach((id, i) => { if (!next.includes(id)) next.splice(Math.min(i, next.length), 0, id); });
+      return next;
+    });
   }, [data]); // eslint-disable-line
 
   useLayoutEffect(() => {
@@ -183,11 +209,18 @@ export default function ReorderList({
   // Position de la copie + place visée, à partir du doigt et du défilement
   const applyPosition = () => {
     if (drag.p == null) return;
-    const delta = drag.transY + (scrollYRef.current - drag.scrollAtPickup);
+    const { tops, heights } = layoutRef.current;
+    const p = drag.p;
+    const H = heights[p];
+    const raw = drag.transY + (scrollYRef.current - drag.scrollAtPickup);
+    // Butées : la copie ne sort pas de son groupe (1er / dernier élément du groupe)
+    const minDelta = tops[drag.gStart] - tops[p];
+    const maxDelta = tops[drag.gEnd] - tops[p];
+    const delta = Math.max(minDelta, Math.min(maxDelta, raw));
     panY.setValue(delta);
-    const center = drag.p * itemHeight + itemHeight / 2 + delta;
-    let h = Math.floor(center / itemHeight);
-    h = Math.max(0, Math.min(localIdsRef.current.length - 1, h));
+    const center = tops[p] + H / 2 + delta;
+    let h = drag.gStart + Math.floor((center - tops[drag.gStart]) / H);
+    h = Math.max(drag.gStart, Math.min(drag.gEnd, h));
     if (h !== drag.h) {
       haptics.light();
       drag.h = h;
@@ -204,6 +237,11 @@ export default function ReorderList({
     if (rel < EDGE_ZONE) speed = -Math.max(2, ((EDGE_ZONE - rel) / EDGE_ZONE) * EDGE_MAX_SPEED);
     else if (rel > vh - EDGE_ZONE) speed = Math.max(2, ((rel - (vh - EDGE_ZONE)) / EDGE_ZONE) * EDGE_MAX_SPEED);
     if (speed === 0) return;
+    // Copie déjà en butée de son groupe dans ce sens → inutile de faire défiler
+    const { tops } = layoutRef.current;
+    const raw = drag.transY + (scrollYRef.current - drag.scrollAtPickup);
+    if (speed < 0 && raw <= tops[drag.gStart] - tops[drag.p]) return;
+    if (speed > 0 && raw >= tops[drag.gEnd] - tops[drag.p]) return;
     const maxY = Math.max(0, contentHRef.current - vh);
     const nextY = Math.max(0, Math.min(maxY, scrollYRef.current + speed));
     if (nextY === scrollYRef.current) return;
@@ -216,6 +254,13 @@ export default function ReorderList({
   handlersRef.current = {
     start: (idx, e) => {
       haptics.medium();
+      // Plage du groupe de l'élément saisi (éléments contigus du même groupe, non fixes)
+      const its = layoutRef.current.items;
+      const g = its[idx]?.group;
+      let gs = idx; let ge = idx;
+      while (gs - 1 >= 0 && !its[gs - 1].static && its[gs - 1].group === g) gs--;
+      while (ge + 1 < its.length && !its[ge + 1].static && its[ge + 1].group === g) ge++;
+      drag.gStart = gs; drag.gEnd = ge;
       drag.p = idx;
       drag.h = idx;
       drag.transY = 0;
@@ -262,21 +307,31 @@ export default function ReorderList({
     },
   };
 
+  let items = localIds.map((id) => data.find((d) => d.id === id)).filter(Boolean);
+  // Changement de jeu de données (ex. substances → bandeaux) : on suit data tout de suite
+  if (items.length !== data.length) items = data;
+
+  // Positions (dans la zone de liste) et hauteurs de chaque élément
+  const heightOf = (it) => (getItemHeight ? getItemHeight(it) : itemHeight);
+  const heights = items.map(heightOf);
+  const tops = [];
+  heights.reduce((acc, h, i) => { tops[i] = acc; return acc + h; }, 0);
+  layoutRef.current = { items, tops, heights }; // lu par les callbacks de geste
+
+  // Décalage visuel d'une ligne pendant le drag (même groupe uniquement)
   const offsetFor = (i) => {
     if (pickupIdx == null || hoverIdx == null || i === pickupIdx) return 0;
-    if (pickupIdx < hoverIdx && i > pickupIdx && i <= hoverIdx) return -itemHeight;
-    if (hoverIdx < pickupIdx && i >= hoverIdx && i < pickupIdx) return itemHeight;
+    if (items[i]?.static || items[i]?.group !== items[pickupIdx]?.group) return 0;
+    const H = heights[pickupIdx];
+    if (pickupIdx < hoverIdx && i > pickupIdx && i <= hoverIdx) return -H;
+    if (hoverIdx < pickupIdx && i >= hoverIdx && i < pickupIdx) return H;
     return 0;
   };
 
   let barTop = null;
   if (pickupIdx != null && hoverIdx != null && hoverIdx !== pickupIdx) {
-    barTop = hoverIdx < pickupIdx ? hoverIdx * itemHeight : (hoverIdx + 1) * itemHeight;
+    barTop = hoverIdx < pickupIdx ? tops[hoverIdx] : tops[hoverIdx] + heights[pickupIdx];
   }
-
-  let items = localIds.map((id) => data.find((d) => d.id === id)).filter(Boolean);
-  // Changement de jeu de données (ex. substances → bandeaux) : on suit data tout de suite
-  if (items.length !== data.length) items = data;
   const pickedItem = pickupIdx != null ? items[pickupIdx] : null;
   // Copie qui suit le doigt : construite une fois par saisie (pas à chaque changement de place)
   const cloneContent = useMemo(() => (pickedItem ? (
@@ -318,7 +373,7 @@ export default function ReorderList({
                   key={item.id}
                   item={item}
                   index={idx}
-                  itemHeight={itemHeight}
+                  itemHeight={heights[idx]}
                   offsetY={offsetFor(idx)}
                   dragging={pickupIdx != null}
                   isPicked={isPicked}
@@ -328,8 +383,15 @@ export default function ReorderList({
                 />
               );
             }
+            if (item.static) {
+              return (
+                <View key={item.id} style={[{ height: heights[idx] }, item.containerStyle]}>
+                  {renderItem({ item, index: idx, isWiggling: false, isPickup: false, inReorder: false })}
+                </View>
+              );
+            }
             return (
-              <View key={item.id} style={[styles.rowContainer, { height: itemHeight }]}>
+              <View key={item.id} style={[styles.rowContainer, { height: heights[idx] }]}>
                 <Pressable
                   onPress={() => onItemTap?.(item, idx)}
                   onLongPress={() => { haptics.medium(); onItemLongPress?.(item, idx); }}
@@ -354,8 +416,8 @@ export default function ReorderList({
               style={[
                 styles.floating,
                 {
-                  top: (pickupIdx ?? 0) * itemHeight,
-                  height: itemHeight,
+                  top: pickupIdx != null ? tops[pickupIdx] : 0,
+                  height: pickupIdx != null ? heights[pickupIdx] : 0,
                   opacity: pickedItem ? PICKUP_OPACITY : 0,
                   transform: [{ translateY: panY }, { scale: PICKUP_SCALE }],
                 },

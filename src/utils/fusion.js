@@ -113,5 +113,11 @@ export async function performFusion({ parsed, activeSubs, substanceIds, onProgre
     else alreadyPresent++;
   }
 
-  return { added, merged, alreadyPresent, consosAdded, consosSkipped };
+  // Bandeaux de la source (1.23) : seulement ceux dont la couleur concerne une substance importée
+  const importedColors = new Set(
+    parsed.substances.filter((s) => !substanceIds || substanceIds.has(s.id)).map((s) => s.color)
+  );
+  const banners = (parsed.banners || []).filter((c) => importedColors.has(c));
+
+  return { added, merged, alreadyPresent, consosAdded, consosSkipped, banners };
 }
