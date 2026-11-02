@@ -376,14 +376,25 @@ export default function SettingsScreen() {
             : 'aucun'}
         </Text>
       </View>
-      <View style={styles.row}>
+      {/* Tap : rejoue ce flash (retour à la liste + même logique que le tap sur une notification) */}
+      <TouchableOpacity
+        style={styles.row}
+        disabled={!lastBannerFlash}
+        onPress={() => {
+          const id = lastBannerFlash?.id;
+          if (!id) return;
+          navigation.navigate('Main');
+          if (id === '__sobre') useStore.getState().requestNotifFocus('all');
+          else useStore.getState().requestNotifFocus('color', id.replace('banner:', ''));
+        }}
+      >
         <Text style={styles.rowLabel}>Dernier flash bandeau</Text>
         <Text style={styles.rowValue}>
           {lastBannerFlash
             ? `${lastBannerFlash.id === '__sobre' ? 'sobre de tout' : lastBannerFlash.id.replace('banner:', 'bandeau ')} · ${new Date(lastBannerFlash.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
             : 'aucun'}
         </Text>
-      </View>
+      </TouchableOpacity>
       {/* Vraies notifications (même logique que les paliers), envoyées dans 10 s */}
       {debugNotifTargets().map((d) => (
         <TouchableOpacity key={d.id} style={styles.row} onPress={() => sendDebugNotif(d)}>

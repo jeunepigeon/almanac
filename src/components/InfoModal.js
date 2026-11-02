@@ -40,14 +40,14 @@ const styles = StyleSheet.create({
   title: {
     color: theme.colors.text, fontSize: theme.font.sizes.md,
     fontWeight: '600', textAlign: 'center',
-    marginBottom: theme.spacing.sm,
+    marginBottom: theme.spacing.md, // 1.29 : message centré entre titre et bouton
     letterSpacing: 0.3,
   },
   message: {
     color: theme.colors.textMuted, fontSize: theme.font.sizes.sm,
     fontWeight: '400', lineHeight: 22,
     textAlign: 'center',
-    marginBottom: theme.spacing.lg,
+    marginBottom: theme.spacing.sm, // + 8 de padding du bouton = 16, comme au-dessus
   },
   btn: {
     paddingVertical: theme.spacing.sm,

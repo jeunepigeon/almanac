@@ -108,7 +108,7 @@ const styles = StyleSheet.create({
     fontSize: theme.font.sizes.md,
     fontWeight: '600',
     letterSpacing: 0.3,
-    marginBottom: theme.spacing.sm,
+    marginBottom: theme.spacing.md, // 1.29 : message centré
     textAlign: 'center',
   },
   message: {
@@ -116,7 +116,7 @@ const styles = StyleSheet.create({
     fontSize: theme.font.sizes.md,
     fontWeight: '400',
     lineHeight: 22,
-    marginBottom: theme.spacing.lg,
+    marginBottom: theme.spacing.sm, // + 8 de padding des boutons
     textAlign: 'center',
   },
   actions: {

@@ -24,34 +24,33 @@ const FADE_MS = 450;     // fondu d'un bandeau supprimé
 const COLLAPSE_MS = 260; // puis la place se referme en douceur (le séparateur glisse au lieu de sauter)
 const PILL_HALF = 6;       // demi-hauteur de la pilule (1.25 : plus basse et plus longue)
 
-// Flash d'un bandeau (tap sur une notification « Toutes » / catégorie) — animation native.
-// 1.28 : le calque n'est MONTÉ que pendant le flash (comme le flash du calendrier), puis retiré :
-// un calque toujours présent à opacité 0 pouvait ne jamais s'afficher.
-function BannerFlash({ tick, color, max = 0.3 }) {
-  const [active, setActive] = useState(0);
-  const op = useRef(new Animated.Value(0)).current;
-  useEffect(() => { if (tick) setActive(tick); }, [tick]);
+// Flash d'un bandeau (tap sur une notification « Toutes » / catégorie).
+// 1.29 : même technique que le flash des lignes de substance (qui fonctionne) : couleur de FOND
+// du bandeau animée (pilote JS), au lieu d'un calque superposé animé en natif (jamais visible).
+function hexToRgba(hex, a) {
+  const h = (hex || '#FFFFFF').replace('#', '');
+  return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`;
+}
+function useFlashBg(tick, toColor) {
+  const v = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    if (!active) return;
-    op.setValue(0);
-    const anim = Animated.sequence([
-      Animated.timing(op, { toValue: max, duration: 200, useNativeDriver: true }),
+    if (!tick) return;
+    v.setValue(0);
+    Animated.sequence([
+      Animated.timing(v, { toValue: 1, duration: 200, useNativeDriver: false }),
       Animated.delay(250),
-      Animated.timing(op, { toValue: 0, duration: 700, useNativeDriver: true }),
-    ]);
-    anim.start(({ finished }) => { if (finished) setActive(0); });
-    return () => anim.stop();
-  }, [active]); // eslint-disable-line
-  if (!active) return null;
-  return <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: color, opacity: op }]} />;
+      Animated.timing(v, { toValue: 0, duration: 700, useNativeDriver: false }),
+    ]).start();
+  }, [tick]); // eslint-disable-line
+  return v.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', toColor] });
 }
 
 // Bannière "Sobre de tout depuis". Clic → scroll vers la dernière substance consommée + flash.
 function SobreBanner({ lastGlobalTimestamp, onPress, flashTick }) {
+  const flashBg = useFlashBg(flashTick, 'rgba(255,255,255,0.28)');
   return (
     <Pressable onPress={onPress} style={styles.bannerPress}>
-      <View style={styles.banner}>
-        <BannerFlash tick={flashTick} color="#FFFFFF" max={0.35} />
+      <Animated.View style={[styles.banner, { backgroundColor: flashBg }]}>
         <Text style={styles.bannerLabel}>SOBRE DE TOUT DEPUIS</Text>
         {lastGlobalTimestamp ? (
           <View style={styles.bannerCounterWrap}>
@@ -63,7 +62,7 @@ function SobreBanner({ lastGlobalTimestamp, onPress, flashTick }) {
             <Text style={styles.bannerEmptyHint}>renseignez votre première consommation</Text>
           </>
         )}
-      </View>
+      </Animated.View>
     </Pressable>
   );
 }
@@ -73,13 +72,13 @@ function SobreBanner({ lastGlobalTimestamp, onPress, flashTick }) {
 function ColorBanner({ color, lastTimestamp, inReorder, isWiggling, phase, onDelete, flashTick, fading }) {
   // Bandeau supprimé (catégorie dissoute ou poubelle) : fondu avant de disparaître
   const fade = useRef(new Animated.Value(1)).current;
+  const flashBg = useFlashBg(flashTick, hexToRgba(color, 0.4));
   useEffect(() => {
     if (fading) Animated.timing(fade, { toValue: 0, duration: FADE_MS, useNativeDriver: true }).start();
     else fade.setValue(1);
   }, [fading, fade]);
   return (
-    <Animated.View style={[styles.colorBanner, { opacity: fade }]} pointerEvents={fading ? 'none' : 'auto'}>
-      <BannerFlash tick={flashTick} color={color} max={0.45} />
+    <Animated.View style={[styles.colorBanner, { opacity: fade, backgroundColor: flashBg }]} pointerEvents={fading ? 'none' : 'auto'}>
       <WiggleContent isWiggling={!!isWiggling} phase={phase || 0} style={styles.colorBannerContent}>
         <Text style={[styles.bannerLabel, { color }]}>SOBRE DEPUIS</Text>
         <View style={styles.bannerCounterWrap}>

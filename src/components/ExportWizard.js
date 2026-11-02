@@ -376,7 +376,7 @@ const styles = StyleSheet.create({
   },
   resultMessage: {
     color: theme.colors.textMuted, fontSize: theme.font.sizes.sm, textAlign: 'center',
-    lineHeight: 22, marginBottom: theme.spacing.lg,
+    lineHeight: 22, marginBottom: 12, // + 4 de padding du bouton = 16, comme au-dessus (1.29)
   },
   okBtn: { paddingHorizontal: theme.spacing.xl, paddingVertical: theme.spacing.xs },
 });

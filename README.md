@@ -4,7 +4,7 @@
 
 Tout reste **sur le téléphone** (SQLite local). Pas de compte, pas de serveur, pas de tracking. Les seules données qui sortent de l'appareil sont les exports que tu crées toi-même, chiffrés par un code PIN.
 
-**Version actuelle : 1.28** · Android · build APK via EAS · développement démarré le 26 avril 2026.
+**Version actuelle : 1.29** · Android · build APK via EAS · développement démarré le 26 avril 2026.
 
 ---
 
@@ -143,6 +143,11 @@ src/
 ---
 
 ## Historique
+
+### 1.29
+- Flash des bandeaux refait comme celui des lignes de substance (fond animé) ; Debug : un tap sur « Dernier flash bandeau » le rejoue.
+- Assistant notifications : lignes en haut, bouton + en bas ; la sélection propose de nouveau toutes les cibles (puis choix du palier direct).
+- Fenêtres de message : texte centré entre le titre et le bouton.
 
 ### 1.28
 - Flash du bandeau au tap sur une notification : calque monté seulement pendant le flash + filet de sécurité si le retour au premier plan est manqué ; Debug affiche le dernier flash.

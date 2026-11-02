@@ -45,7 +45,7 @@ const styles = StyleSheet.create({
     fontSize: theme.font.sizes.md,
     fontWeight: '600',
     marginTop: theme.spacing.lg,       // + d'espace entre icône et titre
-    marginBottom: theme.spacing.md,
+    marginBottom: theme.spacing.lg,     // 1.29 : message centré entre titre et bouton
     textAlign: 'center',
     letterSpacing: 0.3,
   },
@@ -53,7 +53,7 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted, fontSize: theme.font.sizes.sm,
     fontWeight: '400', lineHeight: 22,
     textAlign: 'center',
-    marginBottom: theme.spacing.xl,     // + d'espace entre message et bouton
+    marginBottom: theme.spacing.md,     // + 8 de padding du bouton = 24, comme au-dessus
   },
   btn: {
     paddingVertical: theme.spacing.sm, paddingHorizontal: theme.spacing.xl,

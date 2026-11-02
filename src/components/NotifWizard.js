@@ -113,7 +113,12 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
 
   const openTarget = (t) => { haptics.light(); setFromPick(false); setTarget(t); setStep('target'); };
   // Depuis « + » de la liste : la cible choisie n'a encore aucune notification → choix du palier direct
-  const pickTarget = (t) => { haptics.light(); setFromPick(true); setPermDenied(false); setTarget(t); setStep('palier'); };
+  const pickTarget = (t) => {
+    haptics.light(); setPermDenied(false); setTarget(t);
+    // Cible déjà équipée des 5 paliers : rien à ajouter → son écran
+    if (rulesOf(t).length >= PALIERS.length) { setFromPick(false); setStep('target'); return; }
+    setFromPick(true); setStep('palier');
+  };
 
   const addPalier = async (palier) => {
     haptics.light();
@@ -150,7 +155,7 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
     body = (
       <>
         <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
-          {activeTargets.length === 0 && <Text style={styles.empty}>Aucune notification active</Text>}
+          {activeTargets.length === 0 && <View style={styles.emptyWrap}><Text style={styles.empty}>Aucune notification active</Text></View>}
           {activeTargets.map((t) => {
             const n = rulesOf(t).length;
             return (
@@ -166,13 +171,10 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
       </>
     );
   } else if (step === 'pick') {
-    // Seulement les cibles qui n'ont encore AUCUNE notification (les autres : depuis la liste)
-    const free = allTargets.filter((t) => rulesOf(t).length === 0);
-    body = free.length === 0 ? (
-      <Text style={styles.empty}>Toutes les cibles ont déjà des notifications</Text>
-    ) : (
+    // Toutes les cibles (avec ou sans notification) → choix du palier directement
+    body = (
       <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
-        {free.map((t) => (
+        {allTargets.map((t) => (
           <TouchableOpacity key={`${t.target}:${t.key}`} style={[styles.row, rowTint(colorOf(t))]} onPress={() => pickTarget(t)} activeOpacity={0.7}>
             {renderTargetLabel(t, null, true)}
             <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.textMuted} />
@@ -185,7 +187,7 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
     body = (
       <>
         <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
-          {rules.length === 0 && <Text style={styles.empty}>Aucune notification</Text>}
+          {rules.length === 0 && <View style={styles.emptyWrap}><Text style={styles.empty}>Aucune notification</Text></View>}
           {rules.map((r) => (
             <View key={notifRuleId(r)} style={[styles.row, rowTint(colorOf(target))]}>
               <MaterialCommunityIcons name="bell-outline" size={18} color={colorOf(target)} />
@@ -230,7 +232,7 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
     );
   } else if (step === 'confirm' && pendingDelete) {
     body = (
-      <>
+      <View style={styles.centerFill}>
         <Text style={styles.confirmText}>
           {'« '}{palierLabel(pendingDelete.palier)}{' » pour '}
           {target?.target === 'sub'
@@ -248,7 +250,7 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
             <Text style={styles.actionDanger}>Supprimer</Text>
           </TouchableOpacity>
         </View>
-      </>
+      </View>
     );
   }
 
@@ -293,9 +295,11 @@ const styles = StyleSheet.create({
   titleWrap: { flex: 1, alignItems: 'center' },
   title: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '600', letterSpacing: 0.3 },
   list: { flexGrow: 0, flexShrink: 1 },
-  // Contenu centré verticalement (messages vides, bouton +, confirmation)
-  bodyFixed: { height: 292, justifyContent: 'center' },
-  bodyPick: { maxHeight: 460, minHeight: 120, justifyContent: 'center' },
+  emptyWrap: { height: 200, justifyContent: 'center' },
+  centerFill: { flex: 1, justifyContent: 'center' },
+  // Lignes en haut, bouton + en bas (1.29) ; messages vides et confirmation centrés
+  bodyFixed: { height: 292, justifyContent: 'space-between' },
+  bodyPick: { maxHeight: 460 },
   empty: { color: theme.colors.textMuted, textAlign: 'center', fontSize: theme.font.sizes.sm, paddingVertical: theme.spacing.lg },
   // Lignes plus fines (1.26), fond pâle + liseré à la couleur de la cible
   row: {
