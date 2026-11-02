@@ -25,7 +25,8 @@
         {
           "faceIDPermission": "Almanac utilise Face ID pour déverrouiller l'app."
         }
-      ]
+      ],
+      "expo-build-properties"
     ],
     "ios": {
       "supportsTablet": false,
