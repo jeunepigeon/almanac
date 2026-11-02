@@ -85,7 +85,7 @@ export default function SubstanceSelectModal({
             </TouchableOpacity>
           </View>
 
-          <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
+          <ScrollView keyboardShouldPersistTaps="handled" style={styles.list} contentContainerStyle={styles.listContent}>
             {substances.map((sub) => (
               <SubCard
                 key={sub.id}

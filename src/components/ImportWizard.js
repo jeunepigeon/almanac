@@ -261,7 +261,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
                   </Text>
                 </TouchableOpacity>
               </View>
-              <ScrollView style={styles.list} contentContainerStyle={{ paddingVertical: 4 }}>
+              <ScrollView keyboardShouldPersistTaps="handled" style={styles.list} contentContainerStyle={{ paddingVertical: 4 }}>
                 {subList.map((sub) => (
                   <SubCard
                     key={sub.id}

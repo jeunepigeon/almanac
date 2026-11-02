@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Modal,
   View,
@@ -10,6 +10,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Keyboard,
 } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from '../theme';
@@ -35,6 +36,17 @@ export default function SubstanceFormModal({
   const [name, setName] = useState('');
   const [colorIndex, setColorIndex] = useState(0);
   const [iconId, setIconId] = useState(DEFAULT_ICON_ID);
+  const nameRef = useRef(null);
+
+  // 1.32 : « Renommer » / création → curseur dans le champ et clavier ouvert directement.
+  // autoFocus seul ne marche pas de façon fiable dans une Modal qui s'ouvre juste après le menu :
+  // on attend la fin du fondu d'ouverture puis on donne le focus.
+  useEffect(() => {
+    if (!visible) { Keyboard.dismiss(); return undefined; }
+    if (mode !== 'create' && mode !== 'rename') return undefined;
+    const t = setTimeout(() => nameRef.current?.focus(), 280);
+    return () => clearTimeout(t);
+  }, [visible, mode]);
 
   // Réinitialise le formulaire à chaque ouverture
   useEffect(() => {
@@ -111,6 +123,7 @@ export default function SubstanceFormModal({
                 placeholder="Nom"
                 maxLength={20} // 1.27 : nom limité à 20 caractères
                 placeholderTextColor={theme.colors.textFaint}
+                ref={nameRef}
                 style={styles.input}
                 autoFocus={mode === 'create' || mode === 'rename'}
                 returnKeyType="done"

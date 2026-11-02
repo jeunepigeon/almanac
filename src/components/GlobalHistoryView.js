@@ -121,7 +121,7 @@ export default function GlobalHistoryView({ consumptions, substancesById, onTapC
           <Text style={styles.placeholderText}>Aucune conso correspondante</Text>
         </View>
       ) : (
-        <FlatList
+        <FlatList keyboardShouldPersistTaps="handled"
           data={grouped}
           keyExtractor={(item) => String(item.dayTs)}
           contentContainerStyle={styles.listContent}

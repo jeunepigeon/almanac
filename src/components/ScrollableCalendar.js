@@ -593,7 +593,7 @@ export default function ScrollableCalendar({
         </TouchableOpacity>
       </View>
 
-      <FlatList
+      <FlatList keyboardShouldPersistTaps="handled"
         ref={flatListRef}
         data={months}
         keyExtractor={(m) => `${m.year}-${m.month}`}
@@ -641,7 +641,7 @@ export default function ScrollableCalendar({
               width: 200,
             },
           ]}>
-            <FlatList
+            <FlatList keyboardShouldPersistTaps="handled"
               data={[...months].reverse()}
               keyExtractor={(m) => `p-${m.year}-${m.month}`}
               renderItem={({ item }) => {

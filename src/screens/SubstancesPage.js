@@ -194,7 +194,13 @@ export default function SubstancesPage() {
   const [pendingDelete, setPendingDelete] = useState(null);
 
   // Un seul mode réorganisation (bandeaux ET substances, chacun dans sa section), ouvert par appui long
-  const [reorderMode, setReorderMode] = useState(false);
+  // 1.32 : dans le store (survit à un remontage de la page → on ne sort plus du mode tout seul)
+  const reorderMode = useStore((s) => s.reorderMode);
+  const setReorderMode = useStore((s) => s.setReorderMode);
+  const bumpMounts = useStore((s) => s.bumpSubstancesPageMounts);
+  useEffect(() => { bumpMounts(); }, []); // eslint-disable-line
+  // Plus aucune substance (dernière supprimée) : la liste disparaît → on quitte le mode
+  useEffect(() => { if (reorderMode && substances.length === 0) setReorderMode(false); }, [reorderMode, substances.length]); // eslint-disable-line
   const [pendingBannerDelete, setPendingBannerDelete] = useState(null); // couleur
   const [addBannerOpen, setAddBannerOpen] = useState(false);
   const [sobreH, setSobreH] = useState(110); // hauteur mesurée du bandeau « Sobre de tout »

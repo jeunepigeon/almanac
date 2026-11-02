@@ -13,6 +13,7 @@ import { theme } from './src/theme';
 import { initDb } from './src/db';
 import { useStore } from './src/store';
 import AppLock from './src/components/AppLock';
+import UpdateNotice from './src/components/UpdateNotice';
 import { configureNotifications, startNotificationSync, readNotificationTarget } from './src/utils/notifications';
 
 const navRef = createNavigationContainerRef();
@@ -118,6 +119,8 @@ export default function App() {
     </NavigationContainer>
     {/* Verrouillage (option) : par-dessus toute l'app */}
     <AppLock />
+    {/* Message « Almanac mis à jour » (une fois par version, après déverrouillage) */}
+    <UpdateNotice />
     </GestureHandlerRootView>
   );
 }

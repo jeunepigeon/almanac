@@ -14,7 +14,7 @@ export default function DonationsScreen() {
   } = useBilling();
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView keyboardShouldPersistTaps="handled" style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.intro}>
         Almanac est gratuit et sans publicité. Si l'app t'est utile, tu peux soutenir son développement.
       </Text>

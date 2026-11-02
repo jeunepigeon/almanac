@@ -154,7 +154,7 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
   if (step === 'list') {
     body = (
       <>
-        <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+        <ScrollView keyboardShouldPersistTaps="handled" style={styles.list} showsVerticalScrollIndicator={false}>
           {activeTargets.length === 0 && <View style={styles.emptyWrap}><Text style={styles.empty}>Aucune notification active</Text></View>}
           {activeTargets.map((t) => {
             const n = rulesOf(t).length;
@@ -173,7 +173,7 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
   } else if (step === 'pick') {
     // Toutes les cibles (avec ou sans notification) → choix du palier directement
     body = (
-      <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+      <ScrollView keyboardShouldPersistTaps="handled" style={styles.list} showsVerticalScrollIndicator={false}>
         {allTargets.map((t) => (
           <TouchableOpacity key={`${t.target}:${t.key}`} style={[styles.row, rowTint(colorOf(t))]} onPress={() => pickTarget(t)} activeOpacity={0.7}>
             {renderTargetLabel(t, null, true)}
@@ -186,7 +186,7 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
     const rules = rulesOf(target);
     body = (
       <>
-        <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+        <ScrollView keyboardShouldPersistTaps="handled" style={styles.list} showsVerticalScrollIndicator={false}>
           {rules.length === 0 && <View style={styles.emptyWrap}><Text style={styles.empty}>Aucune notification</Text></View>}
           {rules.map((r) => (
             <View key={notifRuleId(r)} style={[styles.row, rowTint(colorOf(target))]}>
@@ -210,7 +210,7 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
     const active = new Set(rulesOf(target).map((r) => r.palier));
     body = (
       <>
-        <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+        <ScrollView keyboardShouldPersistTaps="handled" style={styles.list} showsVerticalScrollIndicator={false}>
           {PALIERS.filter((p) => !active.has(p.id)).map((p) => (
             <TouchableOpacity key={p.id} style={[styles.row, rowTint(colorOf(target))]} onPress={() => addPalier(p.id)} activeOpacity={0.7}>
               <Text style={[styles.label, { flex: 1 }]}>{p.label}</Text>

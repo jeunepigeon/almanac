@@ -41,6 +41,15 @@ export const EMPTY_LIST = [];
 const SAFETY_PREFIXES = ['avant-import-', 'avant-restauration-', 'avant-fusion-'];
 const SAFETY_KEEP = 10; // référence stable (un sélecteur qui renvoie [] neuf ferait boucler le rendu)
 const byTsDesc = (a, b) => b.timestamp - a.timestamp;
+// Deux listes de sauvegardes identiques (mêmes lignes, même état « consultée ») ?
+function sameSnapshotList(a = [], b = []) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].id !== b[i].id || !!a[i].consulted !== !!b[i].consulted || a[i].name !== b[i].name
+      || a[i].cons_count !== b[i].cons_count) return false;
+  }
+  return true;
+}
 function withDayKey(c) { return { ...c, dayKey: formatDayKey(c.timestamp) }; }
 function indexConsumptions(all) {
   const bySub = {};
@@ -105,6 +114,18 @@ export const useStore = create((set, get) => ({
   requestGotoGlobalStats: () => set((s) => ({ gotoGlobalStatsTick: s.gotoGlobalStatsTick + 1 })),
   pagerLocked: false,
   setPagerLocked: (locked) => set({ pagerLocked: !!locked }),
+
+  // 1.32 : mode réorganisation gardé dans le store (et non dans l'état local de la page) :
+  // il survit à un éventuel remontage de la page Substances (suppression, couleur, icône…)
+  reorderMode: false,
+  setReorderMode: (on) => set({ reorderMode: !!on }),
+  // Debug : nombre de montages de la page Substances depuis le lancement (1 = normal)
+  substancesPageMounts: 0,
+  bumpSubstancesPageMounts: () => set((s) => ({ substancesPageMounts: s.substancesPageMounts + 1 })),
+
+  // Écran de verrouillage affiché ? (le message de mise à jour attend le déverrouillage)
+  lockActive: false,
+  setLockActive: (v) => set({ lockActive: !!v }),
 
   // --- Notifications (1.25) ---
   notifRules: [],
@@ -212,13 +233,17 @@ export const useStore = create((set, get) => ({
     get().pruneOrphans();
   },
 
+  // 1.32 : la liste n'est remplacée que si elle a réellement changé (évite de redessiner
+  // la page Paramètres pendant qu'on la fait défiler)
   loadSnapshots: async () => {
     const snapshots = await dbGetAllSnapshots();
     const hasUnconsulted = snapshots.some((s) => !s.consulted);
+    if (sameSnapshotList(get().snapshots, snapshots) && get().hasUnconsultedSnapshots === hasUnconsulted) return;
     set({ snapshots, hasUnconsultedSnapshots: hasUnconsulted });
   },
 
   markSnapshotsConsulted: async () => {
+    if (!get().snapshots.some((s) => !s.consulted) && !get().hasUnconsultedSnapshots) return;
     await dbMarkSnapshotsConsulted();
     const snapshots = await dbGetAllSnapshots();
     set({ snapshots, hasUnconsultedSnapshots: false });

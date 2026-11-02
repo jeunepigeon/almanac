@@ -51,6 +51,10 @@ export default function AppLock() {
     if (ok) setLocked(false);
   };
 
+  // Signale au reste de l'app que l'écran de verrouillage est affiché (le message de mise à jour attend)
+  const shown = !!(locked && enabled);
+  useEffect(() => { useStore.getState().setLockActive(shown); }, [shown]);
+
   // Option désactivée → jamais verrouillé
   useEffect(() => { if (!enabled) setLocked(false); }, [enabled]);
 

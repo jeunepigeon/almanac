@@ -19,7 +19,7 @@ export default function ColorBannerAddModal({ visible, options, onPick, onClose 
           ) : (
             <>
               <Text style={styles.message}>Choisis une couleur : le bandeau affiche le temps depuis la dernière prise par catégorie.</Text>
-              <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+              <ScrollView keyboardShouldPersistTaps="handled" style={styles.list} showsVerticalScrollIndicator={false}>
                 {options.map((o) => (
                   <TouchableOpacity
                     key={o.color}

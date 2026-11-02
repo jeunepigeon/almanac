@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, Switch,
 } from 'react-native';
@@ -7,7 +7,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { theme } from '../theme';
 import { useStore } from '../store';
-import { dbGetFirstConsumptionTimestamp, dbGetSnapshotData, dbGetAllConsumptions } from '../db';
+import { dbGetSnapshotData, dbGetAllConsumptions } from '../db';
 import ConfirmModal from '../components/ConfirmModal';
 import ActionSheet from '../components/ActionSheet';
 import ExportIcon from '../components/ExportIcon';
@@ -53,7 +53,6 @@ export default function SettingsScreen() {
   const markSnapshotsConsulted = useStore((s) => s.markSnapshotsConsulted);
   const loadSnapshots = useStore((s) => s.loadSnapshots);
 
-  const [firstConsoTs, setFirstConsoTs] = useState(null);
   const [pendingWipeStep, setPendingWipeStep] = useState(0);
   const [wipeToastVisible, setWipeToastVisible] = useState(false);
 
@@ -62,7 +61,6 @@ export default function SettingsScreen() {
   const [restoreSnapId, setRestoreSnapId] = useState(null);
   const [importWizardVisible, setImportWizardVisible] = useState(false);
   const [createSnapshotModal, setCreateSnapshotModal] = useState(false);
-  const [snapshotStats, setSnapshotStats] = useState({});
   const [infoModal, setInfoModal] = useState(null);
   const [otaBusy, setOtaBusy] = useState(false);
 
@@ -92,6 +90,7 @@ export default function SettingsScreen() {
   const notifRules = useStore((s) => s.notifRules);
   const lastNotifTap = useStore((s) => s.lastNotifTap);
   const lastBannerFlash = useStore((s) => s.lastBannerFlash);
+  const substancesPageMounts = useStore((s) => s.substancesPageMounts);
 
   // --- Debug notifications (1.26) : Toutes / bandeau violet / une substance / 1re notif active ---
   const debugNotifTargets = () => {
@@ -133,24 +132,32 @@ export default function SettingsScreen() {
   const [debugModals, setDebugModals] = useState([]);
   const [debugIdx, setDebugIdx] = useState(0);
 
+  // 1.32 : les sauvegardes sont marquées « consultées » en QUITTANT la page (et plus à l'arrivée) :
+  // les points rouges restent visibles pendant la visite et la page n'est plus redessinée
+  // pendant qu'on la fait défiler (cause probable du retour en haut).
   useFocusEffect(
-    useCallback(() => { markSnapshotsConsulted(); }, [markSnapshotsConsulted])
+    useCallback(() => () => { markSnapshotsConsulted(); }, [markSnapshotsConsulted])
   );
 
-  useEffect(() => {
-    dbGetFirstConsumptionTimestamp().then(setFirstConsoTs);
-    loadSnapshots();
-  }, []);
+  useEffect(() => { loadSnapshots(); }, []); // eslint-disable-line
 
-  // 1.31 : compteurs lus directement dans la liste des sauvegardes (stockés à la création),
-  // au lieu de relire et décoder chaque sauvegarde (≈ 300 Ko chacune) à chaque affichage
-  useEffect(() => {
+  // 1.32 : date de la 1re prise lue dans le stock en mémoire (plus de lecture en base après affichage)
+  const allConsumptions = useStore((s) => s.allConsumptions);
+  const firstConsoTs = useMemo(() => {
+    let min = null;
+    for (const c of allConsumptions) if (min == null || c.timestamp < min) min = c.timestamp;
+    return min;
+  }, [allConsumptions]);
+
+  // 1.31 : compteurs lus directement dans la liste des sauvegardes (stockés à la création).
+  // 1.32 : calculés pendant le rendu (avant : 2e rendu via un effet)
+  const snapshotStats = useMemo(() => {
     const stats = {};
     for (const s of snapshots) {
       if (s.cons_count == null) continue;
       stats[s.id] = { substancesCount: s.subs_count || 0, consumptionsCount: s.cons_count || 0, size: s.size || 0 };
     }
-    setSnapshotStats(stats);
+    return stats;
   }, [snapshots]);
 
   const statsFromConsos = (consos) => {
@@ -430,6 +437,11 @@ export default function SettingsScreen() {
             : 'aucun'}
         </Text>
       </TouchableOpacity>
+      {/* 1.32 : diagnostic de la sortie du mode réorganisation (1 = jamais remontée) */}
+      <View style={styles.row}>
+        <Text style={styles.rowLabel}>Montages page Substances</Text>
+        <Text style={styles.rowValue}>{substancesPageMounts}</Text>
+      </View>
       {/* Vraies notifications (même logique que les paliers), envoyées dans 10 s */}
       {debugNotifTargets().map((d) => (
         <TouchableOpacity key={d.id} style={styles.row} onPress={() => sendDebugNotif(d)}>
@@ -539,7 +551,6 @@ export default function SettingsScreen() {
         onConfirm={async () => {
           await wipeAll();
           setPendingWipeStep(0);
-          setFirstConsoTs(null);
           setWipeToastVisible(true);
         }}
       />

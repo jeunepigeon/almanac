@@ -28,7 +28,7 @@ export default function DayDetailModal({
           <Text style={styles.emptyText}>Aucune consommation ce jour</Text>
         </View>
       ) : (
-        <FlatList
+        <FlatList keyboardShouldPersistTaps="handled"
           data={consumptions}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
@@ -38,6 +38,8 @@ export default function DayDetailModal({
             return (
               <Pressable
                 onPress={() => onTapConsumption?.(item, sub)}
+                // 1.32 : un léger glissement du doigt n'annule plus le tap
+                pressRetentionOffset={{ top: 30, bottom: 30, left: 30, right: 30 }}
                 style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
               >
                 <View style={[styles.iconWrap, { borderColor: sub.color }]}>

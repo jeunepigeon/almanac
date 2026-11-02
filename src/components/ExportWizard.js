@@ -223,7 +223,7 @@ export default function ExportWizard({ visible, substances = [], statsById = {},
                   <Text style={styles.toggleAllText}>{allSelected ? 'Tout décocher' : 'Tout cocher'}</Text>
                 </TouchableOpacity>
               </View>
-              <ScrollView style={styles.list} contentContainerStyle={{ paddingVertical: 4 }}>
+              <ScrollView keyboardShouldPersistTaps="handled" style={styles.list} contentContainerStyle={{ paddingVertical: 4 }}>
                 {substances.map((sub) => (
                   <SubCard
                     key={sub.id}

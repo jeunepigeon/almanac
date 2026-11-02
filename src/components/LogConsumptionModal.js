@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Modal, View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, Pressable, ScrollView,
+  KeyboardAvoidingView, Platform, Pressable, ScrollView, Keyboard,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -18,6 +18,11 @@ export default function LogConsumptionModal({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [editLocked, setEditLocked] = useState(mode === 'edit');
+
+  // 1.32 : à la fermeture, on libère le champ (dosage / note) resté actif. Sinon React Native le
+  // croit encore ouvert et la liste suivante « mange » le 1er tap pour fermer un clavier invisible
+  // (d'où le double tap parfois nécessaire sur une prise dans le détail d'un jour).
+  useEffect(() => { if (!visible) Keyboard.dismiss(); }, [visible]);
 
   useEffect(() => {
     if (visible) {

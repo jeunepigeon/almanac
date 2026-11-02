@@ -243,7 +243,7 @@ function HistoryList({ consumptions, color, onEdit }) {
     );
   }
   return (
-    <FlatList
+    <FlatList keyboardShouldPersistTaps="handled"
       data={grouped}
       keyExtractor={(item) => String(item.dayTs)}
       contentContainerStyle={styles.listContent}

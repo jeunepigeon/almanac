@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import {
   Modal, View, Text, StyleSheet, TouchableOpacity, Animated,
-  PanResponder, Dimensions, Pressable,
+  PanResponder, Dimensions, Pressable, Easing,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { theme } from '../theme';
@@ -21,11 +21,13 @@ export default function BottomSheet({ visible, title, onClose, children }) {
 
   useEffect(() => {
     if (visible) {
-      Animated.spring(translateY, {
+      // 1.32 : glissement court et net (220 ms) au lieu d'un ressort qui oscillait encore
+      // ~1 s : la feuille bougeait sous le doigt et le 1er tap pouvait être perdu.
+      Animated.timing(translateY, {
         toValue: 0,
+        duration: 220,
+        easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
-        damping: 20,
-        stiffness: 200,
       }).start();
     } else {
       Animated.timing(translateY, {

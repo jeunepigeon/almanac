@@ -366,7 +366,7 @@ export default function ReorderList({
       collapsable={false}
       onLayout={(e) => { viewportHRef.current = e.nativeEvent.layout.height; reportMetrics(); }}
     >
-      <ScrollView
+      <ScrollView keyboardShouldPersistTaps="handled"
         ref={effectiveScrollRef}
         contentContainerStyle={{ paddingBottom: 120 }}
         scrollEnabled={pickupIdx == null}

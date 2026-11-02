@@ -13,7 +13,7 @@ export default function SubstancePicker({ visible, substances, onPick, onClose }
           <Text style={styles.emptyText}>Aucune substance disponible</Text>
         </View>
       ) : (
-        <FlatList
+        <FlatList keyboardShouldPersistTaps="handled"
           data={substances}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}

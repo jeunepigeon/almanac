@@ -241,7 +241,7 @@ export default function StatsView({
   const bandColor = mode === 'global' ? '#FFFFFF' : color;
 
   return (
-    <ScrollView contentContainerStyle={styles.scrollContent}>
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
 
       {/* Hero jours sobres — mode global uniquement */}
       {mode === 'global' && lastGlobalTimestamp !== null && (
