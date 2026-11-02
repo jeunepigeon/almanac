@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, BackHandler } from 'react-nat
 import PagerView from 'react-native-pager-view';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import NotifWizard from '../components/NotifWizard';
+import ShareModal from '../components/ShareModal';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useCallback } from 'react';
 import { theme } from '../theme';
@@ -19,6 +20,7 @@ export default function MainScreen() {
   const pagerLocked = useStore((s) => s.pagerLocked);
   const notifFocus = useStore((s) => s.notifFocus);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const hasAnyNotif = useStore((s) => s.notifRules.length > 0);
 
   // Tap sur une notification « Toutes » / catégorie → page Substances
@@ -101,6 +103,17 @@ export default function MainScreen() {
         {[0, 1].map((i) => (
           <View key={i} style={[styles.dot, page === i && styles.dotActive]} />
         ))}
+        {/* 1.38 — Partage, en miroir de la cloche : page Substances uniquement */}
+        {page === 0 && (
+          <TouchableOpacity
+            style={[styles.shareBtn, pagerLocked && { opacity: 0.3 }]}
+            onPress={() => setShareOpen(true)}
+            disabled={pagerLocked}
+            hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+          >
+            <MaterialCommunityIcons name="share-variant" size={18} color={theme.colors.textMuted} />
+          </TouchableOpacity>
+        )}
         {/* Cloche sous « settings » (liste et Global) : vide si aucune notification, pleine sinon */}
         <TouchableOpacity
           style={[styles.bellBtn, pagerLocked && { opacity: 0.3 }]}
@@ -127,6 +140,7 @@ export default function MainScreen() {
         </View>
       </PagerView>
 
+      <ShareModal visible={shareOpen} onClose={() => setShareOpen(false)} />
       <NotifWizard visible={notifOpen} onClose={() => setNotifOpen(false)} />
     </View>
   );
@@ -161,6 +175,7 @@ const styles = StyleSheet.create({
   },
   indicator: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', height: 26, gap: 6 },
   bellBtn: { position: 'absolute', right: theme.spacing.md + theme.spacing.xs, top: 0, bottom: 0, justifyContent: 'center' },
+  shareBtn: { position: 'absolute', left: theme.spacing.md + theme.spacing.xs, top: 0, bottom: 0, justifyContent: 'center' },
   dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: theme.colors.textFaint },
   dotActive: { backgroundColor: theme.colors.text },
   pager: { flex: 1 },
