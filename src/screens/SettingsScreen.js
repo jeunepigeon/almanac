@@ -438,7 +438,7 @@ export default function SettingsScreen() {
           const id = lastBannerFlash?.id;
           if (!id) return;
           useStore.getState().traceNotif('rejeu depuis Debug', id, true);
-          navigation.navigate('Main');
+          navigation.navigate('Main', undefined, { pop: true }); // 1.35 : pas de 2e écran principal empilé
           if (id === '__sobre') useStore.getState().requestNotifFocus('all');
           else useStore.getState().requestNotifFocus('color', id.replace('banner:', ''));
         }}

@@ -52,12 +52,16 @@ export default function App() {
     if (t.target === 'sub') {
       const ok = st.substances.some((s) => s.id === t.key);
       st.traceNotif(ok ? 'ouverture page substance' : 'substance introuvable', 'pas de flash (normal)');
-      if (ok) navRef.navigate('Substance', { substanceId: t.key });
+      // { pop: true } : revient à la page déjà ouverte au lieu d'en empiler une 2e (React Navigation 7)
+      if (ok) navRef.navigate('Substance', { substanceId: t.key }, { pop: true });
       return;
     }
     // « Toutes » / catégorie : liste des substances, flash du bandeau concerné
     st.traceNotif('retour liste + flash demandé', `écran avant : ${navRef.getCurrentRoute()?.name || '?'}`);
-    navRef.navigate('Main');
+    // 1.35 : { pop: true } = on REDESCEND sur l'écran principal existant. Sans ça, React Navigation 7
+    // empilait un 2e écran principal par-dessus (depuis une page substance ou Paramètres) : le flash
+    // se jouait sur l'ancien, caché dessous, et le nouveau (visible) n'avait rien à flasher.
+    navRef.navigate('Main', undefined, { pop: true });
     st.requestNotifFocus(t.target === 'color' ? 'color' : 'all', t.target === 'color' ? t.key : null);
   };
   const handleResponse = (response, via = 'listener') => {
