@@ -11,6 +11,7 @@ import {
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { captureRef, releaseCapture } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../theme';
 import { useStore } from '../store';
 import haptics from '../utils/haptics';
@@ -18,6 +19,8 @@ import SubstanceIcon from './SubstanceIcon';
 import LiveCounter from './LiveCounter';
 import InfoModal from './InfoModal';
 import ShareImage, { SHARE_W, SHARE_SCALE, shareLayout } from './ShareImage';
+import { getOrPickImageDir, writeBase64ImageToDir, makeUniqueFilename, dirLabel, debugLastError } from '../utils/saf';
+import { fmtDateTiretHM } from '../utils/snapshots';
 
 const SOBRE_ID = '__sobre';
 const DIM = '#2F2F2F';
@@ -50,7 +53,20 @@ function Choice({ label, color, icon, ts, checked, onToggle }) {
   );
 }
 
+// 1.39 : la Modal est dessinée bord à bord (sous l'heure et la caméra) → marges de sécurité mesurées
+// DANS la Modal (fournisseur propre à sa fenêtre)
 export default function ShareModal({ visible, onClose }) {
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <SafeAreaProvider>
+        <ShareScreen visible={visible} onClose={onClose} />
+      </SafeAreaProvider>
+    </Modal>
+  );
+}
+
+function ShareScreen({ visible, onClose }) {
+  const insets = useSafeAreaInsets();
   const substances = useStore((s) => s.substances);
   const lastTimestamps = useStore((s) => s.lastTimestamps);
 
@@ -69,12 +85,14 @@ export default function ShareModal({ visible, onClose }) {
   const [busy, setBusy] = useState(false);
   const [previewW, setPreviewW] = useState(0);
   const [info, setInfo] = useState(null);
+  const [previewMinH, setPreviewMinH] = useState(0);
   const shotRef = useRef(null);
 
   // Ouverture : rien de coché ; l'aperçu suit l'heure (toutes les horloges au même instant)
   useEffect(() => {
     if (!visible) return undefined;
     setSelected({});
+    setPreviewMinH(0);
     setNow(Date.now());
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
@@ -88,22 +106,52 @@ export default function ShareModal({ visible, onClose }) {
   const empty = !showSobre && chosen.length === 0;
   const lay = shareLayout(chosen.length, showSobre);
   const k = previewW > 2 ? Math.min(1, (previewW - 2) / SHARE_W) : 0;
+  // 1.39 : la zone d'aperçu ne rapetisse jamais pendant la visite → plus de saut quand on décoche
+  // (surtout la dernière case) alors qu'on est tout en bas
+  const previewH = empty || !k ? 0 : Math.round(lay.height * k);
+  useEffect(() => { if (previewH > previewMinH) setPreviewMinH(previewH); }, [previewH]); // eslint-disable-line
+
+  // Photo prise MAINTENANT : on fige l'instant, on laisse 2 images se dessiner, puis capture
+  const capture = async (result) => {
+    setNow(Date.now());
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    return captureRef(shotRef, {
+      format: 'png',
+      quality: 1,
+      result,
+      width: SHARE_W * SHARE_SCALE,
+      height: Math.round(lay.height * SHARE_SCALE),
+    });
+  };
+
+  // 1.39 — Enregistrer : PNG écrit dans un dossier du téléphone choisi une fois (ex. Images/Almanac),
+  // via le même mécanisme que les exports (aucune autorisation « photos » demandée).
+  // Appui long : changer de dossier.
+  const save = async (forcePick = false) => {
+    if (empty || busy) return;
+    setBusy(true);
+    try {
+      const dirUri = await getOrPickImageDir({ forcePick });
+      if (!dirUri) { if (debugLastError()?.includes('refusée')) return; throw new Error(debugLastError() || 'Aucun dossier choisi'); }
+      const b64 = await capture('base64');
+      const name = await makeUniqueFilename(dirUri, `almanac-${fmtDateTiretHM()}.png`);
+      const uri = await writeBase64ImageToDir(dirUri, name, b64);
+      if (!uri) throw new Error(debugLastError() || "Écriture impossible");
+      haptics.success?.();
+      setInfo({ title: 'Image enregistrée', message: `${name}\ndans ${dirLabel(dirUri)}\n\nAppui long sur Enregistrer pour changer de dossier.` });
+    } catch (e) {
+      setInfo({ title: "L'enregistrement n'a pas pu aboutir", message: String(e?.message || e) });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const share = async () => {
     if (empty || busy) return;
     setBusy(true);
     let uri = null;
     try {
-      // Photo prise MAINTENANT : on fige l'instant, on laisse 2 images se dessiner, puis capture
-      setNow(Date.now());
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-      uri = await captureRef(shotRef, {
-        format: 'png',
-        quality: 1,
-        result: 'tmpfile',
-        width: SHARE_W * SHARE_SCALE,
-        height: Math.round(lay.height * SHARE_SCALE),
-      });
+      uri = await capture('tmpfile');
       if (!(await Sharing.isAvailableAsync())) {
         setInfo({ title: 'Partage indisponible', message: "Le partage n'est pas disponible sur ce téléphone." });
         return;
@@ -118,8 +166,8 @@ export default function ShareModal({ visible, onClose }) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={styles.screen}>
+    <>
+      <View style={[styles.screen, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <MaterialCommunityIcons name="close" size={20} color={theme.colors.textMuted} />
@@ -142,7 +190,7 @@ export default function ShareModal({ visible, onClose }) {
           )}
 
           <Text style={[styles.section, { marginTop: theme.spacing.lg }]}>Aperçu</Text>
-          <View style={styles.previewArea} onLayout={(e) => setPreviewW(Math.round(e.nativeEvent.layout.width))}>
+          <View style={[styles.previewArea, { minHeight: Math.max(80, previewMinH + 2) }]} onLayout={(e) => setPreviewW(Math.round(e.nativeEvent.layout.width))}>
             {empty ? (
               <Text style={styles.emptyText}>Coche au moins un élément</Text>
             ) : k > 0 ? (
@@ -157,7 +205,19 @@ export default function ShareModal({ visible, onClose }) {
           </View>
         </ScrollView>
 
-        <View style={styles.bottom}>
+        {/* 1.39 : Enregistrer (contour) + Partager (plein), au-dessus de la barre de navigation */}
+        <View style={[styles.bottom, { paddingBottom: theme.spacing.md + insets.bottom }]}>
+          <TouchableOpacity
+            onPress={() => save(false)}
+            onLongPress={() => save(true)}
+            delayLongPress={450}
+            disabled={empty || busy}
+            style={[styles.saveBtn, (empty || busy) && { opacity: 0.35 }]}
+            activeOpacity={0.7}
+          >
+            <MaterialCommunityIcons name="download" size={18} color={theme.colors.text} />
+            <Text style={styles.saveText}>Enregistrer</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={share}
             disabled={empty || busy}
@@ -177,7 +237,7 @@ export default function ShareModal({ visible, onClose }) {
       </View>
 
       <InfoModal visible={!!info} title={info?.title} message={info?.message} onClose={() => setInfo(null)} />
-    </Modal>
+    </>
   );
 }
 
@@ -212,10 +272,17 @@ const styles = StyleSheet.create({
     textAlign: 'center', paddingVertical: theme.spacing.lg,
   },
   bottom: {
-    padding: theme.spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border,
+    flexDirection: 'row', gap: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.md, paddingTop: theme.spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.colors.border,
   },
+  saveBtn: {
+    flex: 1, height: 48, borderRadius: 24, borderWidth: 1, borderColor: theme.colors.textMuted,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+  },
+  saveText: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '600', letterSpacing: 0.5 },
   shareBtn: {
-    height: 48, borderRadius: 24, backgroundColor: theme.colors.text,
+    flex: 1, height: 48, borderRadius: 24, backgroundColor: theme.colors.text,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
   },
   shareText: { color: theme.colors.background, fontSize: theme.font.sizes.md, fontWeight: '600', letterSpacing: 0.5 },

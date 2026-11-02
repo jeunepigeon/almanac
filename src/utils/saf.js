@@ -20,6 +20,7 @@ try {
 }
 
 const STORAGE_KEY = 'almanac.exportDirUri';
+const IMAGE_STORAGE_KEY = 'almanac.imageDirUri'; // 1.39 : dossier des images de partage
 
 let _lastErr = null;
 function recordErr(ctx, e) {
@@ -28,16 +29,16 @@ function recordErr(ctx, e) {
 }
 export function debugLastError() { return _lastErr; }
 
-async function getPersistedDirUri() {
+async function getPersistedDirUri(key = STORAGE_KEY) {
   try {
-    const v = await AsyncStorage.getItem(STORAGE_KEY);
+    const v = await AsyncStorage.getItem(key);
     return v || null;
   } catch (e) { recordErr('getPersisted', e); return null; }
 }
-async function setPersistedDirUri(uri) {
+async function setPersistedDirUri(uri, key = STORAGE_KEY) {
   try {
-    if (uri) await AsyncStorage.setItem(STORAGE_KEY, uri);
-    else await AsyncStorage.removeItem(STORAGE_KEY);
+    if (uri) await AsyncStorage.setItem(key, uri);
+    else await AsyncStorage.removeItem(key);
   } catch (e) { recordErr('setPersisted', e); }
 }
 
@@ -50,7 +51,7 @@ async function isDirUsable(uri) {
   } catch (e) { recordErr('isDirUsable', e); return false; }
 }
 
-export async function getOrPickExportDir({ forcePick = false } = {}) {
+export async function getOrPickExportDir({ forcePick = false, key = STORAGE_KEY } = {}) {
   _lastErr = null;
   if (Platform.OS !== 'android') {
     _lastErr = 'SAF non disponible (plateforme non-Android)';
@@ -60,19 +61,19 @@ export async function getOrPickExportDir({ forcePick = false } = {}) {
   if (!SAF) { _lastErr = 'FileSystem.StorageAccessFramework indisponible'; return null; }
 
   if (!forcePick) {
-    const persisted = await getPersistedDirUri();
+    const persisted = await getPersistedDirUri(key);
     if (persisted) {
       const usable = await isDirUsable(persisted);
       if (usable) return persisted;
       // Permission révoquée → redemande
-      await setPersistedDirUri(null);
+      await setPersistedDirUri(null, key);
     }
   }
 
   try {
     const perm = await SAF.requestDirectoryPermissionsAsync();
     if (perm.granted && perm.directoryUri) {
-      await setPersistedDirUri(perm.directoryUri);
+      await setPersistedDirUri(perm.directoryUri, key);
       return perm.directoryUri;
     }
     _lastErr = 'Permission dossier refusée par l\'utilisateur';
@@ -156,4 +157,32 @@ export async function makeUniqueFilename(dirUri, desiredName) {
 
 export async function clearExportDir() {
   await setPersistedDirUri(null);
+}
+
+// 1.39 — Images de partage : dossier choisi une fois (ex. Pictures/Almanac), réutilisé ensuite.
+export function getOrPickImageDir({ forcePick = false } = {}) {
+  return getOrPickExportDir({ forcePick, key: IMAGE_STORAGE_KEY });
+}
+
+// Écrit une image (contenu déjà en base64) dans le dossier SAF. Renvoie l'URI ou null.
+export async function writeBase64ImageToDir(dirUri, filename, base64, mimeType = 'image/png') {
+  const SAF = FileSystem.StorageAccessFramework;
+  if (!SAF || !dirUri) { _lastErr = 'SAF indisponible ou dossier nul'; return null; }
+  try {
+    // Nom SANS extension : Android ajoute « .png » d'après le type (évite « x.png.png »)
+    const dot = filename.lastIndexOf('.');
+    const bare = dot > 0 ? filename.slice(0, dot) : filename;
+    const fileUri = await SAF.createFileAsync(dirUri, bare, mimeType);
+    await SAF.writeAsStringAsync(fileUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+    return fileUri;
+  } catch (e) { recordErr('writeImage', e); return null; }
+}
+
+// Nom lisible du dossier choisi (dernier segment de l'URI SAF), pour les messages
+export function dirLabel(dirUri) {
+  try {
+    const d = decodeURIComponent(dirUri || '');
+    const tail = d.split(':').pop();
+    return tail || d;
+  } catch (e) { return ''; }
 }
