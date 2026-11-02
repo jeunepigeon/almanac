@@ -127,6 +127,14 @@ export const useStore = create((set, get) => ({
   lockActive: false,
   setLockActive: (v) => set({ lockActive: !!v }),
   // Message « mis à jour » affiché ? (le flash d'un tap sur notification attend sa fermeture)
+  // 1.34 — Debug : trace horodatée du dernier tap sur une notification (tap → page → flash)
+  notifTrace: [],
+  traceNotif: (step, info = '', reset = false) => set((s) => {
+    const e = { at: Date.now(), step, info };
+    const list = reset ? [e] : [...s.notifTrace, e].slice(-24);
+    return { notifTrace: list };
+  }),
+
   updateNoticeOpen: false,
   setUpdateNoticeOpen: (v) => set({ updateNoticeOpen: !!v }),
 

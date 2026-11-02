@@ -32,10 +32,11 @@ function hexToRgba(hex, a) {
   const h = (hex || '#FFFFFF').replace('#', '');
   return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`;
 }
-function useFlashBg(tick, toColor) {
+function useFlashBg(tick, toColor, label) {
   const v = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     if (!tick) return;
+    useStore.getState().traceNotif('animation lancée', label);
     v.setValue(0);
     Animated.sequence([
       Animated.timing(v, { toValue: 1, duration: 200, useNativeDriver: false }),
@@ -48,7 +49,7 @@ function useFlashBg(tick, toColor) {
 
 // Bannière "Sobre de tout depuis". Clic → scroll vers la dernière substance consommée + flash.
 function SobreBanner({ lastGlobalTimestamp, onPress, flashTick }) {
-  const flashBg = useFlashBg(flashTick, 'rgba(255,255,255,0.28)');
+  const flashBg = useFlashBg(flashTick, 'rgba(255,255,255,0.28)', 'sobre de tout');
   return (
     <Pressable onPress={onPress} style={styles.bannerPress}>
       <Animated.View style={[styles.banner, { backgroundColor: flashBg }]}>
@@ -73,7 +74,7 @@ function SobreBanner({ lastGlobalTimestamp, onPress, flashTick }) {
 function ColorBanner({ color, lastTimestamp, inReorder, isWiggling, phase, onDelete, flashTick, fading }) {
   // Bandeau supprimé (catégorie dissoute ou poubelle) : fondu avant de disparaître
   const fade = useRef(new Animated.Value(1)).current;
-  const flashBg = useFlashBg(flashTick, hexToRgba(color, 0.4));
+  const flashBg = useFlashBg(flashTick, hexToRgba(color, 0.4), `bandeau ${color}`);
   useEffect(() => {
     if (fading) Animated.timing(fade, { toValue: 0, duration: FADE_MS, useNativeDriver: true }).start();
     else fade.setValue(1);
@@ -218,22 +219,33 @@ export default function SubstancesPage() {
   // (blanc pour « Sobre de tout », couleur pour un bandeau de catégorie ; à défaut « Sobre de tout »)
   const notifFocus = useStore((s) => s.notifFocus);
   useEffect(() => {
-    if (!notifFocus?.tick || notifFocus.tick === lastHandledNotifTick) return;
+    if (!notifFocus?.tick) return;
+    const trace = useStore.getState().traceNotif;
+    const stateInfo = () => {
+      const st = useStore.getState();
+      return `app ${AppState.currentState}${st.lockActive ? ' · verrouillée' : ''}${st.updateNoticeOpen ? ' · message MAJ ouvert' : ''}`;
+    };
+    if (notifFocus.tick === lastHandledNotifTick) { trace('page remontée', 'demande déjà traitée → pas de flash'); return; }
     lastHandledNotifTick = notifFocus.tick; // pas de re-flash si la page est remontée
+    trace('page : demande reçue', `${stateInfo()} · montages ${useStore.getState().substancesPageMounts}`);
     setReorderMode(false);
     const id = notifFocus.kind === 'color' && useStore.getState().colorBanners.includes(notifFocus.color)
       ? `banner:${notifFocus.color}` : '__sobre';
     // On attend que l'app soit au premier plan. 1.28 : filet de sécurité de 1,5 s (l'état « active »
     // pouvait déjà être passé avant l'abonnement → plus jamais de flash).
     let t1 = null; let t2 = null; let tFallback = null; let sub = null; let started = false;
-    const go = () => {
+    let flashed = false;
+    const go = (why = 'direct') => {
       if (started) return;
       started = true;
+      trace(`départ (${why})`, stateInfo());
       sub?.remove(); sub = null;
       unsubStore?.(); unsubStore = null; // eslint-disable-line no-use-before-define
       clearTimeout(tFallback);
       t1 = setTimeout(() => scrollRef.current?.scrollTo?.({ y: 0, animated: true }), 300);
       t2 = setTimeout(() => {
+        flashed = true;
+        trace('flash envoyé', id === '__sobre' ? 'sobre de tout' : id.replace('banner:', 'bandeau '));
         setBannerFlash({ id, tick: Date.now() });
         useStore.getState().setLastBannerFlash?.({ id, at: Date.now() });
       }, 800);
@@ -255,11 +267,12 @@ export default function SubstancesPage() {
     const pending = [];
     const later = () => { pending.push(setTimeout(tryGo, 150)); };
     unsubStore = useStore.subscribe(later);
-    sub = AppState.addEventListener('change', (st) => { if (st === 'active') later(); });
+    sub = AppState.addEventListener('change', (st) => { trace(`app → ${st}`); if (st === 'active') later(); });
     // Filet de sécurité : l'état « active » peut être passé avant l'abonnement (1.28)
-    tFallback = setTimeout(() => { if (!blocked()) go(); }, 1500);
+    tFallback = setTimeout(() => { if (!blocked()) go('filet 1,5 s'); else trace('filet 1,5 s : bloqué', stateInfo()); }, 1500);
     later();
     return () => {
+      if (!flashed) trace('annulé', started ? 'page démontée avant le flash' : 'page démontée avant le départ');
       clearTimeout(t1); clearTimeout(t2); clearTimeout(tFallback); pending.forEach(clearTimeout);
       sub?.remove(); unsubStore?.();
     };

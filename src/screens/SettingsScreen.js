@@ -91,6 +91,7 @@ export default function SettingsScreen() {
   const lastNotifTap = useStore((s) => s.lastNotifTap);
   const lastBannerFlash = useStore((s) => s.lastBannerFlash);
   const substancesPageMounts = useStore((s) => s.substancesPageMounts);
+  const notifTrace = useStore((s) => s.notifTrace);
 
   // --- Debug notifications (1.26) : Toutes / bandeau violet / une substance / 1re notif active ---
   const debugNotifTargets = () => {
@@ -418,6 +419,17 @@ export default function SettingsScreen() {
             : 'aucun'}
         </Text>
       </View>
+      {/* 1.34 : trace du dernier tap notification → page → flash (temps depuis le tap) */}
+      <View style={styles.traceBox}>
+        <Text style={styles.rowLabel}>Trace dernière notif</Text>
+        {notifTrace.length === 0 ? (
+          <Text style={styles.traceLine}>aucune</Text>
+        ) : notifTrace.map((e, i) => (
+          <Text key={i} style={styles.traceLine}>
+            {`+${((e.at - notifTrace[0].at) / 1000).toFixed(2)} s  ${e.step}${e.info ? ` · ${e.info}` : ''}`}
+          </Text>
+        ))}
+      </View>
       {/* Tap : rejoue ce flash (retour à la liste + même logique que le tap sur une notification) */}
       <TouchableOpacity
         style={styles.row}
@@ -425,6 +437,7 @@ export default function SettingsScreen() {
         onPress={() => {
           const id = lastBannerFlash?.id;
           if (!id) return;
+          useStore.getState().traceNotif('rejeu depuis Debug', id, true);
           navigation.navigate('Main');
           if (id === '__sobre') useStore.getState().requestNotifFocus('all');
           else useStore.getState().requestNotifFocus('color', id.replace('banner:', ''));
@@ -654,6 +667,11 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
+  traceBox: {
+    paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.md, gap: 3,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border,
+  },
+  traceLine: { color: theme.colors.textMuted, fontSize: 11, fontVariant: ['tabular-nums'] },
   container: { flex: 1, backgroundColor: theme.colors.background },
   content: { paddingVertical: theme.spacing.lg, paddingBottom: theme.spacing.xl },
   sectionTitle: {

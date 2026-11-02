@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, AppState } from 'react-native';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -47,20 +47,24 @@ export default function App() {
   // --- Tap sur une notification de palier (app ouverte ou lancée par la notification) ---
   const openTarget = (t) => {
     if (!t) return;
-    if (!navRef.isReady()) { pendingTargetRef.current = t; return; }
+    if (!navRef.isReady()) { pendingTargetRef.current = t; useStore.getState().traceNotif('navigation pas prête', 'en attente'); return; }
     const st = useStore.getState();
     if (t.target === 'sub') {
-      if (st.substances.some((s) => s.id === t.key)) navRef.navigate('Substance', { substanceId: t.key });
+      const ok = st.substances.some((s) => s.id === t.key);
+      st.traceNotif(ok ? 'ouverture page substance' : 'substance introuvable', 'pas de flash (normal)');
+      if (ok) navRef.navigate('Substance', { substanceId: t.key });
       return;
     }
     // « Toutes » / catégorie : liste des substances, flash du bandeau concerné
+    st.traceNotif('retour liste + flash demandé', `écran avant : ${navRef.getCurrentRoute()?.name || '?'}`);
     navRef.navigate('Main');
     st.requestNotifFocus(t.target === 'color' ? 'color' : 'all', t.target === 'color' ? t.key : null);
   };
   const handleResponse = (response, via = 'listener') => {
     const t = readNotificationTarget(response);
     if (!t) return;
-    if (t.id && handledIdsRef.current.has(t.id)) return;
+    if (t.id && handledIdsRef.current.has(t.id)) { useStore.getState().traceNotif('doublon ignoré', via); return; }
+    useStore.getState().traceNotif('tap reçu', `${t.target}${t.key ? ` ${t.key}` : ''} · ${via} · app ${AppState.currentState}`, true);
     if (t.id) handledIdsRef.current.add(t.id);
     useStore.getState().setLastNotifTap({ target: t.target, key: t.key, at: Date.now(), via });
     try { Notifications.clearLastNotificationResponse?.(); } catch (e) { /* rien */ }
