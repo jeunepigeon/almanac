@@ -27,6 +27,10 @@ import appJson from '../../app.json';
 
 const APP_VERSION = appJson?.expo?.version || '?';
 
+// Mises à jour sans build (EAS Update, 1.30) — require paresseux : jamais de plantage si absent
+let Updates = null;
+try { Updates = require('expo-updates'); } catch (e) { Updates = null; }
+
 function formatDateLongFR(ts) {
   const d = new Date(ts);
   const months = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -56,6 +60,29 @@ export default function SettingsScreen() {
   const [createSnapshotModal, setCreateSnapshotModal] = useState(false);
   const [snapshotStats, setSnapshotStats] = useState({});
   const [infoModal, setInfoModal] = useState(null);
+  const [otaBusy, setOtaBusy] = useState(false);
+
+  // Cherche une mise à jour EAS, la télécharge et redémarre l'app dessus (sinon : appliquée au prochain lancement)
+  const checkOta = async () => {
+    if (!Updates?.isEnabled) {
+      setInfoModal({ title: 'Mises à jour', message: 'Indisponible dans cette version (ou en mode développement).' });
+      return;
+    }
+    setOtaBusy(true);
+    try {
+      const r = await Updates.checkForUpdateAsync();
+      if (!r.isAvailable) {
+        setOtaBusy(false);
+        setInfoModal({ title: 'Mises à jour', message: "L'app est à jour." });
+        return;
+      }
+      await Updates.fetchUpdateAsync();
+      await Updates.reloadAsync();
+    } catch (e) {
+      setOtaBusy(false);
+      setInfoModal({ title: 'Mises à jour', message: `Échec :\n${e?.message || e}` });
+    }
+  };
   const [notifOpen, setNotifOpen] = useState(false);
   const appLockEnabled = useStore((s) => s.appLockEnabled);
   const notifRules = useStore((s) => s.notifRules);
@@ -361,6 +388,21 @@ export default function SettingsScreen() {
       <TouchableOpacity style={styles.row} onPress={openDebugModals}>
         <Text style={styles.rowLabel}>Afficher toutes les modals textuelles</Text>
         <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
+      </TouchableOpacity>
+      {/* Mises à jour sans build : version chargée + recherche manuelle */}
+      <View style={styles.row}>
+        <Text style={styles.rowLabel}>Code chargé</Text>
+        <Text style={styles.rowValue}>
+          {!Updates?.isEnabled
+            ? 'mises à jour inactives'
+            : Updates.isEmbeddedLaunch
+              ? `intégré à l'APK · ${Updates.channel || '—'}`
+              : `mise à jour ${String(Updates.updateId || '').slice(0, 8)} · ${Updates.createdAt ? new Date(Updates.createdAt).toLocaleDateString('fr-FR') : ''}`}
+        </Text>
+      </View>
+      <TouchableOpacity style={styles.row} onPress={checkOta} disabled={otaBusy}>
+        <Text style={styles.rowLabel}>{otaBusy ? 'Recherche…' : 'Chercher une mise à jour'}</Text>
+        <MaterialCommunityIcons name="cloud-download-outline" size={20} color={theme.colors.textMuted} />
       </TouchableOpacity>
       {/* Chiffrement : module natif détecté ? moteur utilisé au dernier export / import */}
       <View style={styles.row}>

@@ -8,6 +8,7 @@ import {
   dbRestoreSubstance,
   dbFindSubstanceByName,
   dbGetLastTimestampBySubstance,
+  dbGetLastTimestampFor,
   dbCreateConsumption,
   dbUpdateConsumption,
   dbDeleteConsumption,
@@ -299,7 +300,8 @@ export const useStore = create((set, get) => ({
       throw new Error(`Une substance nommée "${existing.name}" existe déjà`);
     }
     const created = await dbCreateSubstance({ name: trimmed, color, icon });
-    set((state) => ({ substances: [created, ...state.substances] }));
+    // En FIN de liste, comme en base (avant : en tête en mémoire, puis en bas au redémarrage)
+    set((state) => ({ substances: [...state.substances, created] }));
     return created;
   },
 
@@ -375,23 +377,21 @@ export const useStore = create((set, get) => ({
   createConsumption: async ({ substanceId, timestamp, dosage, notes }) => {
     const created = await dbCreateConsumption({ substanceId, timestamp, dosage, notes });
 
-    // MàJ liste des consos ET lastTimestamps immédiatement
+    // MàJ liste des consos ET lastTimestamps immédiatement.
+    // 1.30 : si la liste de cette substance n'est pas encore chargée, on NE crée PAS de liste
+    // partielle (sinon son écran n'affichait plus que cette prise) : elle sera lue en base à l'ouverture.
     set((state) => {
-      const existing = state.consumptionsBySubstance[substanceId] || [];
-      const newList = [...existing, created].sort((a, b) => b.timestamp - a.timestamp);
+      const existing = state.consumptionsBySubstance[substanceId];
       const currentLast = state.lastTimestamps[substanceId] || 0;
       const newLast = timestamp > currentLast ? timestamp : currentLast;
-
-      return {
-        consumptionsBySubstance: {
+      const next = { lastTimestamps: { ...state.lastTimestamps, [substanceId]: newLast } };
+      if (existing) {
+        next.consumptionsBySubstance = {
           ...state.consumptionsBySubstance,
-          [substanceId]: newList,
-        },
-        lastTimestamps: {
-          ...state.lastTimestamps,
-          [substanceId]: newLast,
-        },
-      };
+          [substanceId]: [...existing, created].sort((a, b) => b.timestamp - a.timestamp),
+        };
+      }
+      return next;
     });
 
     return created;
@@ -399,6 +399,18 @@ export const useStore = create((set, get) => ({
 
   updateConsumption: async (id, substanceId, { timestamp, dosage, notes }) => {
     await dbUpdateConsumption(id, { timestamp, dosage, notes });
+
+    // 1.30 : liste non chargée (modif depuis Global) → dernière prise relue en base
+    // (avant : elle passait à null → compteur « — », bandeaux et notifications faux)
+    if (!get().consumptionsBySubstance[substanceId]) {
+      const last = await dbGetLastTimestampFor(substanceId);
+      set((state) => {
+        const lt = { ...state.lastTimestamps };
+        if (last) lt[substanceId] = last; else delete lt[substanceId];
+        return { lastTimestamps: lt };
+      });
+      return;
+    }
 
     set((state) => {
       const list = state.consumptionsBySubstance[substanceId] || [];
@@ -450,6 +462,17 @@ export const useStore = create((set, get) => ({
 
   deleteConsumption: async (id, substanceId) => {
     await dbDeleteConsumption(id);
+
+    // 1.30 : liste non chargée (suppression depuis Global) → dernière prise relue en base
+    if (!get().consumptionsBySubstance[substanceId]) {
+      const last = await dbGetLastTimestampFor(substanceId);
+      set((state) => {
+        const lt = { ...state.lastTimestamps };
+        if (last) lt[substanceId] = last; else delete lt[substanceId];
+        return { lastTimestamps: lt };
+      });
+      return;
+    }
 
     set((state) => {
       const list = state.consumptionsBySubstance[substanceId] || [];

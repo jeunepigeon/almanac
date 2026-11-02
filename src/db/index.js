@@ -224,6 +224,13 @@ export async function dbGetAllConsumptions() {
   return rows.map(rowToConsumption);
 }
 
+// Dernière prise d'UNE substance (null si aucune) — 1.30
+export async function dbGetLastTimestampFor(substanceId) {
+  const db = await getDb();
+  const row = await db.getFirstAsync('SELECT MAX(timestamp) as last FROM consumptions WHERE substance_id = ?', [substanceId]);
+  return row?.last ?? null;
+}
+
 export async function dbGetLastTimestampBySubstance() {
   const db = await getDb();
   const rows = await db.getAllAsync(

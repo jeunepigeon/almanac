@@ -4,7 +4,7 @@
 
 Tout reste **sur le téléphone** (SQLite local). Pas de compte, pas de serveur, pas de tracking. Les seules données qui sortent de l'appareil sont les exports que tu crées toi-même, chiffrés par un code PIN.
 
-**Version actuelle : 1.29** · Android · build APK via EAS · développement démarré le 26 avril 2026.
+**Version actuelle : 1.30** · Android · build APK via EAS · développement démarré le 26 avril 2026.
 
 ---
 
@@ -143,6 +143,11 @@ src/
 ---
 
 ## Historique
+
+### 1.30
+- **Mises à jour sans build** (EAS Update, canal `production`) ; Debug : code chargé + « Chercher une mise à jour ».
+- APK limité aux architectures ARM (32 + 64 bits) ; retrait d'`expo-sharing` inutilisé ; Reanimated / worklets aux versions du SDK 54.
+- Corrections : liste d'une substance tronquée après un ajout depuis Global ; compteur « — » après modification / suppression depuis Global ; bouton Dosage sans effet sur l'écran d'une substance ; nouvelle substance ajoutée en fin de liste.
 
 ### 1.29
 - Flash des bandeaux refait comme celui des lignes de substance (fond animé) ; Debug : un tap sur « Dernier flash bandeau » le rejoue.

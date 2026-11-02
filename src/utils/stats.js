@@ -43,6 +43,9 @@ export function computeStats(consumptions, windowId, options = {}) {
   const now = typeof options === 'number' ? options : (options.now || Date.now());
   const customRange = typeof options === 'object' ? options.customRange : null;
   const modeJours = typeof options === 'object' ? (options.modeJours || false) : false;
+  // 1.30 : bouton « Dosage » (avant ignoré en mode substance) — courbe = somme des dosages du jour ;
+  // sans aucun dosage sur la période : plateau (0,5 les jours consommés), comme au global.
+  const useDoses = typeof options === 'object' ? (options.useDoses || false) : false;
 
   let inWindow;
   if (customRange) {
@@ -174,16 +177,22 @@ export function computeStats(consumptions, windowId, options = {}) {
     startDay.setHours(0, 0, 0, 0);
     const endDay = new Date(end);
     endDay.setHours(0, 0, 0, 0);
+    const anyDosage = inWindow.some((c) => typeof c.dosage === 'number' && Number.isFinite(c.dosage) && c.dosage > 0);
     const dayCount = {};
+    const dayDose = {};
     for (const c of inWindow) {
       const k = dayKeyOf(c.timestamp);
       dayCount[k] = (dayCount[k] || 0) + 1;
+      if (typeof c.dosage === 'number' && Number.isFinite(c.dosage)) dayDose[k] = (dayDose[k] || 0) + c.dosage;
     }
     let cur = new Date(startDay);
     while (cur.getTime() <= endDay.getTime()) {
       const k = dayKeyOf(cur.getTime());
       const raw = dayCount[k] || 0;
-      timeline.push({ ts: cur.getTime(), count: modeJours ? (raw > 0 ? 0.5 : 0) : raw });
+      let count;
+      if (useDoses) count = anyDosage ? (dayDose[k] || 0) : (raw > 0 ? 0.5 : 0);
+      else count = modeJours ? (raw > 0 ? 0.5 : 0) : raw;
+      timeline.push({ ts: cur.getTime(), count });
       cur.setDate(cur.getDate() + 1);
     }
   }
