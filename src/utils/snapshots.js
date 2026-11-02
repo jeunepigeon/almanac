@@ -5,9 +5,10 @@ import * as Crypto from 'expo-crypto';
 import { dbGetAllConsumptions, dbInsertSnapshot, dbGetAllSnapshots, dbGetSnapshotData, dbGetSnapshotSize } from '../db';
 
 const SCHEMA_VERSION = 1;
-import appJson from '../../app.json';
 
-const APP_VERSION = appJson?.expo?.version || 'unknown'; // version réelle de l'app (avant : figée à 1.1.16)
+import { JS_VERSION } from '../version';
+
+const APP_VERSION = JS_VERSION; // version du code (1.31 : suit les mises à jour sans build)
 
 // Format DD-MM-YYYY (tirets partout)
 export function fmtDateTiret(ts = Date.now()) {
@@ -52,7 +53,13 @@ export function withNotifCounts(statsById = {}, notifs = []) {
 // banners : couleurs des bandeaux dans l'ordre (1.23). Seuls ceux dont la couleur a une substance sauvegardée sont gardés.
 // notifs (1.25) : règles de notification. Celles d'une substance suivent la substance ; « Toutes » et
 // catégories (couleur avec ≥ 2 substances sauvegardées) sont sauvegardées à part.
-export function serializeSnapshot({ substances, archivedSubstances, consumptions, banners = [], notifs = [] }, substanceIds = null) {
+// 1.31 : renvoie aussi les compteurs (stockés avec la sauvegarde)
+export function serializeSnapshotWithCounts(args, substanceIds = null) {
+  const data = serializeSnapshot(args, substanceIds, true);
+  return data;
+}
+
+export function serializeSnapshot({ substances, archivedSubstances, consumptions, banners = [], notifs = [] }, substanceIds = null, withCounts = false) {
   const allSubs = [...(substances || []), ...(archivedSubstances || [])];
   const filteredSubs = substanceIds
     ? allSubs.filter((s) => substanceIds.includes(s.id))
@@ -90,7 +97,9 @@ export function serializeSnapshot({ substances, archivedSubstances, consumptions
     })(),
     notifs: filterNotifsForSubs(notifs, filteredSubs),
   };
-  return JSON.stringify(payload);
+  const json = JSON.stringify(payload);
+  if (withCounts) return { json, subsCount: payload.substances.length, consCount: payload.consumptions.length };
+  return json;
 }
 
 // Parse snapshot JSON string en objet.
@@ -112,13 +121,15 @@ export function parseSnapshot(jsonStr) {
 // name = nom déjà finalisé avec date (ex "remise-a-zero-27-07-2026").
 // substanceIds = optionnel pour filtrer.
 export async function createSnapshot({ substances, archivedSubstances, consumptions, banners = [], notifs = [] }, name, substanceIds = null) {
-  const data = serializeSnapshot({ substances, archivedSubstances, consumptions, banners, notifs }, substanceIds);
+  const { json: data, subsCount, consCount } = serializeSnapshotWithCounts({ substances, archivedSubstances, consumptions, banners, notifs }, substanceIds);
   const id = await Crypto.randomUUID();
   const snap = {
     id,
     name,
     created_at: Date.now(),
     data,
+    subs_count: subsCount,
+    cons_count: consCount,
   };
   await dbInsertSnapshot(snap);
   return snap;

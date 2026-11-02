@@ -1,14 +1,11 @@
 import { useEffect, useState, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView,
+  View, Text, StyleSheet, TouchableOpacity,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { useCallback } from 'react';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme';
-import { useStore } from '../store';
-import { dbGetAllConsumptions } from '../db';
-import MonthCalendar from '../components/MonthCalendar';
+import { useStore, EMPTY_LIST } from '../store';
 import ScrollableCalendar from '../components/ScrollableCalendar';
 import DayDetailModal from '../components/DayDetailModal';
 import SubstancePicker from '../components/SubstancePicker';
@@ -16,23 +13,19 @@ import LogConsumptionModal from '../components/LogConsumptionModal';
 import StatsView from '../components/StatsView';
 import GlobalHistoryView from '../components/GlobalHistoryView';
 
-function pad2(n) { return n < 10 ? `0${n}` : `${n}`; }
-function dayKeyOf(ts) {
-  const d = new Date(ts);
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
 
 export default function GlobalCalendarPage() {
   const navigation = useNavigation();
   const substances = useStore((s) => s.substances);
   const archivedSubstances = useStore((s) => s.archivedSubstances);
+  // 1.31 : stock central — plus de relecture complète de la base (avant : au montage x2, à chaque
+  // changement de prise n'importe où, et à chaque retour sur la page, même invisible)
+  const allConsumptions = useStore((s) => s.allConsumptions);
   const consumptionsBySubstance = useStore((s) => s.consumptionsBySubstance);
-  const lastTimestamps = useStore((s) => s.lastTimestamps);
   const createConsumption = useStore((s) => s.createConsumption);
   const updateConsumption = useStore((s) => s.updateConsumption);
   const deleteConsumption = useStore((s) => s.deleteConsumption);
 
-  const [allConsumptions, setAllConsumptions] = useState(null);
   const [activeTab, setActiveTab] = useState('calendar');
   const gotoGlobalStatsTick = useStore((s) => s.gotoGlobalStatsTick);
 
@@ -54,69 +47,35 @@ export default function GlobalCalendarPage() {
     return map;
   }, [substances, archivedSubstances]);
 
-  const reload = async () => {
-    const all = await dbGetAllConsumptions();
-    setAllConsumptions(all);
-  };
-
-  useEffect(() => { reload(); }, []);
-  useEffect(() => { reload(); }, [consumptionsBySubstance, lastTimestamps, substances.length]);
-
-  // Recharge aussi à chaque focus de la page (au cas où on est revenu d'une autre vue)
-  useFocusEffect(
-    useCallback(() => {
-      reload();
-    }, [])
-  );
-
-  const markersByDay = useMemo(() => {
-    if (!allConsumptions) return {};
-    // Groupe par jour. Pour chaque jour : liste des substances UNIQUES consommées,
-    // ordonnées par premier timestamp de la journée (chronologique).
-    // Chaque substance → sa couleur. Deux substances différentes de même couleur = 2 points.
-    const byDay = {};
-    for (const c of allConsumptions) {
-      const k = dayKeyOf(c.timestamp);
-      if (!byDay[k]) byDay[k] = { firstTsBySub: {} };
-      const subId = c.substanceId;
-      // Garder le premier timestamp (minimum) de chaque substance ce jour-là
-      if (byDay[k].firstTsBySub[subId] == null || c.timestamp < byDay[k].firstTsBySub[subId]) {
-        byDay[k].firstTsBySub[subId] = c.timestamp;
-      }
-    }
-    const result = {};
-    for (const k of Object.keys(byDay)) {
-      // Trier les subIds par leur premier timestamp dans la journée (ascendant)
-      const sortedSubIds = Object.keys(byDay[k].firstTsBySub)
-        .sort((a, b) => byDay[k].firstTsBySub[a] - byDay[k].firstTsBySub[b]);
-      const colors = [];
-      for (const subId of sortedSubIds) {
-        const sub = substancesById[subId];
-        if (sub) colors.push(sub.color);
-      }
-      // Max 10 points affichés (le reste est ignoré pour le calendrier)
-      result[k] = colors.slice(0, 10);
-    }
-    return result;
-  }, [allConsumptions, substancesById]);
-
-  const consosForDay = useMemo(() => {
-    if (!dayDetail || !allConsumptions) return [];
-    return allConsumptions
-      .filter((c) => dayKeyOf(c.timestamp) === dayDetail.dayKey)
-      .sort((a, b) => a.timestamp - b.timestamp);
-  }, [dayDetail, allConsumptions]);
-
-  const consumptionsBySubstanceForStats = useMemo(() => {
+  // Index jour → prises du jour (ordre chronologique), construit une fois par changement de prises
+  const byDay = useMemo(() => {
     const map = {};
-    if (allConsumptions) {
-      for (const c of allConsumptions) {
-        if (!map[c.substanceId]) map[c.substanceId] = [];
-        map[c.substanceId].push(c);
-      }
+    for (let i = allConsumptions.length - 1; i >= 0; i--) { // du plus ancien au plus récent
+      const c = allConsumptions[i];
+      (map[c.dayKey] || (map[c.dayKey] = [])).push(c);
     }
     return map;
   }, [allConsumptions]);
+
+  // Points du calendrier : substances UNIQUES du jour, dans l'ordre de leur 1re prise (max 10)
+  const markersByDay = useMemo(() => {
+    const result = {};
+    for (const k of Object.keys(byDay)) {
+      const seen = new Set();
+      const colors = [];
+      for (const c of byDay[k]) {
+        if (seen.has(c.substanceId)) continue;
+        seen.add(c.substanceId);
+        const sub = substancesById[c.substanceId];
+        if (sub) colors.push(sub.color);
+        if (colors.length >= 10) break;
+      }
+      result[k] = colors;
+    }
+    return result;
+  }, [byDay, substancesById]);
+
+  const consosForDay = dayDetail ? (byDay[dayDetail.dayKey] || EMPTY_LIST) : EMPTY_LIST;
 
   return (
     <View style={styles.container}>
@@ -133,10 +92,7 @@ export default function GlobalCalendarPage() {
             showSoberFill={true}
             showJumpButtons={true}
             onDayPress={(dayKey, dayTimestamp) => {
-              const consosOfDay = (allConsumptions || []).filter(
-                (c) => dayKeyOf(c.timestamp) === dayKey
-              );
-              if (consosOfDay.length === 0) {
+              if (!byDay[dayKey]) {
                 setPickerForDay(dayTimestamp);
                 setPickerOpen(true);
               } else {
@@ -158,7 +114,7 @@ export default function GlobalCalendarPage() {
       )}
       {activeTab === 'history' && (
         <GlobalHistoryView
-          consumptions={allConsumptions || []}
+          consumptions={allConsumptions}
           substancesById={substancesById}
           onTapConsumption={(c) => {
             const sid = c.substanceId ?? c.substance_id;
@@ -169,7 +125,7 @@ export default function GlobalCalendarPage() {
       {activeTab === 'stats' && (
         <StatsView
           mode="global"
-          consumptionsBySubstance={consumptionsBySubstanceForStats}
+          consumptionsBySubstance={consumptionsBySubstance}
           substancesById={substancesById}
           navigation={navigation}
         />
@@ -208,14 +164,12 @@ export default function GlobalCalendarPage() {
             await updateConsumption(editingConso.consumption.id, editingConso.consumption.substanceId, payload);
           }
           setEditingConso(null);
-          reload();
         }}
         onDelete={async () => {
           if (editingConso?.consumption) {
             await deleteConsumption(editingConso.consumption.id, editingConso.consumption.substanceId);
           }
           setEditingConso(null);
-          reload();
         }}
         onClose={() => setEditingConso(null)}
       />
@@ -251,8 +205,6 @@ export default function GlobalCalendarPage() {
           }
           setLogFlow(null);
           setPickerForDay(null);
-          // Force reload du calendrier global
-          reload();
         }}
         onClose={() => {
           setLogFlow(null);

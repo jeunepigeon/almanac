@@ -1,5 +1,5 @@
 import { Modal, View, Text, TouchableOpacity, StyleSheet, Pressable } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from '../theme';
 
 // Bottom-sheet style action menu.

@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Modal, View, Text, TouchableOpacity, StyleSheet, Pressable, ScrollView, Linking,
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from '../theme';
 import { useStore, notifRuleId } from '../store';
 import SubstanceIcon from './SubstanceIcon';

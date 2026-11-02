@@ -3,7 +3,7 @@
 
 import { useRef } from 'react';
 import { Animated, View, Pressable, Text, StyleSheet } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from '../theme';
 import haptics from '../utils/haptics';
 

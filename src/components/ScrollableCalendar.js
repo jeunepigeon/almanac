@@ -10,7 +10,7 @@ import {
   Animated,
   Easing as EasingLib,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { theme } from '../theme';
 import haptics from '../utils/haptics';
 

@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, Pressable, Alert, Animated, AppState,
 } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme';
 import { useStore } from '../store';

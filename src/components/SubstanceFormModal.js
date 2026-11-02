@@ -11,7 +11,7 @@ import {
   Pressable,
   ScrollView,
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from '../theme';
 import { ICONS, DEFAULT_ICON_ID } from '../icons';
 import SubstanceIcon from './SubstanceIcon';

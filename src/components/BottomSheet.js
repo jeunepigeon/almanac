@@ -3,7 +3,7 @@ import {
   Modal, View, Text, StyleSheet, TouchableOpacity, Animated,
   PanResponder, Dimensions, Pressable,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { theme } from '../theme';
 
 const { height: SCREEN_H } = Dimensions.get('window');

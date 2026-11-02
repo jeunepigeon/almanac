@@ -9,7 +9,7 @@ import {
   Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView,
   ActivityIndicator, BackHandler, Keyboard,
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { theme } from '../theme';

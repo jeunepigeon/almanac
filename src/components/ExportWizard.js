@@ -17,7 +17,7 @@ import {
   Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput,
   ActivityIndicator, BackHandler, Keyboard,
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from '../theme';
 import PinField from './PinField';
 import SubCard from './SubCard';

@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, Switch,
 } from 'react-native';
-import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { theme } from '../theme';
 import { useStore } from '../store';
@@ -25,7 +26,10 @@ import { fmtDateTiretHM, fmtSize, parseSnapshot, withNotifCounts } from '../util
 import { useKeepAwake } from '../utils/keepAwake';
 import appJson from '../../app.json';
 
-const APP_VERSION = appJson?.expo?.version || '?';
+import { JS_VERSION } from '../version';
+
+const APP_VERSION = JS_VERSION;                       // version du code (suit les mises à jour sans build)
+const APK_VERSION = appJson?.expo?.version || '?';   // version de l'APK installé
 
 // Mises à jour sans build (EAS Update, 1.30) — require paresseux : jamais de plantage si absent
 let Updates = null;
@@ -138,26 +142,15 @@ export default function SettingsScreen() {
     loadSnapshots();
   }, []);
 
+  // 1.31 : compteurs lus directement dans la liste des sauvegardes (stockés à la création),
+  // au lieu de relire et décoder chaque sauvegarde (≈ 300 Ko chacune) à chaque affichage
   useEffect(() => {
-    (async () => {
-      const stats = {};
-      for (const s of snapshots) {
-        const data = await dbGetSnapshotData(s.id);
-        if (data) {
-          try {
-            const parsed = parseSnapshot(data);
-            stats[s.id] = {
-              substancesCount: parsed.substances.length,
-              consumptionsCount: parsed.consumptions.length,
-              size: data.length,
-            };
-          } catch {
-            stats[s.id] = { substancesCount: 0, consumptionsCount: 0, size: (data || '').length };
-          }
-        }
-      }
-      setSnapshotStats(stats);
-    })();
+    const stats = {};
+    for (const s of snapshots) {
+      if (s.cons_count == null) continue;
+      stats[s.id] = { substancesCount: s.subs_count || 0, consumptionsCount: s.cons_count || 0, size: s.size || 0 };
+    }
+    setSnapshotStats(stats);
   }, [snapshots]);
 
   const statsFromConsos = (consos) => {
@@ -394,9 +387,9 @@ export default function SettingsScreen() {
         <Text style={styles.rowLabel}>Code chargé</Text>
         <Text style={styles.rowValue}>
           {!Updates?.isEnabled
-            ? 'mises à jour inactives'
+            ? `APK ${APK_VERSION} · mises à jour inactives`
             : Updates.isEmbeddedLaunch
-              ? `intégré à l'APK · ${Updates.channel || '—'}`
+              ? `intégré à l'APK ${APK_VERSION} · ${Updates.channel || '—'}`
               : `mise à jour ${String(Updates.updateId || '').slice(0, 8)} · ${Updates.createdAt ? new Date(Updates.createdAt).toLocaleDateString('fr-FR') : ''}`}
         </Text>
       </View>

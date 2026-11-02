@@ -2,7 +2,7 @@
 // « xXx » : glyphes x / X de Roboto Bold (police système Android) convertis en tracés SVG,
 // petits x centrés verticalement sur le X central et légèrement glissés derrière lui.
 import Svg, { Path } from 'react-native-svg';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { getIconById } from '../icons';
 
 const XXX_W = 27.11; // largeur du viewBox (hauteur 24) ; X central haut de 12.5/24 (1.23 : réduit, avant 15.5)

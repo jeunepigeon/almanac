@@ -4,7 +4,7 @@ import {
   KeyboardAvoidingView, Platform, Pressable, ScrollView,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from '../theme';
 import { formatDate, formatTime } from '../utils/dates';
 

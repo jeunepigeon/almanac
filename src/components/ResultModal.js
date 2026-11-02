@@ -2,7 +2,7 @@
 // Centrée, icône, titre, message multi-lignes, 1 bouton OK.
 
 import { Modal, View, Text, TouchableOpacity, StyleSheet, Pressable } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from '../theme';
 
 export default function ResultModal({ visible, ok, title, message, onClose, buttonLabel = 'OK' }) {

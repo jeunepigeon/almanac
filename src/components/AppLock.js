@@ -12,7 +12,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, AppState } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from '../theme';
 import { useStore } from '../store';
 

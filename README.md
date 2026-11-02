@@ -4,7 +4,7 @@
 
 Tout reste **sur le téléphone** (SQLite local). Pas de compte, pas de serveur, pas de tracking. Les seules données qui sortent de l'appareil sont les exports que tu crées toi-même, chiffrés par un code PIN.
 
-**Version actuelle : 1.30** · Android · build APK via EAS · développement démarré le 26 avril 2026.
+**Version actuelle : 1.31** (code ; APK 1.30) · Android · build APK via EAS · développement démarré le 26 avril 2026.
 
 ---
 
@@ -143,6 +143,15 @@ src/
 ---
 
 ## Historique
+
+### 1.31 — mise à jour sans build
+- **Stock central des prises** : lues une fois au démarrage puis tenues à jour en mémoire ; Global ne relit plus toute la base (avant : 3 fois au démarrage, à chaque changement et à chaque retour, même invisible) ; index par jour (tap sur un jour immédiat) ; écran d'une substance sans lecture en base.
+- **Paramètres** : compteurs des sauvegardes stockés (plus de relecture de chaque sauvegarde).
+- **Base** : import / restauration en écritures groupées ; réorganisation en un bloc ; sauvegarde en une requête.
+- **Rétention** : 10 dernières sauvegardes de sécurité automatiques (avant import / restauration / fusion) ; archivage et remise à zéro jamais purgés.
+- Stats : calculs morts supprimés ; `MonthCalendar` supprimé (inutilisé).
+- Icônes importées famille par famille : 2 polices embarquées au lieu de 19 (assets 4,0 Mo → 1,7 Mo au prochain build).
+- Version du code dans `src/version.js` (app.json n'est plus modifié par les mises à jour sans build).
 
 ### 1.30
 - **Mises à jour sans build** (EAS Update, canal `production`) ; Debug : code chargé + « Chercher une mise à jour ».

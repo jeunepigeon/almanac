@@ -78,7 +78,7 @@ export function computeStats(consumptions, windowId, options = {}) {
   }
 
   // Jours avec/sans
-  const daysSet = new Set(inWindow.map((c) => dayKeyOf(c.timestamp)));
+  const daysSet = new Set(inWindow.map((c) => (c.dayKey || dayKeyOf(c.timestamp))));
   const daysWithConsumption = daysSet.size;
 
   const [start, end] = customRange ? customRange : windowRange(windowId, now);
@@ -181,7 +181,7 @@ export function computeStats(consumptions, windowId, options = {}) {
     const dayCount = {};
     const dayDose = {};
     for (const c of inWindow) {
-      const k = dayKeyOf(c.timestamp);
+      const k = (c.dayKey || dayKeyOf(c.timestamp));
       dayCount[k] = (dayCount[k] || 0) + 1;
       if (typeof c.dosage === 'number' && Number.isFinite(c.dosage)) dayDose[k] = (dayDose[k] || 0) + c.dosage;
     }
@@ -265,7 +265,7 @@ export function computeGlobalStats(consumptionsBySubstance, substancesById, wind
   let totalPrises = 0;
 
   for (const [subId, consos] of Object.entries(consosBySubInWindow)) {
-    const days = new Set(consos.map((c) => dayKeyOf(c.timestamp)));
+    const days = new Set(consos.map((c) => (c.dayKey || dayKeyOf(c.timestamp))));
     daysBySub[subId] = days.size;
     totalPrises += consos.length;
     for (const d of days) allDaysWithAnyConso.add(d);

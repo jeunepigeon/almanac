@@ -52,6 +52,27 @@ export async function initDb() {
     CREATE INDEX IF NOT EXISTS idx_snapshots_created ON snapshots(created_at);
   `);
 
+  // Migration 1.31 : compteurs des sauvegardes stockés (avant : chaque sauvegarde relue et décodée
+  // en entier à chaque affichage des Paramètres)
+  for (const col of ['subs_count INTEGER', 'cons_count INTEGER', 'size INTEGER']) {
+    try { await db.execAsync(`ALTER TABLE snapshots ADD COLUMN ${col}`); } catch (e) { /* déjà présente */ }
+  }
+  // Remplissage UNE fois pour les sauvegardes existantes
+  try {
+    const missing = await db.getAllAsync('SELECT id FROM snapshots WHERE cons_count IS NULL');
+    for (const { id } of missing) {
+      const row = await db.getFirstAsync('SELECT data FROM snapshots WHERE id = ?', [id]);
+      let subs = 0; let cons = 0;
+      try {
+        const obj = JSON.parse(row?.data || '{}');
+        subs = (obj.substances || []).length;
+        cons = (obj.consumptions || []).length;
+      } catch (e) { /* sauvegarde illisible : 0 */ }
+      await db.runAsync('UPDATE snapshots SET subs_count = ?, cons_count = ?, size = ? WHERE id = ?',
+        [subs, cons, (row?.data || '').length, id]);
+    }
+  } catch (e) { /* ignore */ }
+
   // Migration : ajoute la colonne position si elle n'existe pas
   try {
     await db.execAsync('ALTER TABLE substances ADD COLUMN position INTEGER NOT NULL DEFAULT 0');
@@ -125,12 +146,14 @@ export async function dbCreateSubstance({ name, color, icon }) {
   return { id, name, color, icon, createdAt, archived: false, position };
 }
 
-// Met à jour les positions selon un nouvel ordre (array d'IDs).
+// Met à jour les positions selon un nouvel ordre (array d'IDs) — 1.31 : en un seul bloc (transaction)
 export async function dbReorderSubstances(orderedIds) {
   const db = await getDb();
-  for (let i = 0; i < orderedIds.length; i++) {
-    await db.runAsync('UPDATE substances SET position = ? WHERE id = ?', [i, orderedIds[i]]);
-  }
+  await db.withTransactionAsync(async () => {
+    for (let i = 0; i < orderedIds.length; i++) {
+      await db.runAsync('UPDATE substances SET position = ? WHERE id = ?', [i, orderedIds[i]]);
+    }
+  });
 }
 
 export async function dbUpdateSubstance(id, fields) {
@@ -308,7 +331,7 @@ export async function dbWipeAll() {
 
 export async function dbGetAllSnapshots() {
   const db = await getDb();
-  const rows = await db.getAllAsync('SELECT id, name, created_at, consulted FROM snapshots ORDER BY created_at DESC');
+  const rows = await db.getAllAsync('SELECT id, name, created_at, consulted, subs_count, cons_count, size FROM snapshots ORDER BY created_at DESC');
   return rows || [];
 }
 
@@ -321,8 +344,9 @@ export async function dbGetSnapshotData(id) {
 export async function dbInsertSnapshot(snapshot) {
   const db = await getDb();
   await db.runAsync(
-    'INSERT INTO snapshots (id, name, created_at, data, consulted) VALUES (?, ?, ?, ?, 0)',
-    [snapshot.id, snapshot.name, snapshot.created_at, snapshot.data]
+    'INSERT INTO snapshots (id, name, created_at, data, consulted, subs_count, cons_count, size) VALUES (?, ?, ?, ?, 0, ?, ?, ?)',
+    [snapshot.id, snapshot.name, snapshot.created_at, snapshot.data,
+      snapshot.subs_count ?? null, snapshot.cons_count ?? null, (snapshot.data || '').length]
   );
 }
 
@@ -349,6 +373,26 @@ export async function dbInsertSubstanceRaw({ id, name, color, icon, createdAt, a
     'INSERT OR IGNORE INTO substances (id, name, color, icon, created_at, archived, position) VALUES (?, ?, ?, ?, ?, ?, ?)',
     [id, name, color, icon, createdAt ?? Date.now(), archived ? 1 : 0, position ?? 0]
   );
+}
+
+// Import / restauration (1.31) : insertions par paquets de 200 dans des transactions
+// (avant : une écriture isolée par prise, très lent sur ~1 700 prises).
+// onChunk(nbInsérées) appelé après chaque paquet (barre de progression).
+export async function dbInsertConsumptionsBatch(list, onChunk) {
+  const db = await getDb();
+  const CHUNK = 200;
+  for (let i = 0; i < list.length; i += CHUNK) {
+    const chunk = list.slice(i, i + CHUNK);
+    await db.withTransactionAsync(async () => {
+      for (const c of chunk) {
+        await db.runAsync(
+          'INSERT OR IGNORE INTO consumptions (id, substance_id, timestamp, dosage, notes, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+          [c.id, c.substanceId, c.timestamp, normalizeDosage(c.dosage), c.notes ?? null, c.createdAt ?? Date.now()]
+        );
+      }
+    });
+    onChunk?.(Math.min(i + CHUNK, list.length));
+  }
 }
 
 export async function dbInsertConsumptionRaw({ id, substanceId, timestamp, dosage, notes, createdAt }) {

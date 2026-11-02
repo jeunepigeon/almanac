@@ -8,8 +8,8 @@
 import {
   dbUpdateSubstance,
   dbInsertSubstanceRaw,
-  dbInsertConsumptionRaw,
-  dbGetConsumptionsBySubstance,
+  dbInsertConsumptionsBatch,
+  dbGetAllConsumptions,
   uuid,
 } from '../db';
 import { DEFAULT_ICON_ID } from '../icons';
@@ -67,11 +67,12 @@ export async function performFusion({ parsed, activeSubs, substanceIds, onProgre
     }
   }
 
-  // Pré-charge timestamps existants
+  // Pré-charge les timestamps existants : UNE requête (avant : une par substance)
+  const destIds = new Set(Object.values(idMap));
   const existingTsBySub = {};
-  for (const destId of new Set(Object.values(idMap))) {
-    const list = await dbGetConsumptionsBySubstance(destId);
-    existingTsBySub[destId] = new Set(list.map((c) => c.timestamp));
+  for (const id of destIds) existingTsBySub[id] = new Set();
+  for (const c of await dbGetAllConsumptions()) {
+    if (existingTsBySub[c.substanceId]) existingTsBySub[c.substanceId].add(c.timestamp);
   }
 
   const consosToImport = parsed.consumptions.filter((c) => {
@@ -82,16 +83,16 @@ export async function performFusion({ parsed, activeSubs, substanceIds, onProgre
   // Compteurs par substance ancienne : combien de consos ajoutées ?
   const addedBySrcSub = {};
 
+  // 1) Tri en mémoire (doublons = même timestamp exact sur la substance de destination)
   let consosAdded = 0, consosSkipped = 0;
-  const total = consosToImport.length;
-  for (let i = 0; i < total; i++) {
-    const c = consosToImport[i];
+  const toInsert = [];
+  for (const c of consosToImport) {
     const destSubId = idMap[c.substanceId];
     const seen = existingTsBySub[destSubId];
     if (seen.has(c.timestamp)) {
       consosSkipped++;
     } else {
-      await dbInsertConsumptionRaw({
+      toInsert.push({
         id: uuid(), substanceId: destSubId, timestamp: c.timestamp,
         dosage: c.dosage, notes: c.notes, createdAt: c.createdAt || c.timestamp,
       });
@@ -99,10 +100,12 @@ export async function performFusion({ parsed, activeSubs, substanceIds, onProgre
       consosAdded++;
       addedBySrcSub[c.substanceId] = (addedBySrcSub[c.substanceId] || 0) + 1;
     }
-    if (onProgress && (i % 25 === 0 || i === total - 1)) {
-      onProgress(i + 1, total);
-    }
   }
+  // 2) Écriture groupée (1.31) : paquets dans des transactions, progression par paquet
+  const total = toInsert.length;
+  if (onProgress) onProgress(0, Math.max(1, total));
+  await dbInsertConsumptionsBatch(toInsert, (done) => onProgress?.(done, Math.max(1, total)));
+  if (onProgress && total === 0) onProgress(1, 1);
 
   // Pour chaque sub existante (subIsNew = false) : "fusionnée" si on a ajouté ≥1 conso,
   // sinon "déjà présente".

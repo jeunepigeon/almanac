@@ -2,17 +2,17 @@ import { useEffect, useState, useMemo } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, Pressable, ScrollView,
 } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { theme } from '../theme';
-import { useStore } from '../store';
+import { useStore, EMPTY_LIST } from '../store';
 import { getIconById } from '../icons';
 import SubstanceIcon from '../components/SubstanceIcon';
 import { formatDateLong, formatTime } from '../utils/dates';
 import LiveCounter from '../components/LiveCounter';
 import LogConsumptionModal from '../components/LogConsumptionModal';
 import ConfirmModal from '../components/ConfirmModal';
-import MonthCalendar from '../components/MonthCalendar';
 import ScrollableCalendar from '../components/ScrollableCalendar';
 import DayDetailModal from '../components/DayDetailModal';
 import StatsView from '../components/StatsView';
@@ -33,10 +33,10 @@ export default function SubstanceScreen() {
     [...s.substances, ...s.archivedSubstances].find((x) => x.id === substanceId)
   );
   const lastTimestamp = useStore((s) => s.lastTimestamps[substanceId]);
+  // 1.31 : liste complète depuis le stock central (plus de lecture en base à l'ouverture)
   const consumptions = useStore(
-    (s) => s.consumptionsBySubstance[substanceId] || null
+    (s) => (s.consumptionsLoaded ? (s.consumptionsBySubstance[substanceId] || EMPTY_LIST) : null)
   );
-  const loadConsumptionsForSubstance = useStore((s) => s.loadConsumptionsForSubstance);
   const createConsumption = useStore((s) => s.createConsumption);
   const updateConsumption = useStore((s) => s.updateConsumption);
   const deleteConsumption = useStore((s) => s.deleteConsumption);
@@ -49,12 +49,6 @@ export default function SubstanceScreen() {
   const [prefilledDate, setPrefilledDate] = useState(null);
   const [notifOpen, setNotifOpen] = useState(false);
   const hasSubNotif = useStore((s) => s.notifRules.some((r) => r.target === 'sub' && r.key === substanceId));
-
-  useEffect(() => {
-    if (substanceId && consumptions === null) {
-      loadConsumptionsForSubstance(substanceId);
-    }
-  }, [substanceId, consumptions, loadConsumptionsForSubstance]);
 
   useEffect(() => {
     navigation.setOptions({
@@ -79,8 +73,7 @@ export default function SubstanceScreen() {
     if (!consumptions || !substance) return {};
     const map = {};
     for (const c of consumptions) {
-      const k = dayKeyOf(c.timestamp);
-      if (!map[k]) map[k] = [substance.color];
+      if (!map[c.dayKey]) map[c.dayKey] = [substance.color];
     }
     return map;
   }, [consumptions, substance]);
@@ -88,7 +81,7 @@ export default function SubstanceScreen() {
   const consosForDay = useMemo(() => {
     if (!dayDetail || !consumptions) return [];
     return consumptions
-      .filter((c) => dayKeyOf(c.timestamp) === dayDetail.dayKey)
+      .filter((c) => c.dayKey === dayDetail.dayKey)
       .sort((a, b) => a.timestamp - b.timestamp);
   }, [dayDetail, consumptions]);
 

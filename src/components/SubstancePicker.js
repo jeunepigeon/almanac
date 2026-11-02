@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, FlatList, Pressable } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from '../theme';
 import { getIconById } from '../icons';
 import SubstanceIcon from './SubstanceIcon';

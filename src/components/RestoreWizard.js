@@ -6,7 +6,7 @@ import {
   Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView,
   ActivityIndicator, Platform, BackHandler,
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from '../theme';
 import SubCard from './SubCard';
 import haptics from '../utils/haptics';

@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Pressable } from 'react-native';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from '../theme';
 import { formatDateLong, formatTime } from '../utils/dates';
 import { getIconById } from '../icons';

@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, BackHandler } from 'react-native';
 import PagerView from 'react-native-pager-view';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import NotifWizard from '../components/NotifWizard';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useCallback } from 'react';

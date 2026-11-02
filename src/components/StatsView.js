@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Pressable, Modal, Platform,
+  Pressable, Modal,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { theme } from '../theme';
 import {
   WINDOWS,
@@ -14,7 +14,7 @@ import {
   formatDaysLong,
   windowRange,
 } from '../utils/stats';
-import { BarChart, LineChart, PieChart, ChartCard, MultiLineChart } from './Charts';
+import { BarChart, PieChart, ChartCard, MultiLineChart } from './Charts';
 import LiveCounter from './LiveCounter';
 
 const WEEKDAY_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
@@ -147,36 +147,8 @@ export default function StatsView({
     return top ? top.substance.color : color;
   }, [mode, globalStats, pieSelection, color]);
 
-  // Précalcul : pour chaque dayKey → couleur substance dominante (optimisé)
-  const dayDominantColor = useMemo(() => {
-    if (mode !== 'global' || !consumptionsBySubstance) return {};
-    const map = {};
-    for (const subId of Object.keys(consumptionsBySubstance)) {
-      if (pieSelection && pieSelection[subId] === false) continue;
-      const sub = substancesById?.[subId];
-      if (!sub || sub.archived) continue;
-      for (const c of consumptionsBySubstance[subId] || []) {
-        const d = new Date(c.timestamp);
-        const p = (n) => (n < 10 ? `0${n}` : `${n}`);
-        const k = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-        if (!map[k]) map[k] = { color: sub.color, count: 1 };
-        else if (++map[k].count >= map[k].count) map[k].color = sub.color;
-      }
-    }
-    return map;
-  }, [mode, consumptionsBySubstance, substancesById, pieSelection]);
-
-  const segmentColors = useMemo(() => {
-    if (mode !== 'global' || !stats?.timeline) return null;
-    const timeline = stats.timeline;
-    if (timeline.length < 2) return null;
-    return timeline.slice(0, -1).map((point) => {
-      const d = new Date(point.ts);
-      const p = (n) => (n < 10 ? `0${n}` : `${n}`);
-      const k = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-      return dayDominantColor[k]?.color || dominantColor;
-    });
-  }, [mode, stats, dayDominantColor, dominantColor]);
+  // (1.31) supprimé : couleur dominante par jour + couleurs de segments — vestiges de l'ancienne
+  // courbe arc-en-ciel, recalculés sur toutes les prises sans être affichés.
 
   // Multi-courbes au global : une courbe par substance cochée
   const multiCurves = useMemo(() => {
@@ -207,7 +179,7 @@ export default function StatsView({
       const dayMap = {};
       const daysWithConso = new Set();
       for (const c of subConsos) {
-        const k = dayKey(c.timestamp);
+        const k = c.dayKey || dayKey(c.timestamp);
         daysWithConso.add(k);
         if (useDoses && hasAnyDosage) {
           // Mode doses ET la substance a des dosages : somme des dosages
@@ -254,31 +226,6 @@ export default function StatsView({
     return max || null;
   }, [mode, consumptionsBySubstance]);
 
-  // Jours sobres consécutifs au global (toutes substances confondues)
-  const globalCurrentSoberDays = useMemo(() => {
-    if (mode !== 'global' || !consumptionsBySubstance) return null;
-    const allConsos = Object.values(consumptionsBySubstance).flat();
-    if (allConsos.length === 0) return null;
-    const dayKey = (ts) => {
-      const d = new Date(ts);
-      const p = (n) => (n < 10 ? `0${n}` : `${n}`);
-      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-    };
-    const daysWithConso = new Set(allConsos.map((c) => dayKey(c.timestamp)));
-    let streak = 0;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const cur = new Date(today);
-    while (true) {
-      const k = dayKey(cur.getTime());
-      if (daysWithConso.has(k)) break;
-      streak++;
-      cur.setDate(cur.getDate() - 1);
-      if (streak > 3650) break; // sécurité
-    }
-    return streak;
-  }, [mode, consumptionsBySubstance]);
-
   const openPicker = (target) => {
     setPickerTarget(target);
     setPickerVisible(true);
@@ -297,7 +244,7 @@ export default function StatsView({
     <ScrollView contentContainerStyle={styles.scrollContent}>
 
       {/* Hero jours sobres — mode global uniquement */}
-      {mode === 'global' && globalCurrentSoberDays !== null && (
+      {mode === 'global' && lastGlobalTimestamp !== null && (
         <View style={styles.globalHero}>
           <Text style={styles.globalHeroLabel}>Sobre de tout depuis</Text>
           <View style={styles.counterWrap}>

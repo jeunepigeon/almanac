@@ -9,6 +9,7 @@ import {
   dbFindSubstanceByName,
   dbGetLastTimestampBySubstance,
   dbGetLastTimestampFor,
+  dbGetAllConsumptions,
   dbCreateConsumption,
   dbUpdateConsumption,
   dbDeleteConsumption,
@@ -30,6 +31,27 @@ function normalizeName(name) {
 import { dbGetSnapshotData } from '../db';
 import * as Crypto from 'expo-crypto';
 import { getJSON, setJSON } from '../utils/prefs';
+import { formatDayKey } from '../utils/dates';
+
+// --- Stock central des prises (1.31) ---
+// Toutes les prises sont lues UNE fois (au chargement), puis tenues à jour en mémoire à chaque
+// ajout / modification / suppression. Chaque prise porte sa clé de jour (dayKey « AAAA-MM-JJ »)
+// calculée une seule fois. Plus de rechargements complets de la base par les écrans.
+export const EMPTY_LIST = [];
+const SAFETY_PREFIXES = ['avant-import-', 'avant-restauration-', 'avant-fusion-'];
+const SAFETY_KEEP = 10; // référence stable (un sélecteur qui renvoie [] neuf ferait boucler le rendu)
+const byTsDesc = (a, b) => b.timestamp - a.timestamp;
+function withDayKey(c) { return { ...c, dayKey: formatDayKey(c.timestamp) }; }
+function indexConsumptions(all) {
+  const bySub = {};
+  const last = {};
+  for (const c of all) { // `all` trié du plus récent au plus ancien
+    const sid = c.substanceId;
+    (bySub[sid] || (bySub[sid] = [])).push(c);
+    if (last[sid] == null) last[sid] = c.timestamp;
+  }
+  return { bySub, last };
+}
 
 const COLOR_BANNERS_KEY = 'almanac.colorBanners';
 const NOTIF_RULES_KEY = 'almanac.notifRules';
@@ -54,11 +76,27 @@ function normalizeRules(list) {
   return out;
 }
 
+// Applique un changement aux listes d'une substance + liste globale, retrie, recalcule sa dernière prise
+function applyConsumptionChange(state, substanceId, updateSubList, updateAll) {
+  const list = updateSubList(state.consumptionsBySubstance[substanceId] || []).sort(byTsDesc);
+  const bySub = { ...state.consumptionsBySubstance, [substanceId]: list };
+  const lastTimestamps = { ...state.lastTimestamps };
+  if (list.length > 0) lastTimestamps[substanceId] = list[0].timestamp;
+  else { delete lastTimestamps[substanceId]; delete bySub[substanceId]; }
+  return {
+    consumptionsBySubstance: bySub,
+    allConsumptions: updateAll(state.allConsumptions).sort(byTsDesc),
+    lastTimestamps,
+  };
+}
+
 export const useStore = create((set, get) => ({
   substances: [],
   archivedSubstances: [],
   lastTimestamps: {},
   consumptionsBySubstance: {},
+  allConsumptions: [],        // toutes les prises, de la plus récente à la plus ancienne
+  consumptionsLoaded: false,
   snapshots: [],
   hasUnconsultedSnapshots: false,
   // Signal pour switcher vers Global > Stats depuis n'importe quel écran
@@ -145,21 +183,28 @@ export const useStore = create((set, get) => ({
   ready: false,
 
   loadAll: async () => {
-    const all = await dbGetSubstances({ includeArchived: true });
-    const lastTimestamps = await dbGetLastTimestampBySubstance();
-    const snapshots = await dbGetAllSnapshots();
+    // Lectures en parallèle (avant : l'une après l'autre)
+    const [all, rawCons, snapshots, colorBanners, notifRules, appLockEnabled] = await Promise.all([
+      dbGetSubstances({ includeArchived: true }),
+      dbGetAllConsumptions(),
+      dbGetAllSnapshots(),
+      getJSON(COLOR_BANNERS_KEY, []),
+      getJSON(NOTIF_RULES_KEY, []),
+      getJSON(APP_LOCK_KEY, false),
+    ]);
     const hasUnconsulted = snapshots.some((s) => !s.consulted);
-    const colorBanners = await getJSON(COLOR_BANNERS_KEY, []);
-    const notifRules = await getJSON(NOTIF_RULES_KEY, []);
-    const appLockEnabled = await getJSON(APP_LOCK_KEY, false);
+    const allConsumptions = rawCons.map(withDayKey); // déjà triées du plus récent au plus ancien
+    const { bySub, last: lastTimestamps } = indexConsumptions(allConsumptions);
     set({
+      allConsumptions,
+      consumptionsLoaded: true,
       colorBanners: Array.isArray(colorBanners) ? colorBanners : [],
       notifRules: normalizeRules(notifRules),
       appLockEnabled: !!appLockEnabled,
       substances: all.filter((s) => !s.archived),
       archivedSubstances: all.filter((s) => s.archived),
       lastTimestamps,
-      consumptionsBySubstance: {},
+      consumptionsBySubstance: bySub,
       snapshots,
       hasUnconsultedSnapshots: hasUnconsulted,
       ready: true,
@@ -188,20 +233,23 @@ export const useStore = create((set, get) => ({
 
   createSnapshotFromLive: async (baseName, substanceIds = null) => {
     const state = get();
-    // On récupère TOUTES les consos (pas seulement celles en mémoire)
-    const dbAllCons = [];
-    for (const s of [...state.substances, ...state.archivedSubstances]) {
-      const list = state.consumptionsBySubstance[s.id]
-        ?? (await dbGetConsumptionsBySubstance(s.id));
-      dbAllCons.push(...list);
-    }
+    // Toutes les prises : stock central (avant : une requête par substance)
+    const dbAllCons = state.consumptionsLoaded ? state.allConsumptions : await dbGetAllConsumptions();
     const uniqueName = await makeUniqueSnapshotName(baseName);
     const snap = await createSnapshot(
       { substances: state.substances, archivedSubstances: state.archivedSubstances, consumptions: dbAllCons, banners: state.colorBanners, notifs: state.notifRules },
       uniqueName,
       substanceIds
     );
-    const snapshots = await dbGetAllSnapshots();
+    // 1.31 : rétention — on garde les 10 dernières sauvegardes de SÉCURITÉ automatiques
+    // (avant-import / avant-restauration / avant-fusion). Jamais touchées : sauvegardes manuelles,
+    // « archivage-… » (substances supprimées) et « remise-a-zero-… ».
+    let snapshots = await dbGetAllSnapshots();
+    const safety = snapshots.filter((x) => SAFETY_PREFIXES.some((p) => (x.name || '').startsWith(p)));
+    if (safety.length > SAFETY_KEEP) {
+      for (const old of safety.slice(SAFETY_KEEP)) await dbDeleteSnapshot(old.id); // liste déjà du plus récent au plus ancien
+      snapshots = await dbGetAllSnapshots();
+    }
     set({ snapshots, hasUnconsultedSnapshots: true });
     return snap;
   },
@@ -275,15 +323,8 @@ export const useStore = create((set, get) => ({
     set({ lastTimestamps });
   },
 
-  loadConsumptionsForSubstance: async (substanceId) => {
-    const list = await dbGetConsumptionsBySubstance(substanceId);
-    set((state) => ({
-      consumptionsBySubstance: {
-        ...state.consumptionsBySubstance,
-        [substanceId]: list,
-      },
-    }));
-  },
+  // Conservé pour compatibilité : les prises sont déjà toutes en mémoire (stock central)
+  loadConsumptionsForSubstance: async () => {},
 
   findByName: async (name) => {
     return await dbFindSubstanceByName(name);
@@ -346,6 +387,7 @@ export const useStore = create((set, get) => ({
       archivedSubstances: state.archivedSubstances.filter((s) => s.id !== id),
       consumptionsBySubstance: newCons,
       lastTimestamps: newLast,
+      allConsumptions: state.allConsumptions.filter((c) => c.substanceId !== id),
     }));
     get().pruneOrphans(); // notifs de la substance + catégorie éventuellement dissoute
   },
@@ -374,63 +416,18 @@ export const useStore = create((set, get) => ({
 
   // ---- Consumptions ----
 
+  // Ajout / modification / suppression : la base, puis le stock central en mémoire (1.31).
+  // Chaque substance a TOUJOURS sa liste complète (plus de liste partielle ni de compteur à « — »).
   createConsumption: async ({ substanceId, timestamp, dosage, notes }) => {
-    const created = await dbCreateConsumption({ substanceId, timestamp, dosage, notes });
-
-    // MàJ liste des consos ET lastTimestamps immédiatement.
-    // 1.30 : si la liste de cette substance n'est pas encore chargée, on NE crée PAS de liste
-    // partielle (sinon son écran n'affichait plus que cette prise) : elle sera lue en base à l'ouverture.
-    set((state) => {
-      const existing = state.consumptionsBySubstance[substanceId];
-      const currentLast = state.lastTimestamps[substanceId] || 0;
-      const newLast = timestamp > currentLast ? timestamp : currentLast;
-      const next = { lastTimestamps: { ...state.lastTimestamps, [substanceId]: newLast } };
-      if (existing) {
-        next.consumptionsBySubstance = {
-          ...state.consumptionsBySubstance,
-          [substanceId]: [...existing, created].sort((a, b) => b.timestamp - a.timestamp),
-        };
-      }
-      return next;
-    });
-
+    const created = withDayKey(await dbCreateConsumption({ substanceId, timestamp, dosage, notes }));
+    set((state) => applyConsumptionChange(state, substanceId, (list) => [...list, created], (all) => [...all, created]));
     return created;
   },
 
   updateConsumption: async (id, substanceId, { timestamp, dosage, notes }) => {
     await dbUpdateConsumption(id, { timestamp, dosage, notes });
-
-    // 1.30 : liste non chargée (modif depuis Global) → dernière prise relue en base
-    // (avant : elle passait à null → compteur « — », bandeaux et notifications faux)
-    if (!get().consumptionsBySubstance[substanceId]) {
-      const last = await dbGetLastTimestampFor(substanceId);
-      set((state) => {
-        const lt = { ...state.lastTimestamps };
-        if (last) lt[substanceId] = last; else delete lt[substanceId];
-        return { lastTimestamps: lt };
-      });
-      return;
-    }
-
-    set((state) => {
-      const list = state.consumptionsBySubstance[substanceId] || [];
-      const updated = list
-        .map((c) => (c.id === id ? { ...c, timestamp, dosage, notes } : c))
-        .sort((a, b) => b.timestamp - a.timestamp);
-
-      const newMax = updated.length > 0 ? updated[0].timestamp : null;
-
-      return {
-        consumptionsBySubstance: {
-          ...state.consumptionsBySubstance,
-          [substanceId]: updated,
-        },
-        lastTimestamps: {
-          ...state.lastTimestamps,
-          [substanceId]: newMax,
-        },
-      };
-    });
+    const patch = (c) => (c.id === id ? withDayKey({ ...c, timestamp, dosage, notes }) : c);
+    set((state) => applyConsumptionChange(state, substanceId, (list) => list.map(patch), (all) => all.map(patch)));
   },
 
   reorderSubstances: async (orderedIds) => {
@@ -456,43 +453,17 @@ export const useStore = create((set, get) => ({
       archivedSubstances: [],
       lastTimestamps: {},
       consumptionsBySubstance: {},
+      allConsumptions: [],
     });
     get().pruneOrphans();
   },
 
   deleteConsumption: async (id, substanceId) => {
     await dbDeleteConsumption(id);
-
-    // 1.30 : liste non chargée (suppression depuis Global) → dernière prise relue en base
-    if (!get().consumptionsBySubstance[substanceId]) {
-      const last = await dbGetLastTimestampFor(substanceId);
-      set((state) => {
-        const lt = { ...state.lastTimestamps };
-        if (last) lt[substanceId] = last; else delete lt[substanceId];
-        return { lastTimestamps: lt };
-      });
-      return;
-    }
-
-    set((state) => {
-      const list = state.consumptionsBySubstance[substanceId] || [];
-      const filtered = list.filter((c) => c.id !== id);
-
-      const newMax = filtered.length > 0 ? filtered[0].timestamp : null;
-      const newLastTimestamps = { ...state.lastTimestamps };
-      if (newMax) {
-        newLastTimestamps[substanceId] = newMax;
-      } else {
-        delete newLastTimestamps[substanceId];
-      }
-
-      return {
-        consumptionsBySubstance: {
-          ...state.consumptionsBySubstance,
-          [substanceId]: filtered,
-        },
-        lastTimestamps: newLastTimestamps,
-      };
-    });
+    set((state) => applyConsumptionChange(
+      state, substanceId,
+      (list) => list.filter((c) => c.id !== id),
+      (all) => all.filter((c) => c.id !== id),
+    ));
   },
 }));
