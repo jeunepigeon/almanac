@@ -8,8 +8,8 @@ import {
   Modal,
   Pressable,
   Animated,
-  Easing as EasingLib,
 } from 'react-native';
+import { runFlash, FLASH_PEAK, FLASH_IN_MS, FLASH_OUT_MS } from '../utils/flash';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { theme } from '../theme';
 import haptics from '../utils/haptics';
@@ -130,17 +130,11 @@ const DayCell = memo(function DayCell({ date, markers, isToday, isFuture, isSobe
       return;
     }
     setActiveFlash(flashColor);
-    flash.setValue(0);
-    Animated.sequence([
-      Animated.timing(flash, { toValue: 1, duration: 150, useNativeDriver: true }),
-      Animated.timing(flash, {
-        toValue: 0, duration: 650, useNativeDriver: true, // total 800 ms (150 + 650)
-        easing: EasingLib.out(EasingLib.quad),
-      }),
-    ]).start(({ finished }) => { if (finished) setActiveFlash(null); });
+    // 1.36 : courbe commune à tous les flashs de l'app (utils/flash.js)
+    runFlash(flash, { useNativeDriver: true, onEnd: ({ finished }) => { if (finished) setActiveFlash(null); } });
   }, [flashNonce]); // eslint-disable-line
   if (!date) return <View style={styles.dayCell} />;
-  const overlayOpacity = flash.interpolate({ inputRange: [0, 1], outputRange: [0, 0.65] });
+  const overlayOpacity = flash.interpolate({ inputRange: [0, 1], outputRange: [0, FLASH_PEAK] });
   return (
     <TouchableOpacity
       style={[styles.dayCell, isToday && styles.dayCellToday]}
@@ -241,7 +235,7 @@ export default function ScrollableCalendar({
     if (flashTimer.current) clearTimeout(flashTimer.current);
     setFlashKey(dayKey);
     setFlashNonce((n) => n + 1);  // force re-render de l'animation
-    flashTimer.current = setTimeout(() => setFlashKey(null), 1100);
+    flashTimer.current = setTimeout(() => setFlashKey(null), FLASH_IN_MS + FLASH_OUT_MS + 300);
   }, []);
   useEffect(() => () => flashTimer.current && clearTimeout(flashTimer.current), []);
 

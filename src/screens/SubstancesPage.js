@@ -7,6 +7,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme';
 import { useStore } from '../store';
+import { useFlashBackground } from '../utils/flash';
 import { getIconById } from '../icons';
 import SubstanceIcon from '../components/SubstanceIcon';
 import LiveCounter from '../components/LiveCounter';
@@ -25,31 +26,12 @@ const FADE_MS = 450;     // fondu d'un bandeau supprimé
 const COLLAPSE_MS = 260; // puis la place se referme en douceur (le séparateur glisse au lieu de sauter)
 const PILL_HALF = 6;       // demi-hauteur de la pilule (1.25 : plus basse et plus longue)
 
-// Flash d'un bandeau (tap sur une notification « Toutes » / catégorie).
-// 1.29 : même technique que le flash des lignes de substance (qui fonctionne) : couleur de FOND
-// du bandeau animée (pilote JS), au lieu d'un calque superposé animé en natif (jamais visible).
-function hexToRgba(hex, a) {
-  const h = (hex || '#FFFFFF').replace('#', '');
-  return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`;
-}
-function useFlashBg(tick, toColor, label) {
-  const v = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (!tick) return;
-    useStore.getState().traceNotif('animation lancée', label);
-    v.setValue(0);
-    Animated.sequence([
-      Animated.timing(v, { toValue: 1, duration: 200, useNativeDriver: false }),
-      Animated.delay(250),
-      Animated.timing(v, { toValue: 0, duration: 700, useNativeDriver: false }),
-    ]).start();
-  }, [tick]); // eslint-disable-line
-  return v.interpolate({ inputRange: [0, 1], outputRange: ['rgba(0,0,0,0)', toColor] });
-}
+// Flash des bandeaux et des lignes : utils/flash.js (1.36 : identique partout, calendrier compris)
+const traceAnim = (label) => () => useStore.getState().traceNotif('animation lancée', label);
 
 // Bannière "Sobre de tout depuis". Clic → scroll vers la dernière substance consommée + flash.
 function SobreBanner({ lastGlobalTimestamp, onPress, flashTick }) {
-  const flashBg = useFlashBg(flashTick, 'rgba(255,255,255,0.28)', 'sobre de tout');
+  const flashBg = useFlashBackground(flashTick, '#FFFFFF', traceAnim('sobre de tout'));
   return (
     <Pressable onPress={onPress} style={styles.bannerPress}>
       <Animated.View style={[styles.banner, { backgroundColor: flashBg }]}>
@@ -74,7 +56,7 @@ function SobreBanner({ lastGlobalTimestamp, onPress, flashTick }) {
 function ColorBanner({ color, lastTimestamp, inReorder, isWiggling, phase, onDelete, flashTick, fading }) {
   // Bandeau supprimé (catégorie dissoute ou poubelle) : fondu avant de disparaître
   const fade = useRef(new Animated.Value(1)).current;
-  const flashBg = useFlashBg(flashTick, hexToRgba(color, 0.4), `bandeau ${color}`);
+  const flashBg = useFlashBackground(flashTick, color, traceAnim(`bandeau ${color}`));
   useEffect(() => {
     if (fading) Animated.timing(fade, { toValue: 0, duration: FADE_MS, useNativeDriver: true }).start();
     else fade.setValue(1);
@@ -104,23 +86,9 @@ function ColorBanner({ color, lastTimestamp, inReorder, isWiggling, phase, onDel
 //  - Normal : icône · nom · compteur (plus de bouton ⋯ : place pour un long nom et du vide).
 //  - Réorganisation : icône + nom vibrent ; crayon (menu renommer / couleur / icône) et poubelle fixes.
 function SubstanceRow({
-  substance, lastTimestamp, inReorder, isWiggling, phase, isFlashed, onEdit, onDelete,
+  substance, lastTimestamp, inReorder, isWiggling, phase, flashTick, onEdit, onDelete,
 }) {
-  const flashAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (isFlashed) {
-      Animated.sequence([
-        Animated.timing(flashAnim, { toValue: 1, duration: 120, useNativeDriver: false }),
-        Animated.timing(flashAnim, { toValue: 0, duration: 380, useNativeDriver: false }),
-      ]).start();
-    }
-  }, [isFlashed, flashAnim]);
-
-  const bgInterp = flashAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['rgba(0,0,0,0)', substance.color + '55'],
-  });
+  const bgInterp = useFlashBackground(flashTick, substance.color);
 
   return (
     <Animated.View style={[styles.row, { backgroundColor: bgInterp }]}>
@@ -277,7 +245,7 @@ export default function SubstancesPage() {
       sub?.remove(); unsubStore?.();
     };
   }, [notifFocus?.tick]); // eslint-disable-line
-  const [flashedSubId, setFlashedSubId] = useState(null);
+  const [flashedSub, setFlashedSub] = useState(null); // { id, tick }
 
   // Verrouille le PagerView (swipe gauche/droite vers Global) tant qu'on est en mode réorg.
   const setPagerLocked = useStore((s) => s.setPagerLocked);
@@ -389,10 +357,7 @@ export default function SubstancesPage() {
     const rowCenter = listStart + idx * ROW_HEIGHT + ROW_HEIGHT / 2;
     const maxY = Math.max(0, contentH - viewportH);
     const y = Math.max(0, Math.min(maxY, rowCenter - viewportH / 2));
-    const flash = () => {
-      setFlashedSubId(targetSubId);
-      setTimeout(() => setFlashedSubId(null), 520);
-    };
+    const flash = () => setFlashedSub({ id: targetSubId, tick: Date.now() });
     if (Math.abs(scrollYRef.current - y) <= 2) { flash(); return; }
     pendingBannerFlashRef.current = flash;
     scrollRef.current?.scrollTo?.({ y, animated: true });
@@ -516,7 +481,7 @@ export default function SubstancesPage() {
         inReorder={inReorder}
         isWiggling={isWiggling}
         phase={phase}
-        isFlashed={flashedSubId === item.id}
+        flashTick={flashedSub?.id === item.id ? flashedSub.tick : 0}
         onEdit={() => openActions(item.sub)}
         onDelete={() => setPendingDelete(item.sub)}
       />
