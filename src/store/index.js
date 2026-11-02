@@ -126,6 +126,9 @@ export const useStore = create((set, get) => ({
   // Écran de verrouillage affiché ? (le message de mise à jour attend le déverrouillage)
   lockActive: false,
   setLockActive: (v) => set({ lockActive: !!v }),
+  // Message « mis à jour » affiché ? (le flash d'un tap sur notification attend sa fermeture)
+  updateNoticeOpen: false,
+  setUpdateNoticeOpen: (v) => set({ updateNoticeOpen: !!v }),
 
   // --- Notifications (1.25) ---
   notifRules: [],

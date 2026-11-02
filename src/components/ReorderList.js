@@ -137,6 +137,7 @@ export default function ReorderList({
   renderOverlay = null,    // ({ items, tops, heights }) → élément dessiné PAR-DESSUS la liste et la copie
   footerComponent = null,  // affiché sous la liste (ex. substances grisées pendant la réorg des bandeaux)
   scrollRef = null,
+  finishSignal = 0,        // 1.33 : change → termine la réorganisation (ordre en cours enregistré)
 }) {
   const [localIds, setLocalIds] = useState(data.map((d) => d.id));
   const [pickupIdx, setPickupIdx] = useState(null);
@@ -194,7 +195,11 @@ export default function ReorderList({
 
   const finishReorder = () => {
     const original = data.map((d) => d.id);
-    const current = localIdsRef.current;
+    // Ordre en cours, limité aux éléments encore présents (ex. substance qui vient d'être supprimée)
+    // + éléments apparus entre-temps, à leur place d'origine
+    const present = new Set(original);
+    const current = localIdsRef.current.filter((id) => present.has(id));
+    original.forEach((id, i) => { if (!current.includes(id)) current.splice(Math.min(i, current.length), 0, id); });
     const changed = current.length !== original.length || current.some((id, i) => id !== original[i]);
     if (changed) onReorder?.(current);
     stopAuto();
@@ -203,6 +208,14 @@ export default function ReorderList({
     setHoverIdx(null);
     onDeactivate?.();
   };
+
+  // Fin demandée par le parent (suppression, couleur, icône, nom : l'action pour laquelle on était venu)
+  const finishSignalRef = useRef(finishSignal);
+  useEffect(() => {
+    if (finishSignal === finishSignalRef.current) return;
+    finishSignalRef.current = finishSignal;
+    if (active) finishReorder();
+  }, [finishSignal]); // eslint-disable-line
 
   useEffect(() => {
     if (!active) return;

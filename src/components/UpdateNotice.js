@@ -33,7 +33,7 @@ export default function UpdateNotice() {
   // Affiché dès que l'app est déverrouillée (ou tout de suite sans verrouillage)
   useEffect(() => {
     if (pending && !lockActive) {
-      const t = setTimeout(() => setOpen(true), 400); // laisse l'écran principal s'afficher
+      const t = setTimeout(() => { setOpen(true); useStore.getState().setUpdateNoticeOpen(true); }, 400); // laisse l'écran principal s'afficher
       return () => clearTimeout(t);
     }
     return undefined;
@@ -45,7 +45,7 @@ export default function UpdateNotice() {
       visible={open}
       title={`Almanac mis à jour · ${JS_VERSION}`}
       message={pending?.from ? `Depuis la ${pending.from} :\n\n${lines}` : lines}
-      onClose={() => { setOpen(false); setPending(null); }}
+      onClose={() => { setOpen(false); setPending(null); useStore.getState().setUpdateNoticeOpen(false); }}
     />
   );
 }

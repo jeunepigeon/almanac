@@ -38,15 +38,29 @@ export default function SubstanceFormModal({
   const [iconId, setIconId] = useState(DEFAULT_ICON_ID);
   const nameRef = useRef(null);
 
-  // 1.32 : « Renommer » / création → curseur dans le champ et clavier ouvert directement.
-  // autoFocus seul ne marche pas de façon fiable dans une Modal qui s'ouvre juste après le menu :
-  // on attend la fin du fondu d'ouverture puis on donne le focus.
+  // 1.33 : « Renommer » / création → curseur dans le champ ET clavier ouvert.
+  // Android : un focus donné avant que la fenêtre de la Modal ait la main place le curseur sans
+  // ouvrir le clavier (et un 2e focus ne fait plus rien puisque le champ l'a déjà). Donc : pas
+  // d'autoFocus ; focus quand la Modal signale qu'elle est affichée (onShow), puis vérification :
+  // si le clavier n'est toujours pas là, on relâche le champ et on le reprend.
+  const wantsFocus = mode === 'create' || mode === 'rename';
+  const focusTimersRef = useRef([]);
+  const clearFocusTimers = () => { focusTimersRef.current.forEach(clearTimeout); focusTimersRef.current = []; };
+  const focusName = () => {
+    if (!wantsFocus) return;
+    clearFocusTimers();
+    focusTimersRef.current.push(setTimeout(() => nameRef.current?.focus(), 120));
+    focusTimersRef.current.push(setTimeout(() => {
+      if (Keyboard.isVisible?.()) return;
+      nameRef.current?.blur();
+      focusTimersRef.current.push(setTimeout(() => nameRef.current?.focus(), 60));
+    }, 480));
+  };
   useEffect(() => {
-    if (!visible) { Keyboard.dismiss(); return undefined; }
-    if (mode !== 'create' && mode !== 'rename') return undefined;
-    const t = setTimeout(() => nameRef.current?.focus(), 280);
-    return () => clearTimeout(t);
-  }, [visible, mode]);
+    if (!visible) { clearFocusTimers(); Keyboard.dismiss(); }
+    return undefined;
+  }, [visible]);
+  useEffect(() => clearFocusTimers, []);
 
   // Réinitialise le formulaire à chaque ouverture
   useEffect(() => {
@@ -105,6 +119,7 @@ export default function SubstanceFormModal({
       transparent
       animationType="fade"
       onRequestClose={onClose}
+      onShow={focusName}
     >
       <Pressable style={styles.backdrop} onPress={onClose}>
         <KeyboardAvoidingView
@@ -125,7 +140,6 @@ export default function SubstanceFormModal({
                 placeholderTextColor={theme.colors.textFaint}
                 ref={nameRef}
                 style={styles.input}
-                autoFocus={mode === 'create' || mode === 'rename'}
                 returnKeyType="done"
               />
             )}

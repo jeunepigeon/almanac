@@ -198,6 +198,14 @@ export default function SubstancesPage() {
   const reorderMode = useStore((s) => s.reorderMode);
   const setReorderMode = useStore((s) => s.setReorderMode);
   const bumpMounts = useStore((s) => s.bumpSubstancesPageMounts);
+  // 1.33 : après une suppression / un changement de nom, couleur ou icône, on QUITTE la réorganisation
+  // (on y était venu pour cette action). Passe par ReorderList : l'ordre déjà déplacé est enregistré.
+  const [finishSignal, setFinishSignal] = useState(0);
+  const endReorderAfterAction = () => {
+    setFinishSignal((x) => x + 1);
+    // Filet : si la liste a été recréée entre-temps et n'a pas reçu le signal, on ferme quand même
+    setTimeout(() => { if (useStore.getState().reorderMode) useStore.getState().setReorderMode(false); }, 400);
+  };
   useEffect(() => { bumpMounts(); }, []); // eslint-disable-line
   // Plus aucune substance (dernière supprimée) : la liste disparaît → on quitte le mode
   useEffect(() => { if (reorderMode && substances.length === 0) setReorderMode(false); }, [reorderMode, substances.length]); // eslint-disable-line
@@ -222,6 +230,7 @@ export default function SubstancesPage() {
       if (started) return;
       started = true;
       sub?.remove(); sub = null;
+      unsubStore?.(); unsubStore = null; // eslint-disable-line no-use-before-define
       clearTimeout(tFallback);
       t1 = setTimeout(() => scrollRef.current?.scrollTo?.({ y: 0, animated: true }), 300);
       t2 = setTimeout(() => {
@@ -229,12 +238,31 @@ export default function SubstancesPage() {
         useStore.getState().setLastBannerFlash?.({ id, at: Date.now() });
       }, 800);
     };
-    if (AppState.currentState === 'active') go();
-    else {
-      sub = AppState.addEventListener('change', (st) => { if (st === 'active') go(); });
-      tFallback = setTimeout(go, 1500);
-    }
-    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(tFallback); sub?.remove(); };
+    // 1.33 : le flash attend aussi que l'écran de verrouillage et le message « mis à jour » soient
+    // fermés (sinon il se jouait DESSOUS : app lancée par la notification + verrouillage = rien de visible)
+    let unsubStore = null;
+    const blocked = () => {
+      const st = useStore.getState();
+      return st.lockActive || st.updateNoticeOpen;
+    };
+    const tryGo = () => {
+      if (started) return;
+      if (AppState.currentState !== 'active' || blocked()) return;
+      unsubStore?.(); unsubStore = null;
+      go();
+    };
+    // Petit délai : au retour dans l'app, le verrouillage se déclare juste APRÈS le passage à « active »
+    const pending = [];
+    const later = () => { pending.push(setTimeout(tryGo, 150)); };
+    unsubStore = useStore.subscribe(later);
+    sub = AppState.addEventListener('change', (st) => { if (st === 'active') later(); });
+    // Filet de sécurité : l'état « active » peut être passé avant l'abonnement (1.28)
+    tFallback = setTimeout(() => { if (!blocked()) go(); }, 1500);
+    later();
+    return () => {
+      clearTimeout(t1); clearTimeout(t2); clearTimeout(tFallback); pending.forEach(clearTimeout);
+      sub?.remove(); unsubStore?.();
+    };
   }, [notifFocus?.tick]); // eslint-disable-line
   const [flashedSubId, setFlashedSubId] = useState(null);
 
@@ -393,6 +421,7 @@ export default function SubstancesPage() {
     try {
       await updateSubstance(editMode.sub.id, payload);
       setEditMode(null);
+      endReorderAfterAction();
     } catch (e) {
       Alert.alert('Nom déjà utilisé', e.message || 'Une substance avec ce nom existe déjà.');
     }
@@ -514,6 +543,7 @@ export default function SubstancesPage() {
           active={reorderMode}
           onItemLongPress={() => setReorderMode(true)}
           onDeactivate={() => setReorderMode(false)}
+          finishSignal={finishSignal}
           onReorder={handleReorder}
           onItemTap={(item) => {
             if (item.kind === 'banner') handleBannerPress(item.lastSubId);
@@ -609,6 +639,7 @@ export default function SubstancesPage() {
         onConfirm={async () => {
           if (pendingDelete) await deleteSubstance(pendingDelete.id);
           setPendingDelete(null);
+          endReorderAfterAction();
         }}
       />
     </View>
