@@ -8,6 +8,7 @@ import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme';
 import { useStore } from '../store';
 import { useFlashBackground } from '../utils/flash';
+import { waitForAppReady, appStateInfo } from '../utils/appReady';
 import { getIconById } from '../icons';
 import SubstanceIcon from '../components/SubstanceIcon';
 import LiveCounter from '../components/LiveCounter';
@@ -189,10 +190,7 @@ export default function SubstancesPage() {
   useEffect(() => {
     if (!notifFocus?.tick) return;
     const trace = useStore.getState().traceNotif;
-    const stateInfo = () => {
-      const st = useStore.getState();
-      return `app ${AppState.currentState}${st.lockActive ? ' · verrouillée' : ''}${st.updateNoticeOpen ? ' · message MAJ ouvert' : ''}`;
-    };
+    const stateInfo = appStateInfo;
     if (notifFocus.tick === lastHandledNotifTick) { trace('page remontée', 'demande déjà traitée → pas de flash'); return; }
     lastHandledNotifTick = notifFocus.tick; // pas de re-flash si la page est remontée
     trace('page : demande reçue', `${stateInfo()} · montages ${useStore.getState().substancesPageMounts}`);
@@ -201,15 +199,10 @@ export default function SubstancesPage() {
       ? `banner:${notifFocus.color}` : '__sobre';
     // On attend que l'app soit au premier plan. 1.28 : filet de sécurité de 1,5 s (l'état « active »
     // pouvait déjà être passé avant l'abonnement → plus jamais de flash).
-    let t1 = null; let t2 = null; let tFallback = null; let sub = null; let started = false;
-    let flashed = false;
-    const go = (why = 'direct') => {
-      if (started) return;
+    let t1 = null; let t2 = null; let started = false; let flashed = false;
+    // 1.37 : attente « app visible » partagée avec la page d'une substance (utils/appReady.js)
+    const cancelWait = waitForAppReady(() => {
       started = true;
-      trace(`départ (${why})`, stateInfo());
-      sub?.remove(); sub = null;
-      unsubStore?.(); unsubStore = null; // eslint-disable-line no-use-before-define
-      clearTimeout(tFallback);
       t1 = setTimeout(() => scrollRef.current?.scrollTo?.({ y: 0, animated: true }), 300);
       t2 = setTimeout(() => {
         flashed = true;
@@ -217,32 +210,10 @@ export default function SubstancesPage() {
         setBannerFlash({ id, tick: Date.now() });
         useStore.getState().setLastBannerFlash?.({ id, at: Date.now() });
       }, 800);
-    };
-    // 1.33 : le flash attend aussi que l'écran de verrouillage et le message « mis à jour » soient
-    // fermés (sinon il se jouait DESSOUS : app lancée par la notification + verrouillage = rien de visible)
-    let unsubStore = null;
-    const blocked = () => {
-      const st = useStore.getState();
-      return st.lockActive || st.updateNoticeOpen;
-    };
-    const tryGo = () => {
-      if (started) return;
-      if (AppState.currentState !== 'active' || blocked()) return;
-      unsubStore?.(); unsubStore = null;
-      go();
-    };
-    // Petit délai : au retour dans l'app, le verrouillage se déclare juste APRÈS le passage à « active »
-    const pending = [];
-    const later = () => { pending.push(setTimeout(tryGo, 150)); };
-    unsubStore = useStore.subscribe(later);
-    sub = AppState.addEventListener('change', (st) => { trace(`app → ${st}`); if (st === 'active') later(); });
-    // Filet de sécurité : l'état « active » peut être passé avant l'abonnement (1.28)
-    tFallback = setTimeout(() => { if (!blocked()) go('filet 1,5 s'); else trace('filet 1,5 s : bloqué', stateInfo()); }, 1500);
-    later();
+    }, trace);
     return () => {
       if (!flashed) trace('annulé', started ? 'page démontée avant le flash' : 'page démontée avant le départ');
-      clearTimeout(t1); clearTimeout(t2); clearTimeout(tFallback); pending.forEach(clearTimeout);
-      sub?.remove(); unsubStore?.();
+      cancelWait(); clearTimeout(t1); clearTimeout(t2);
     };
   }, [notifFocus?.tick]); // eslint-disable-line
   const [flashedSub, setFlashedSub] = useState(null); // { id, tick }

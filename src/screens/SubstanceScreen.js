@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, Pressable, ScrollView,
+  View, Text, StyleSheet, FlatList, TouchableOpacity, Pressable, ScrollView, Animated,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -17,6 +17,8 @@ import ScrollableCalendar from '../components/ScrollableCalendar';
 import DayDetailModal from '../components/DayDetailModal';
 import StatsView from '../components/StatsView';
 import NotifWizard from '../components/NotifWizard';
+import { useFlashBackground } from '../utils/flash';
+import { waitForAppReady, appStateInfo } from '../utils/appReady';
 
 function pad2(n) { return n < 10 ? `0${n}` : `${n}`; }
 function dayKeyOf(ts) {
@@ -27,7 +29,7 @@ function dayKeyOf(ts) {
 export default function SubstanceScreen() {
   const navigation = useNavigation();
   const route = useRoute();
-  const { substanceId, focusDate } = route.params || {};
+  const { substanceId, focusDate, notifFlash } = route.params || {};
 
   const substance = useStore((s) =>
     [...s.substances, ...s.archivedSubstances].find((x) => x.id === substanceId)
@@ -61,6 +63,30 @@ export default function SubstanceScreen() {
       ) : null),
     });
   }, [navigation, substance, hasSubNotif]);
+
+  // 1.37 — Tap sur une notification de CETTE substance : flash du bloc « Sobre depuis » (même flash
+  // que partout, dans la couleur de la substance), une fois l'app visible et la page arrivée.
+  const [heroFlashTick, setHeroFlashTick] = useState(0);
+  const heroFlashBg = useFlashBackground(heroFlashTick, substance?.color || '#FFFFFF',
+    () => useStore.getState().traceNotif('animation lancée', `page ${substance?.name || ''}`));
+  useEffect(() => {
+    if (!notifFlash) return undefined;
+    const trace = useStore.getState().traceNotif;
+    trace('page substance : demande reçue', appStateInfo());
+    let t = null; let flashed = false;
+    const cancelWait = waitForAppReady(() => {
+      // 500 ms : laisse l'animation d'arrivée de la page se terminer
+      t = setTimeout(() => {
+        flashed = true;
+        trace('flash envoyé', 'compteur « Sobre depuis »');
+        setHeroFlashTick(Date.now());
+      }, 500);
+    }, trace);
+    return () => {
+      if (!flashed && t == null) trace('annulé', 'page quittée avant le départ');
+      cancelWait(); clearTimeout(t);
+    };
+  }, [notifFlash]); // eslint-disable-line
 
   useEffect(() => {
     if (focusDate && consumptions !== null) {
@@ -96,7 +122,7 @@ export default function SubstanceScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.hero}>
+      <Animated.View style={[styles.hero, { backgroundColor: heroFlashBg }]}>
         <View style={[styles.heroIcon, { borderColor: substance.color }]}>
           <SubstanceIcon iconId={substance.icon} size={28} color={substance.color} />
         </View>
@@ -107,7 +133,7 @@ export default function SubstanceScreen() {
             style={[styles.heroCounter, { color: substance.color }]}
           />
         </View>
-      </View>
+      </Animated.View>
 
       <View style={styles.tabs}>
         <Tab label="Calendrier" active={activeTab === 'calendar'} onPress={() => setActiveTab('calendar')} />

@@ -51,9 +51,10 @@ export default function App() {
     const st = useStore.getState();
     if (t.target === 'sub') {
       const ok = st.substances.some((s) => s.id === t.key);
-      st.traceNotif(ok ? 'ouverture page substance' : 'substance introuvable', 'pas de flash (normal)');
+      st.traceNotif(ok ? 'ouverture page substance' : 'substance introuvable', `écran avant : ${navRef.getCurrentRoute()?.name || '?'}`);
       // { pop: true } : revient à la page déjà ouverte au lieu d'en empiler une 2e (React Navigation 7)
-      if (ok) navRef.navigate('Substance', { substanceId: t.key }, { pop: true });
+      // notifFlash (1.37) : la page fait flasher son compteur « Sobre depuis »
+      if (ok) navRef.navigate('Substance', { substanceId: t.key, notifFlash: Date.now() }, { pop: true });
       return;
     }
     // « Toutes » / catégorie : liste des substances, flash du bandeau concerné
