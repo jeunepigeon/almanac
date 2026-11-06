@@ -11,8 +11,8 @@ import { getIconById } from '../icons';
 import SubstanceIcon from '../components/SubstanceIcon';
 import { formatDateLong, formatTime } from '../utils/dates';
 import LiveCounter from '../components/LiveCounter';
-import ExtraCounters from '../components/ExtraCounters';
 import ReorgBar from '../components/ReorgBar';
+import TopCounter from '../components/TopCounter';
 import { DateLine } from '../components/Banners';
 import { rangeFR } from '../utils/soberPeriods';
 import LogConsumptionModal from '../components/LogConsumptionModal';
@@ -46,7 +46,8 @@ export default function SubstanceScreen() {
   // 1.40 : horodatages pour les compteurs ajoutés (précédente / plus longue)
   const consoTimestamps = useMemo(() => (consumptions || []).map((c) => c.timestamp), [consumptions]);
   const createConsumption = useStore((s) => s.createConsumption);
-  const countersEditing = useStore((s) => s.countersEditing);
+  // 1.46 : en vrai/faux (le store contient la portée en cours ; un texte passé à `disabled` faisait planter)
+  const countersEditing = useStore((s) => !!s.countersEditing);
   const requestCountersExit = useStore((s) => s.requestCountersExit);
   const updateConsumption = useStore((s) => s.updateConsumption);
   const deleteConsumption = useStore((s) => s.deleteConsumption);
@@ -147,28 +148,21 @@ export default function SubstanceScreen() {
 
   return (
     <View style={styles.container}>
-      <Animated.View style={[styles.hero, { backgroundColor: heroFlashBg }]}>
-        <View style={[styles.heroIcon, { borderColor: substance.color }]}>
-          <SubstanceIcon iconId={substance.icon} size={20} color={substance.color} />
-        </View>
-        <Text style={styles.heroLabel}>Sobre depuis</Text>
-        <View style={styles.counterWrap}>
-          <LiveCounter
-            timestamp={lastTimestamp}
-            style={[styles.heroCounter, { color: substance.color }]}
-          />
-        </View>
-        <DateLine text={lastTimestamp ? rangeFR(lastTimestamp, null) : null} />
-        <ExtraCounters scope={substance.id} timestamps={consoTimestamps} color={substance.color} bleed={theme.spacing.lg} />
-      </Animated.View>
-
-      {/* 1.44 : pendant la réorganisation des compteurs, onglets ET contenu assombris et bloqués */}
-      <View style={[{ flex: 1 }, countersEditing && styles.dimmed]} pointerEvents={countersEditing ? 'none' : 'auto'}>
-      <View style={styles.tabs}>
-        <Tab label="Calendrier" active={activeTab === 'calendar'} onPress={() => { requestCountersExit(); setActiveTab('calendar'); }} />
-        <Tab label="Recherche" active={activeTab === 'history'} onPress={() => { requestCountersExit(); setActiveTab('history'); }} />
-        <Tab label="Stats" active={activeTab === 'stats'} onPress={() => { requestCountersExit(); setActiveTab('stats'); }} />
+      {/* 1.46 : même disposition que le global — onglets en haut, petit compteur dessous, puis l'onglet.
+          Pendant la réorganisation des compteurs (onglet Stats), onglets et petit compteur assombris. */}
+      <View style={[styles.tabs, countersEditing && styles.dimmed]} pointerEvents={countersEditing ? 'none' : 'auto'}>
+        <Tab label="Calendrier" active={activeTab === 'calendar'} onPress={() => setActiveTab('calendar')} />
+        <Tab label="Recherche" active={activeTab === 'history'} onPress={() => setActiveTab('history')} />
+        <Tab label="Stats" active={activeTab === 'stats'} onPress={() => setActiveTab('stats')} />
       </View>
+      <TopCounter
+        label="Sobre depuis"
+        timestamp={lastTimestamp}
+        color={substance.color}
+        iconId={substance.icon}
+        flashBg={heroFlashBg}
+        dimmed={countersEditing}
+      />
 
       {activeTab === 'calendar' && (
         <ScrollableCalendar
@@ -176,7 +170,6 @@ export default function SubstanceScreen() {
           showSoberFill={true}
           showJumpButtons={true}
           substanceColor={substance.color}
-          compactNav
           onDayPress={(dayKey, dayTimestamp) => setDayDetail({ dayKey, dayTimestamp })}
         />
       )}
@@ -192,7 +185,6 @@ export default function SubstanceScreen() {
           substanceId={substanceId}
         />
       )}
-      </View>
 
       <NotifWizard
         visible={notifOpen}

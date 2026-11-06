@@ -230,8 +230,17 @@ export default function StatsView({
     return max || null;
   }, [mode, consumptionsBySubstance]);
 
-  // 1.44 : seulement la réorganisation des compteurs du global concerne cette vue (mode global)
-  const countersEditing = useStore((st) => mode === 'global' && st.countersEditing === '__global');
+  // 1.46 : grand compteur + compteurs ajoutés dans l'onglet Stats des DEUX côtés (global et substance)
+  const heroScope = mode === 'global' ? '__global' : substanceId;
+  const countersEditing = useStore((st) => !!heroScope && st.countersEditing === heroScope);
+  const substanceTimestamps = useMemo(
+    () => (mode === 'substance' ? (consumptions || []).map((c) => c.timestamp) : []),
+    [mode, consumptions],
+  );
+  const lastSubstanceTimestamp = useMemo(
+    () => (substanceTimestamps.length ? Math.max(...substanceTimestamps) : null),
+    [substanceTimestamps],
+  );
   // 1.40 : toutes les prises (toutes substances) pour les compteurs ajoutés du global
   const globalTimestamps = useMemo(() => {
     if (mode !== 'global' || !consumptionsBySubstance) return [];
@@ -257,7 +266,7 @@ export default function StatsView({
   return (
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent} scrollEnabled={!countersEditing}>
 
-      {/* Hero jours sobres — mode global uniquement */}
+      {/* Grand compteur + compteurs ajoutés — global (« Sobre de tout ») et substance (1.46) */}
       {mode === 'global' && lastGlobalTimestamp !== null && (
         <View style={styles.globalHero}>
           <Text style={styles.globalHeroLabel}>Sobre de tout depuis</Text>
@@ -269,6 +278,18 @@ export default function StatsView({
           </View>
           <DateLine text={rangeFR(lastGlobalTimestamp, null)} />
           <ExtraCounters scope="__global" timestamps={globalTimestamps} color={theme.colors.text} />
+        </View>
+      )}
+      {mode === 'substance' && !!substanceId && (
+        <View style={styles.globalHero}>
+          <Text style={styles.globalHeroLabel}>Sobre depuis</Text>
+          <View style={styles.counterWrap}>
+            {lastSubstanceTimestamp
+              ? <LiveCounter timestamp={lastSubstanceTimestamp} style={[styles.globalHeroCounter, { color }]} />
+              : <Text style={[styles.globalHeroCounter, { color }]}>—</Text>}
+          </View>
+          <DateLine text={lastSubstanceTimestamp ? rangeFR(lastSubstanceTimestamp, null) : null} />
+          <ExtraCounters scope={substanceId} timestamps={substanceTimestamps} color={color} />
         </View>
       )}
 

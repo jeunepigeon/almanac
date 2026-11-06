@@ -13,6 +13,7 @@ import LogConsumptionModal from '../components/LogConsumptionModal';
 import StatsView from '../components/StatsView';
 import GlobalHistoryView from '../components/GlobalHistoryView';
 import ReorgBar from '../components/ReorgBar';
+import TopCounter from '../components/TopCounter';
 
 
 export default function GlobalCalendarPage() {
@@ -26,6 +27,11 @@ export default function GlobalCalendarPage() {
   const createConsumption = useStore((s) => s.createConsumption);
   const updateConsumption = useStore((s) => s.updateConsumption);
   const deleteConsumption = useStore((s) => s.deleteConsumption);
+  const lastTimestampsAll = useStore((s) => s.lastTimestamps);
+  const lastGlobalTs = useMemo(() => {
+    const vals = Object.values(lastTimestampsAll || {}).filter(Boolean);
+    return vals.length ? Math.max(...vals) : null;
+  }, [lastTimestampsAll]);
   const countersEditing = useStore((s) => s.countersEditing === '__global');
   // 1.44 : réorganisation des compteurs du global → pages verrouillées comme pour la liste
   const setPagerLocked = useStore((s) => s.setPagerLocked);
@@ -94,6 +100,8 @@ export default function GlobalCalendarPage() {
         <Tab label="Recherche" active={activeTab === 'history'} onPress={() => { requestCountersExit(); setActiveTab('history'); }} />
         <Tab label="Stats" active={activeTab === 'stats'} onPress={() => { requestCountersExit(); setActiveTab('stats'); }} />
       </View>
+      {/* 1.46 : petit compteur sous les onglets (même disposition que la page d'une substance) */}
+      <TopCounter label="Sobre de tout depuis" timestamp={lastGlobalTs} dimmed={countersEditing} />
 
       {activeTab === 'calendar' && (
         <View style={{ flex: 1 }}>
@@ -140,8 +148,6 @@ export default function GlobalCalendarPage() {
             substancesById={substancesById}
             navigation={navigation}
           />
-          {/* 1.43 : barre de réorganisation des compteurs, sous les onglets (qui restent actifs) */}
-          {countersEditing && <ReorgBar onDone={requestCountersExit} />}
         </View>
       )}
 
@@ -227,6 +233,8 @@ export default function GlobalCalendarPage() {
           setPickerForDay(null);
         }}
       />
+      {/* 1.46 : barre de réorganisation par-dessus les onglets (comme la page d'une substance) */}
+      {countersEditing && <ReorgBar onDone={requestCountersExit} />}
     </View>
   );
 }

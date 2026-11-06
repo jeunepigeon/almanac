@@ -25,7 +25,9 @@ export default function SubstanceSelectModal({
   onConfirm,
   onCancel,
   minSelected = 1, // 1.44 : ex. 2 pour un bandeau personnalisé
+  minHint = null,   // 1.46 : ligne d'info (place toujours réservée) tant que le minimum n'est pas atteint
 }) {
+  const [minAlert, setMinAlert] = useState(false); // tap sur le bouton encore gris → info en rouge
   const [selected, setSelected] = useState({});
   const [name, setName] = useState('');
 
@@ -36,9 +38,10 @@ export default function SubstanceSelectModal({
     for (const s of substances) sel[s.id] = defaultIds.includes(s.id);
     setSelected(sel);
     setName('');
+    setMinAlert(false);
   }, [visible, substances, initialSelectedIds]);
 
-  const toggleSub = (id) => setSelected((p) => ({ ...p, [id]: !p[id] }));
+  const toggleSub = (id) => { setMinAlert(false); setSelected((p) => ({ ...p, [id]: !p[id] })); };
   const allSelected = substances.length > 0 && substances.every((s) => selected[s.id]);
   const selectedCount = substances.filter((s) => selected[s.id]).length;
   const noneSelected = selectedCount < minSelected; // 1.44 : bouton gris tant que le minimum n'est pas atteint
@@ -49,6 +52,7 @@ export default function SubstanceSelectModal({
   };
 
   const handleConfirm = () => {
+    if (selectedCount < minSelected) { haptics.error(); setMinAlert(true); return; }
     const ids = substances.filter((s) => selected[s.id]).map((s) => s.id);
     onConfirm?.(ids, name);
   };
@@ -100,12 +104,19 @@ export default function SubstanceSelectModal({
           </ScrollView>
 
           {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+          {/* 1.46 : info du minimum, place réservée (rien ne bouge quand elle s'efface) ;
+              rouge + vibration si on touche le bouton encore gris (comme l'export) */}
+          {minHint ? (
+            <Text style={[styles.minHint, minAlert && styles.minHintAlert, !noneSelected && { opacity: 0 }]}>
+              {minHint}
+            </Text>
+          ) : null}
 
           <View style={styles.actions}>
             <TouchableOpacity onPress={onCancel}>
               <Text style={styles.cancelText}>{cancelLabel}</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={handleConfirm} disabled={noneSelected}>
+            <TouchableOpacity onPress={handleConfirm} disabled={noneSelected && !minHint}>
               <Text style={[styles.confirmText, noneSelected && { opacity: 0.4 }]}>
                 {confirmLabel}
               </Text>
@@ -174,6 +185,11 @@ const styles = StyleSheet.create({
     color: theme.colors.textFaint, fontSize: theme.font.sizes.xs,
     fontStyle: 'italic', marginTop: theme.spacing.md, textAlign: 'center',
   },
+  minHint: {
+    color: theme.colors.textMuted, fontSize: theme.font.sizes.xs,
+    marginTop: theme.spacing.sm, textAlign: 'center',
+  },
+  minHintAlert: { color: theme.colors.danger },
   actions: {
     flexDirection: 'row', justifyContent: 'flex-end',
     gap: theme.spacing.lg, marginTop: theme.spacing.md,
