@@ -63,14 +63,31 @@ export default function SubstanceScreen() {
   useEffect(() => {
     navigation.setOptions({
       title: substance?.name ?? 'Substance',
+      // 1.44 : compteurs en réorganisation → flèche retour et cloche assombries et inactives
+      headerTintColor: countersEditing ? theme.colors.textFaint : theme.colors.text,
+      gestureEnabled: !countersEditing,
       // Cloche à la couleur de la substance : notifications de CETTE substance (sélection sautée)
       headerRight: () => (substance ? (
-        <TouchableOpacity onPress={() => setNotifOpen(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity
+          onPress={() => setNotifOpen(true)}
+          disabled={countersEditing}
+          style={countersEditing && { opacity: 0.25 }}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
           <MaterialCommunityIcons name={hasSubNotif ? 'bell' : 'bell-outline'} size={20} color={substance.color} />
         </TouchableOpacity>
       ) : null),
     });
-  }, [navigation, substance, hasSubNotif]);
+  }, [navigation, substance, hasSubNotif, countersEditing]);
+
+  // 1.44 : impossible de quitter la page pendant la réorganisation des compteurs (flèche retour de
+  // l'en-tête bloquée ; le retour Android, lui, fait sortir de la réorganisation)
+  useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', (e) => {
+      if (useStore.getState().countersEditing) e.preventDefault();
+    });
+    return unsub;
+  }, [navigation]);
 
   // 1.37 — Tap sur une notification de CETTE substance : flash du bloc « Sobre depuis » (même flash
   // que partout, dans la couleur de la substance), une fois l'app visible et la page arrivée.
@@ -145,14 +162,13 @@ export default function SubstanceScreen() {
         <ExtraCounters scope={substance.id} timestamps={consoTimestamps} color={substance.color} bleed={theme.spacing.lg} />
       </Animated.View>
 
-      {/* Changer d'onglet fait sortir de la réorganisation des compteurs (1.43) */}
+      {/* 1.44 : pendant la réorganisation des compteurs, onglets ET contenu assombris et bloqués */}
+      <View style={[{ flex: 1 }, countersEditing && styles.dimmed]} pointerEvents={countersEditing ? 'none' : 'auto'}>
       <View style={styles.tabs}>
         <Tab label="Calendrier" active={activeTab === 'calendar'} onPress={() => { requestCountersExit(); setActiveTab('calendar'); }} />
         <Tab label="Recherche" active={activeTab === 'history'} onPress={() => { requestCountersExit(); setActiveTab('history'); }} />
         <Tab label="Stats" active={activeTab === 'stats'} onPress={() => { requestCountersExit(); setActiveTab('stats'); }} />
       </View>
-
-      <View style={[{ flex: 1 }, countersEditing && styles.dimmed]} pointerEvents={countersEditing ? 'none' : 'auto'}>
 
       {activeTab === 'calendar' && (
         <ScrollableCalendar
@@ -160,11 +176,12 @@ export default function SubstanceScreen() {
           showSoberFill={true}
           showJumpButtons={true}
           substanceColor={substance.color}
+          compactNav
           onDayPress={(dayKey, dayTimestamp) => setDayDetail({ dayKey, dayTimestamp })}
         />
       )}
       {activeTab === 'history' && (
-        <HistoryList consumptions={consumptions} color={substance.color} onEdit={(c) => setEditing(c)} onDelete={(c) => setPendingDelete(c)} />
+        <HistoryList consumptions={consumptions} color={substance.color} onOpenDay={(c) => setDayDetail({ dayTimestamp: c.timestamp, dayKey: dayKeyOf(c.timestamp) })} />
       )}
       {activeTab === 'stats' && (
         <StatsView
@@ -257,7 +274,7 @@ function Tab({ label, active, onPress }) {
   );
 }
 
-function HistoryList({ consumptions, color, onEdit, onDelete }) {
+function HistoryList({ consumptions, color, onOpenDay }) {
   const grouped = useMemo(() => {
     if (!consumptions) return null;
     const map = new Map();
@@ -294,7 +311,7 @@ function HistoryList({ consumptions, color, onEdit, onDelete }) {
         <View>
           <Text style={styles.dayHeader}>{formatDateLong(item.dayTs)}</Text>
           {item.items.map((c) => (
-            <ConsumptionRow key={c.id} consumption={c} color={color} onEdit={() => onEdit(c)} onDelete={() => onDelete(c)} />
+            <ConsumptionRow key={c.id} consumption={c} color={color} onPress={() => onOpenDay(c)} />
           ))}
         </View>
       )}
@@ -302,10 +319,10 @@ function HistoryList({ consumptions, color, onEdit, onDelete }) {
   );
 }
 
-// 1.43 : comme les cartes du jour — la ligne ne réagit plus au tap ; crayon et poubelle à droite
-function ConsumptionRow({ consumption, color, onEdit, onDelete }) {
+// 1.44 : la ligne (ou son chevron) ouvre la carte du jour de cette prise
+function ConsumptionRow({ consumption, color, onPress }) {
   return (
-    <View style={styles.consoRow}>
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.consoRow, pressed && styles.consoRowPressed]}>
       <View style={[styles.consoBullet, { backgroundColor: color }]} />
       <View style={styles.consoMiddle}>
         <Text style={styles.consoTime}>{formatTime(consumption.timestamp)}</Text>
@@ -317,15 +334,8 @@ function ConsumptionRow({ consumption, color, onEdit, onDelete }) {
         {consumption.notes ? <Text style={styles.consoNotes} numberOfLines={2}>{consumption.notes}</Text> : null}
       </View>
       <LiveCounter timestamp={consumption.timestamp} style={styles.consoTimeAgo} />
-      <View style={styles.consoTools}>
-        <TouchableOpacity onPress={onEdit} hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
-          <MaterialCommunityIcons name="pencil-outline" size={20} color={theme.colors.textMuted} />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={onDelete} hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
-          <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.danger} />
-        </TouchableOpacity>
-      </View>
-    </View>
+      <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.textMuted} />
+    </Pressable>
   );
 }
 
@@ -342,7 +352,7 @@ const styles = StyleSheet.create({
   notFound: { color: theme.colors.textMuted, textAlign: 'center', marginTop: theme.spacing.xl },
   // 1.42 : le dernier séparateur des compteurs (avec la pilule « + ») sert de bordure basse
   hero: {
-    alignItems: 'center', paddingTop: theme.spacing.md, paddingHorizontal: theme.spacing.lg,
+    alignItems: 'center', paddingTop: theme.spacing.sm, paddingHorizontal: theme.spacing.lg,
   },
   // 1.43 : compteurs en réorganisation → le reste de la page est assombri et figé
   dimmed: { opacity: 0.25 },

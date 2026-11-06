@@ -230,7 +230,8 @@ export default function StatsView({
     return max || null;
   }, [mode, consumptionsBySubstance]);
 
-  const countersEditing = useStore((st) => st.countersEditing);
+  // 1.44 : seulement la réorganisation des compteurs du global concerne cette vue (mode global)
+  const countersEditing = useStore((st) => mode === 'global' && st.countersEditing === '__global');
   // 1.40 : toutes les prises (toutes substances) pour les compteurs ajoutés du global
   const globalTimestamps = useMemo(() => {
     if (mode !== 'global' || !consumptionsBySubstance) return [];

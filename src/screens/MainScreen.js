@@ -61,9 +61,8 @@ export default function MainScreen() {
 
         <View style={styles.headerCenter}>
           {titles.map((t, i) => {
-            // Dim 'Global' en mode réorg, 'Substances' reste normal
-            const isGlobal = i === 1;
-            const dim = pagerLocked && isGlobal;
+            // Réorganisation en cours : la page affichée reste normale, l'autre est assombrie (1.44)
+            const dim = pagerLocked && i !== page;
             return (
               <TouchableOpacity
                 key={t}

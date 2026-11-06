@@ -100,7 +100,12 @@ export default function SubstanceFormModal({
     icon: 'Enregistrer',
   };
 
-  const canSubmit = !showName || name.trim().length > 0;
+  // 1.44 : en modification, le bouton reste gris tant que rien n'a changé
+  const changed = mode === 'create' || !initial
+    || (showName && name.trim() !== (initial.name || ''))
+    || (showColor && colorIndex !== Math.max(0, theme.substanceColors.indexOf(initial.color)))
+    || (showIcon && iconId !== (initial.icon ?? DEFAULT_ICON_ID));
+  const canSubmit = (!showName || name.trim().length > 0) && changed;
 
   const handleSubmit = () => {
     if (!canSubmit) return;

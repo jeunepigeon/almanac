@@ -750,6 +750,7 @@ export default function SubstancesPage() {
         intro="Substances du bandeau (au moins 2)."
         hint={customHint}
         substances={substances}
+        minSelected={2}
         statsById={subStats}
         initialSelectedIds={customFlow?.step === 'subs' ? customFlow.subIds : EMPTY_IDS}
         confirmLabel={customFlow?.id ? 'Enregistrer' : 'Suivant'}

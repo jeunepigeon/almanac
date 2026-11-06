@@ -26,7 +26,14 @@ export default function GlobalCalendarPage() {
   const createConsumption = useStore((s) => s.createConsumption);
   const updateConsumption = useStore((s) => s.updateConsumption);
   const deleteConsumption = useStore((s) => s.deleteConsumption);
-  const countersEditing = useStore((s) => s.countersEditing);
+  const countersEditing = useStore((s) => s.countersEditing === '__global');
+  // 1.44 : réorganisation des compteurs du global → pages verrouillées comme pour la liste
+  const setPagerLocked = useStore((s) => s.setPagerLocked);
+  useEffect(() => {
+    if (!countersEditing) return undefined;
+    setPagerLocked(true);
+    return () => setPagerLocked(false);
+  }, [countersEditing]); // eslint-disable-line
   const requestCountersExit = useStore((s) => s.requestCountersExit);
 
   const [activeTab, setActiveTab] = useState('calendar');
@@ -82,7 +89,7 @@ export default function GlobalCalendarPage() {
 
   return (
     <View style={styles.container}>
-      <View style={styles.tabs}>
+      <View style={[styles.tabs, countersEditing && { opacity: 0.25 }]} pointerEvents={countersEditing ? 'none' : 'auto'}>
         <Tab label="Calendrier" active={activeTab === 'calendar'} onPress={() => { requestCountersExit(); setActiveTab('calendar'); }} />
         <Tab label="Recherche" active={activeTab === 'history'} onPress={() => { requestCountersExit(); setActiveTab('history'); }} />
         <Tab label="Stats" active={activeTab === 'stats'} onPress={() => { requestCountersExit(); setActiveTab('stats'); }} />

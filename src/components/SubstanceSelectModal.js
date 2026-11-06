@@ -24,6 +24,7 @@ export default function SubstanceSelectModal({
   nameHint = null,
   onConfirm,
   onCancel,
+  minSelected = 1, // 1.44 : ex. 2 pour un bandeau personnalisé
 }) {
   const [selected, setSelected] = useState({});
   const [name, setName] = useState('');
@@ -39,7 +40,8 @@ export default function SubstanceSelectModal({
 
   const toggleSub = (id) => setSelected((p) => ({ ...p, [id]: !p[id] }));
   const allSelected = substances.length > 0 && substances.every((s) => selected[s.id]);
-  const noneSelected = substances.length > 0 && substances.every((s) => !selected[s.id]);
+  const selectedCount = substances.filter((s) => selected[s.id]).length;
+  const noneSelected = selectedCount < minSelected; // 1.44 : bouton gris tant que le minimum n'est pas atteint
   const toggleAll = () => {
     haptics.light();
     const next = {}; for (const s of substances) next[s.id] = !allSelected;

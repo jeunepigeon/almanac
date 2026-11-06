@@ -217,7 +217,11 @@ export default function ScrollableCalendar({
   showSoberFill = false,
   showJumpButtons = false,
   substanceColor = null,
+  compactNav = false, // 1.45 : boutons de navigation −15 % (calendrier d'une substance)
 }) {
+  const nk = compactNav ? 0.85 : 1;
+  const ns = (v) => Math.round(v * nk);
+  const navBtnSize = { width: ns(36), height: ns(36) };
   const now = new Date();
   const currentMonth = now.getMonth();
   const currentYear = now.getFullYear();
@@ -520,22 +524,22 @@ export default function ScrollableCalendar({
         {/* Chevron haut : mois précédent */}
         <TouchableOpacity
           onPress={goPrev}
-          style={styles.navBtn}
+          style={[styles.navBtn, navBtnSize]}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Ionicons name="chevron-up" size={20} color={canGoPrev ? theme.colors.text : theme.colors.textFaint} />
+          <Ionicons name="chevron-up" size={ns(20)} color={canGoPrev ? theme.colors.text : theme.colors.textFaint} />
         </TouchableOpacity>
 
         {/* Chevron + point : prise précédente (uniquement calendrier substance) */}
         {showJumpButtons && (
           <TouchableOpacity
             onPress={goPrevLog}
-            style={styles.navBtn}
+            style={[styles.navBtn, navBtnSize]}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <View style={{ alignItems: 'center' }}>
-              <View style={[styles.jumpDot, { backgroundColor: canGoPrevLog ? theme.colors.text : theme.colors.textFaint }]} />
-              <Ionicons name="chevron-up" size={16} color={canGoPrevLog ? theme.colors.text : theme.colors.textFaint} style={{ marginTop: 0 }} />
+              <View style={[styles.jumpDot, compactNav && styles.jumpDotSmall, { backgroundColor: canGoPrevLog ? theme.colors.text : theme.colors.textFaint }]} />
+              <Ionicons name="chevron-up" size={ns(16)} color={canGoPrevLog ? theme.colors.text : theme.colors.textFaint} style={{ marginTop: 0 }} />
             </View>
           </TouchableOpacity>
         )}
@@ -543,23 +547,23 @@ export default function ScrollableCalendar({
         {/* Double chevron bas : aller à aujourd'hui */}
         <TouchableOpacity
           onPress={goToday}
-          style={styles.todayBtn}
+          style={[styles.todayBtn, { width: ns(44), height: ns(36) }]}
           activeOpacity={0.7}
         >
-          <Ionicons name="chevron-down" size={12} color={canGoToday ? '#01C853' : theme.colors.textFaint} />
-          <Ionicons name="chevron-down" size={12} color={canGoToday ? '#01C853' : theme.colors.textFaint} style={{ marginTop: -6 }} />
+          <Ionicons name="chevron-down" size={ns(12)} color={canGoToday ? '#01C853' : theme.colors.textFaint} />
+          <Ionicons name="chevron-down" size={ns(12)} color={canGoToday ? '#01C853' : theme.colors.textFaint} style={{ marginTop: -ns(6) }} />
         </TouchableOpacity>
 
         {/* Chevron + point : prise suivante (uniquement calendrier substance) */}
         {showJumpButtons && (
           <TouchableOpacity
             onPress={goNextLog}
-            style={styles.navBtn}
+            style={[styles.navBtn, navBtnSize]}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <View style={{ alignItems: 'center' }}>
-              <Ionicons name="chevron-down" size={16} color={canGoNextLog ? theme.colors.text : theme.colors.textFaint} />
-              <View style={[styles.jumpDot, { backgroundColor: canGoNextLog ? theme.colors.text : theme.colors.textFaint, marginTop: 0 }]} />
+              <Ionicons name="chevron-down" size={ns(16)} color={canGoNextLog ? theme.colors.text : theme.colors.textFaint} />
+              <View style={[styles.jumpDot, compactNav && styles.jumpDotSmall, { backgroundColor: canGoNextLog ? theme.colors.text : theme.colors.textFaint, marginTop: 0 }]} />
             </View>
           </TouchableOpacity>
         )}
@@ -567,10 +571,10 @@ export default function ScrollableCalendar({
         {/* Chevron bas : mois suivant */}
         <TouchableOpacity
           onPress={goNext}
-          style={styles.navBtn}
+          style={[styles.navBtn, navBtnSize]}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Ionicons name="chevron-down" size={20} color={canGoNext ? theme.colors.text : theme.colors.textFaint} />
+          <Ionicons name="chevron-down" size={ns(20)} color={canGoNext ? theme.colors.text : theme.colors.textFaint} />
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -579,11 +583,11 @@ export default function ScrollableCalendar({
             const { x, y, width, height } = e.nativeEvent.layout;
             setDropdownLayout({ x, y, width, height });
           }}
-          style={styles.dropdown}
+          style={[styles.dropdown, compactNav && { paddingVertical: ns(8), height: ns(36) }]}
           activeOpacity={0.7}
         >
-          <Text style={styles.dropdownText}>{visibleLabel}</Text>
-          <Ionicons name="chevron-down" size={16} color={theme.colors.textMuted} />
+          <Text style={[styles.dropdownText, compactNav && { fontSize: 11 }]}>{visibleLabel}</Text>
+          <Ionicons name="chevron-down" size={ns(16)} color={theme.colors.textMuted} />
         </TouchableOpacity>
       </View>
 
@@ -689,6 +693,7 @@ const styles = StyleSheet.create({
   },
   // Point à côté du chevron pour "prise précédente/suivante" (A1 collé)
   jumpDot: { width: 5, height: 5, borderRadius: 2.5 },
+  jumpDotSmall: { width: 4, height: 4, borderRadius: 2 },
   btnDisabled: { opacity: 0.4 },
   todayBtn: {
     width: 44, height: 36, justifyContent: 'center', alignItems: 'center',

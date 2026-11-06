@@ -27,6 +27,8 @@ const DEFS = [
   { id: 'record', label: 'Plus longue période sobre' },
 ];
 const LONG_PRESS_MS = 400;     // = liste
+const SEP_H = 12;
+const SEP_MID = SEP_H / 2;     // ligne du séparateur, au milieu de sa zone
 const PICKUP_SCALE = 1.06;     // = liste
 const PICKUP_OPACITY = 0.92;   // = liste
 
@@ -93,7 +95,7 @@ export default function ExtraCounters({ scope, timestamps, color = theme.colors.
   }, [enabled]);
 
   // --- entrée / sortie du mode ---
-  useEffect(() => { setCountersEditing(editing); }, [editing]); // eslint-disable-line
+  useEffect(() => { setCountersEditing(editing ? scope : false); }, [editing]); // eslint-disable-line
   useEffect(() => () => setCountersEditing(false), []); // eslint-disable-line
   const firstTick = useRef(exitTick);
   useEffect(() => { if (exitTick !== firstTick.current) setEditing(false); }, [exitTick]);
@@ -145,12 +147,22 @@ export default function ExtraCounters({ scope, timestamps, color = theme.colors.
       Animated.timing(shiftOf(id), { toValue: to, duration: 140, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
     });
   };
+  const listH = useRef(0);
+  const [bound, setBoundState] = useState(null); // 'top' | 'bottom' | null — butée atteinte
+  const boundRef = useRef(null);
+  const setBound = (b) => { if (b !== boundRef.current) { if (b) haptics.medium(); boundRef.current = b; setBoundState(b); } };
   const handlers = {
-    start: (from) => { haptics.medium(); dy.setValue(0); const d = { from, target: from }; setDrag(d); applyShifts(d); },
-    move: (ty) => {
-      dy.setValue(ty);
+    start: (from) => { haptics.medium(); dy.setValue(0); setBound(null); const d = { from, target: from }; setDrag(d); applyShifts(d); },
+    move: (rawTy) => {
       const d = dragRef.current;
       if (!d) return;
+      // 1.44 : butées comme dans la liste — le compteur saisi ne sort pas de la zone des compteurs
+      const l0 = layout.current[d.from] || { y: 0, h: hOf(d.from) };
+      const minTy = -l0.y;
+      const maxTy = Math.max(0, listH.current - (l0.y + l0.h));
+      const ty = Math.max(minTy, Math.min(maxTy, rawTy));
+      setBound(rawTy < minTy - 6 ? 'top' : rawTy > maxTy + 6 ? 'bottom' : null);
+      dy.setValue(ty);
       // place visée : d'après le centre du compteur saisi
       const center = (layout.current[d.from]?.y || 0) + hOf(d.from) / 2 + ty;
       // nombre d'autres compteurs dont le milieu est au-dessus du doigt = nouvelle place
@@ -169,29 +181,27 @@ export default function ExtraCounters({ scope, timestamps, color = theme.colors.
         setOrder(scope, list);
       }
       setDrag(null);
+      setBound(null);
       dy.setValue(0);
       enabled.forEach((id) => shiftOf(id).setValue(0));
     },
   };
   // Barre blanche posée sur le séparateur visé (même formule que la liste)
   let barTop = null;
-  if (drag && drag.target !== drag.from) {
+  if (drag && bound) barTop = bound === 'top' ? SEP_MID : listH.current + SEP_MID;
+  else if (drag && drag.target !== drag.from) {
     const l = layout.current[drag.target];
-    if (l) barTop = drag.target < drag.from ? l.y : l.y + hOf(drag.from);
+    if (l) barTop = drag.target < drag.from ? l.y + SEP_MID : l.y + l.h - hOf(drag.from) + SEP_MID;
   }
 
   const openPicker = () => { haptics.light(); setOpen(true); };
 
   return (
     <View style={[styles.wrap, bleed ? { marginHorizontal: -bleed } : null]}>
-      {/* Séparateur sous le compteur principal ; sans compteur ajouté, la pilule est posée dessus */}
-      <View style={styles.sepWrap}>
-        <View style={styles.sep} />
-        {enabled.length === 0 && <Pill onPress={openPicker} />}
-      </View>
-      <View style={styles.listArea}>
+      {/* 1.44 : chaque compteur porte le séparateur AU-DESSUS de lui (il glisse avec) ; le dernier
+          séparateur, avec la pilule « + », est FIXE (il ne part plus avec le compteur du bas) */}
+      <View style={styles.listArea} onLayout={(e) => { listH.current = e.nativeEvent.layout.height; }}>
         {enabled.map((id, i) => (
-          // Le bloc (compteur + son séparateur) glisse en entier, comme une ligne de la liste
           <Animated.View
             key={id}
             style={{
@@ -201,6 +211,7 @@ export default function ExtraCounters({ scope, timestamps, color = theme.colors.
             }}
             onLayout={(e) => { const { y, height } = e.nativeEvent.layout; layout.current[i] = { y, h: height }; }}
           >
+            <View style={styles.sepWrap}><View style={styles.sep} /></View>
             {editing ? (
               <ActiveItem
                 index={i}
@@ -220,13 +231,13 @@ export default function ExtraCounters({ scope, timestamps, color = theme.colors.
                 {content(id)}
               </Pressable>
             )}
-            <View style={styles.sepWrap}>
-              <View style={styles.sep} />
-              {i === enabled.length - 1 && <Pill onPress={openPicker} />}
-            </View>
           </Animated.View>
         ))}
-        {barTop != null && <View pointerEvents="none" style={[styles.indicatorBar, { top: barTop - 1 }]} />}
+        {barTop != null && <View pointerEvents="none" style={[styles.indicatorBar, { top: barTop - 0.5 }]} />}
+      </View>
+      <View style={styles.sepWrap}>
+        <View style={styles.sep} />
+        <Pill onPress={openPicker} />
       </View>
       <ToggleListModal
         visible={open}
@@ -241,8 +252,8 @@ export default function ExtraCounters({ scope, timestamps, color = theme.colors.
 
 const styles = StyleSheet.create({
   wrap: { alignItems: 'center', alignSelf: 'stretch', marginTop: theme.spacing.sm },
-  listArea: { alignSelf: 'stretch', position: 'relative' },
-  sepWrap: { alignSelf: 'stretch', height: 12, justifyContent: 'center' },
+  listArea: { alignSelf: 'stretch', position: 'relative', overflow: 'visible' },
+  sepWrap: { alignSelf: 'stretch', height: SEP_H, justifyContent: 'center' },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border, alignSelf: 'stretch' },
   itemRow: { alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.background },
   grab: { flex: 1 },

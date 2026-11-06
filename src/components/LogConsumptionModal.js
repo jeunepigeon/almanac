@@ -50,6 +50,11 @@ export default function LogConsumptionModal({
   }, [visible, initial, prefilledDate, mode]);
 
   const isLocked = mode === 'edit' && editLocked;
+  // 1.44 : en modification, « Valider » / « Enregistrer » reste gris tant que rien n'a changé
+  const changed = mode !== 'edit' || !initial
+    || Math.floor(date.getTime() / 60000) !== Math.floor(initial.timestamp / 60000)
+    || dosage.trim() !== (initial.dosage != null ? String(initial.dosage) : '')
+    || notes.trim() !== (initial.notes ?? '').trim();
 
   const handleDateChange = (_e, selectedDate) => {
     if (Platform.OS === 'android') setShowDatePicker(false);
@@ -196,8 +201,8 @@ export default function LogConsumptionModal({
                       <Text style={styles.actionPrimary}>Modifier</Text>
                     </TouchableOpacity>
                   ) : (
-                    <TouchableOpacity onPress={handleSubmit} style={styles.actionBtn}>
-                      <Text style={styles.actionPrimary}>{directEdit ? 'Valider' : 'Enregistrer'}</Text>
+                    <TouchableOpacity onPress={handleSubmit} style={styles.actionBtn} disabled={!changed}>
+                      <Text style={[styles.actionPrimary, !changed && { color: theme.colors.textFaint }]}>{directEdit ? 'Valider' : 'Enregistrer'}</Text>
                     </TouchableOpacity>
                   )
                 ) : (
