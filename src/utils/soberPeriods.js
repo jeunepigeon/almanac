@@ -21,10 +21,11 @@ export function shortDateFR(ts, withYear) {
   const d = new Date(ts);
   return `${d.getDate()} ${MONTHS[d.getMonth()]}${withYear ? ` ${d.getFullYear()}` : ''}`;
 }
-// « du 3 sept. au 21 oct. » — l'année n'apparaît que si une des dates n'est pas de cette année
+// « du 3 sept. au 21 oct. » / « du 21 oct. à aujourd'hui » — l'année n'apparaît que si une des
+// dates n'est pas de cette année
 export function rangeFR(start, end) {
   const y = new Date().getFullYear();
   const withYear = new Date(start).getFullYear() !== y || (end != null && new Date(end).getFullYear() !== y);
-  if (end == null) return `depuis le ${shortDateFR(start, withYear)}`;
+  if (end == null) return `du ${shortDateFR(start, withYear)} à aujourd'hui`; // 1.41
   return `du ${shortDateFR(start, withYear)} au ${shortDateFR(end, withYear)}`;
 }

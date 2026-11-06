@@ -12,6 +12,8 @@ import SubstanceIcon from '../components/SubstanceIcon';
 import { formatDateLong, formatTime } from '../utils/dates';
 import LiveCounter from '../components/LiveCounter';
 import ExtraCounters from '../components/ExtraCounters';
+import { DateLine } from '../components/Banners';
+import { rangeFR } from '../utils/soberPeriods';
 import LogConsumptionModal from '../components/LogConsumptionModal';
 import ConfirmModal from '../components/ConfirmModal';
 import ScrollableCalendar from '../components/ScrollableCalendar';
@@ -136,6 +138,7 @@ export default function SubstanceScreen() {
             style={[styles.heroCounter, { color: substance.color }]}
           />
         </View>
+        <DateLine text={lastTimestamp ? rangeFR(lastTimestamp, null) : null} />
         <ExtraCounters scope={substance.id} timestamps={consoTimestamps} color={substance.color} />
       </Animated.View>
 

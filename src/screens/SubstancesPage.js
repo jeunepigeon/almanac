@@ -18,88 +18,23 @@ import ConfirmModal from '../components/ConfirmModal';
 import ReorderList, { WiggleContent } from '../components/ReorderList';
 import ToggleListModal from '../components/ToggleListModal';
 import NotifWizard from '../components/NotifWizard';
+import SubstanceSelectModal from '../components/SubstanceSelectModal';
+import CustomBannerNameModal from '../components/CustomBannerNameModal';
+import {
+  SobreBanner, CounterBanner, RecordBanner, Last24Banner, BANNER_HEIGHT, FADE_MS,
+} from '../components/Banners';
+import { toastNotifOn, ensureNotifPermission } from '../utils/notifications';
 import haptics from '../utils/haptics';
 
 const ROW_HEIGHT = 68; // doit matcher le style de SubstanceRow (padding + content)
-const BANNER_HEIGHT = 102; // bandeau par couleur (≈ hauteur du bandeau « Sobre de tout »)
 const SPACER_HEIGHT = 16;  // espace entre bandeaux et substances (pilule « + » posée sur le séparateur)
 let lastHandledNotifTick = 0;
-const FADE_MS = 450;     // fondu d'un bandeau supprimé
 const COLLAPSE_MS = 260; // puis la place se referme en douceur (le séparateur glisse au lieu de sauter)
+const EMPTY_IDS = [];
 const PILL_HALF = 6;       // demi-hauteur de la pilule (1.25 : plus basse et plus longue)
 
 // Flash des bandeaux et des lignes : utils/flash.js (1.36 : identique partout, calendrier compris)
 const traceAnim = (label) => () => useStore.getState().traceNotif('animation lancée', label);
-
-// 1.40 — Cloche à gauche d'un bandeau : notifications de paliers de CE bandeau (vide / pleine)
-function BannerBell({ color, active, onPress }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={styles.bannerBell} hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}>
-      <MaterialCommunityIcons name={active ? 'bell' : 'bell-outline'} size={18} color={color} />
-    </TouchableOpacity>
-  );
-}
-
-// Bannière "Sobre de tout depuis". Clic → scroll vers la dernière substance consommée + flash.
-// 1.40 : activable comme les autres bandeaux, toujours en haut ; cloche à gauche, poubelle en réorganisation.
-function SobreBanner({ lastGlobalTimestamp, onPress, flashTick, inReorder, onDelete, hasNotif, onBell }) {
-  const flashBg = useFlashBackground(flashTick, '#FFFFFF', traceAnim('sobre de tout'));
-  return (
-    <Pressable onPress={onPress} style={styles.bannerPress}>
-      <Animated.View style={[styles.banner, { backgroundColor: flashBg }]}>
-        {!inReorder && <BannerBell color={theme.colors.textMuted} active={hasNotif} onPress={onBell} />}
-        {inReorder && (
-          <TouchableOpacity onPress={onDelete} style={styles.bannerTrash} hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}>
-            <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.danger} />
-          </TouchableOpacity>
-        )}
-        <Text style={styles.bannerLabel}>SOBRE DE TOUT DEPUIS</Text>
-        {lastGlobalTimestamp ? (
-          <View style={styles.bannerCounterWrap}>
-            <LiveCounter timestamp={lastGlobalTimestamp} style={styles.bannerCounter} />
-          </View>
-        ) : (
-          <>
-            <Text style={styles.bannerCounter}>—</Text>
-            <Text style={styles.bannerEmptyHint}>renseignez votre première consommation</Text>
-          </>
-        )}
-      </Animated.View>
-    </Pressable>
-  );
-}
-
-// Bandeau « Sobre depuis » d'une couleur : libellé + compteur dans la couleur.
-// En réorganisation : seuls libellé et compteur vibrent ; poubelle fixe à droite.
-function ColorBanner({ color, lastTimestamp, inReorder, isWiggling, phase, onDelete, flashTick, fading, hasNotif, onBell }) {
-  // Bandeau supprimé (catégorie dissoute ou poubelle) : fondu avant de disparaître
-  const fade = useRef(new Animated.Value(1)).current;
-  const flashBg = useFlashBackground(flashTick, color, traceAnim(`bandeau ${color}`));
-  useEffect(() => {
-    if (fading) Animated.timing(fade, { toValue: 0, duration: FADE_MS, useNativeDriver: true }).start();
-    else fade.setValue(1);
-  }, [fading, fade]);
-  return (
-    <Animated.View style={[styles.colorBanner, { opacity: fade, backgroundColor: flashBg }]} pointerEvents={fading ? 'none' : 'auto'}>
-      <WiggleContent isWiggling={!!isWiggling} phase={phase || 0} style={styles.colorBannerContent}>
-        <Text style={[styles.bannerLabel, { color }]}>SOBRE DEPUIS</Text>
-        <View style={styles.bannerCounterWrap}>
-          {lastTimestamp ? (
-            <LiveCounter timestamp={lastTimestamp} style={[styles.bannerCounter, { color }]} />
-          ) : (
-            <Text style={[styles.bannerCounter, { color }]}>—</Text>
-          )}
-        </View>
-      </WiggleContent>
-      {!inReorder && !fading && <BannerBell color={color} active={hasNotif} onPress={onBell} />}
-      {inReorder && (
-        <TouchableOpacity onPress={onDelete} style={styles.bannerTrash} hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}>
-          <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.danger} />
-        </TouchableOpacity>
-      )}
-    </Animated.View>
-  );
-}
 
 // Ligne de substance.
 //  - Normal : icône · nom · compteur (plus de bouton ⋯ : place pour un long nom et du vide).
@@ -179,6 +114,36 @@ export default function SubstancesPage() {
   const notifRules = useStore((s) => s.notifRules);
   const [bannerNotif, setBannerNotif] = useState(null); // { target: 'all' | 'color', key } — cloche d'un bandeau
   const notifCountOf = (target, key = null) => notifRules.filter((r) => r.target === target && (r.key || null) === key).length;
+  // 1.41 — bandeaux personnalisés / record / 24 h
+  const customBanners = useStore((s) => s.customBanners);
+  const createCustomBanner = useStore((s) => s.createCustomBanner);
+  const updateCustomBanner = useStore((s) => s.updateCustomBanner);
+  const deleteCustomBanner = useStore((s) => s.deleteCustomBanner);
+  // Création / modification d'un bandeau personnalisé : { step: 'subs' | 'name', id?, subIds, name }
+  const [customFlow, setCustomFlow] = useState(null);
+  const [customHint, setCustomHint] = useState(null);
+  const [customActions, setCustomActions] = useState(null); // bandeau dont on ouvre le crayon
+  const consumptionsBySubstance = useStore((s) => s.consumptionsBySubstance);
+  const subStats = useMemo(() => {
+    const out = {};
+    for (const sub of substances) {
+      const list = consumptionsBySubstance[sub.id] || [];
+      out[sub.id] = { consCount: list.length, days: new Set(list.map((c) => c.dayKey)).size };
+    }
+    return out;
+  }, [substances, consumptionsBySubstance]);
+  // Cloche du record : marche / arrêt direct (une seule notification possible)
+  const toggleRecordNotif = async () => {
+    haptics.light();
+    const rule = { target: 'record', key: null, palier: 'record' };
+    if (notifCountOf('record') > 0) { useStore.getState().removeNotifRule(rule); return; }
+    if (!(await ensureNotifPermission())) {
+      Alert.alert('Notifications désactivées', "Les notifications d'Almanac sont désactivées dans les réglages du téléphone.");
+      return;
+    }
+    useStore.getState().addNotifRule(rule);
+    toastNotifOn('record battu');
+  };
 
   const [createOpen, setCreateOpen] = useState(false);
   const [pendingArchivedConflict, setPendingArchivedConflict] = useState(null);
@@ -218,8 +183,11 @@ export default function SubstancesPage() {
     lastHandledNotifTick = notifFocus.tick; // pas de re-flash si la page est remontée
     trace('page : demande reçue', `${stateInfo()} · montages ${useStore.getState().substancesPageMounts}`);
     setReorderMode(false);
-    const id = notifFocus.kind === 'color' && useStore.getState().colorBanners.includes(notifFocus.color)
-      ? `banner:${notifFocus.color}` : '__sobre';
+    // 1.41 : 'color' → couleur, 'custom' → custom:<id>, 'record' → record ; sinon « Sobre de tout »
+    const entry = notifFocus.kind === 'color' ? notifFocus.color
+      : notifFocus.kind === 'custom' ? `custom:${notifFocus.color}`
+        : notifFocus.kind === 'record' ? 'record' : null;
+    const id = entry && useStore.getState().colorBanners.includes(entry) ? `banner:${entry}` : '__sobre';
     // On attend que l'app soit au premier plan. 1.28 : filet de sécurité de 1,5 s (l'état « active »
     // pouvait déjà être passé avant l'abonnement → plus jamais de flash).
     let t1 = null; let t2 = null; let started = false; let flashed = false;
@@ -259,17 +227,33 @@ export default function SubstancesPage() {
       const ts = (lastTimestamps || {})[sub.id] || 0;
       if (ts > b.lastTs) { b.lastTs = ts; b.lastSubId = sub.id; }
     }
-    const visible = colorBanners
-      .filter((c) => byColor[c])
-      .map((c) => ({ id: `banner:${c}`, color: c, lastTs: byColor[c].lastTs || null, lastSubId: byColor[c].lastSubId, names: byColor[c].names }));
-    // 1.40 : toutes les catégories possibles (≥ 2 substances), actives d'abord dans leur ordre,
-    // puis les autres dans l'ordre de la palette — la fenêtre « + » coche / décoche
-    const order = [...colorBanners, ...theme.substanceColors.filter((c) => !colorBanners.includes(c))];
+    // 1.41 : une entrée de la liste = couleur (#…), custom:<id>, 'record' ou 'last24'
+    const visible = [];
+    for (const entry of colorBanners) {
+      if (entry.startsWith('#')) {
+        if (!byColor[entry]) continue;
+        visible.push({ id: `banner:${entry}`, entry, type: 'color', color: entry, lastTs: byColor[entry].lastTs || null, lastSubId: byColor[entry].lastSubId, names: byColor[entry].names });
+      } else if (entry.startsWith('custom:')) {
+        const def = customBanners.find((b) => b.id === entry.slice(7));
+        if (!def) continue;
+        let lastTs = 0; let lastSubId = null;
+        for (const sid of def.subIds) {
+          const ts = (lastTimestamps || {})[sid] || 0;
+          if (ts > lastTs) { lastTs = ts; lastSubId = sid; }
+        }
+        visible.push({ id: `banner:${entry}`, entry, type: 'custom', def, color: theme.colors.text, lastTs: lastTs || null, lastSubId });
+      } else if (entry === 'record' || entry === 'last24') {
+        visible.push({ id: `banner:${entry}`, entry, type: entry, color: theme.colors.text, lastSubId: lastGlobalSubId });
+      }
+    }
+    // Catégories possibles (≥ 2 substances), actives d'abord dans leur ordre, puis la palette
+    const colorEntries = colorBanners.filter((c) => c.startsWith('#'));
+    const order = [...colorEntries, ...theme.substanceColors.filter((c) => !colorEntries.includes(c))];
     const categories = order
       .filter((c) => byColor[c] && byColor[c].names.length >= 2)
       .map((c) => ({ color: c, names: byColor[c].names, active: colorBanners.includes(c) }));
     return { visible, categories };
-  }, [substances, lastTimestamps, colorBanners]);
+  }, [substances, lastTimestamps, colorBanners, customBanners, lastGlobalSubId]);
 
   // Bandeaux qui viennent de disparaître : gardés FADE_MS en fondu à leur place (pas de
   // disparition sèche qui ressemblerait à un bug), puis retirés.
@@ -434,7 +418,7 @@ export default function SubstancesPage() {
     const kept = new Set(useStore.getState().colorBanners);
     const newBanners = newIds.filter((id) => id.startsWith('banner:')).map((id) => id.slice(7)).filter((c) => kept.has(c));
     const newSubs = newIds.filter((id) => !id.startsWith('banner:') && !id.startsWith('__'));
-    const curBanners = bannerInfo.visible.map((b) => b.color);
+    const curBanners = bannerInfo.visible.map((b) => b.entry);
     const curSubs = substances.map((x) => x.id);
     if (newBanners.join('|') !== curBanners.join('|')) reorderColorBanners(newBanners);
     if (newSubs.join('|') !== curSubs.join('|')) reorderSubstances(newSubs);
@@ -452,6 +436,7 @@ export default function SubstancesPage() {
             onPress={() => handleBannerPress(lastGlobalSubId)}
             flashTick={bannerFlash?.id === '__sobre' ? bannerFlash.tick : 0}
             inReorder={inReorder}
+            onLongPress={() => setReorderMode(true)}
             onDelete={() => setPendingBannerDelete('__sobre')}
             hasNotif={notifCountOf('all') > 0}
             onBell={() => { haptics.light(); setBannerNotif({ target: 'all', key: null }); }}
@@ -461,20 +446,45 @@ export default function SubstancesPage() {
     }
     if (item.kind === 'spacer') return <View />;
     if (item.kind === 'banner') {
-      return (
-        <ColorBanner
-          color={item.color}
-          lastTimestamp={item.lastTs}
-          inReorder={inReorder}
-          isWiggling={isWiggling}
-          phase={phase}
-          onDelete={() => setPendingBannerDelete(item.color)}
-          flashTick={bannerFlash?.id === item.id ? bannerFlash.tick : 0}
-          fading={!!item.fading}
-          hasNotif={notifCountOf('color', item.color) > 0}
-          onBell={() => { haptics.light(); setBannerNotif({ target: 'color', key: item.color }); }}
-        />
-      );
+      const frame = {
+        inReorder, isWiggling, phase,
+        fading: !!item.fading,
+        flashTick: bannerFlash?.id === item.id ? bannerFlash.tick : 0,
+        onDelete: () => setPendingBannerDelete(item.entry),
+      };
+      if (item.type === 'color') {
+        return (
+          <CounterBanner
+            {...frame}
+            label="SOBRE DEPUIS"
+            color={item.color}
+            lastTimestamp={item.lastTs}
+            bell={{ color: item.color, active: notifCountOf('color', item.color) > 0, onPress: () => { haptics.light(); setBannerNotif({ target: 'color', key: item.color }); } }}
+          />
+        );
+      }
+      if (item.type === 'custom') {
+        return (
+          <CounterBanner
+            {...frame}
+            label={`SOBRE DE ${item.def.name.toUpperCase()} DEPUIS`}
+            color={theme.colors.text}
+            labelColor={theme.colors.textMuted}
+            lastTimestamp={item.lastTs}
+            onEdit={() => setCustomActions(item.def)}
+            bell={{ color: theme.colors.textMuted, active: notifCountOf('custom', item.def.id) > 0, onPress: () => { haptics.light(); setBannerNotif({ target: 'custom', key: item.def.id }); } }}
+          />
+        );
+      }
+      if (item.type === 'record') {
+        return (
+          <RecordBanner
+            {...frame}
+            bell={{ color: theme.colors.textMuted, active: notifCountOf('record') > 0, onPress: toggleRecordNotif }}
+          />
+        );
+      }
+      return <Last24Banner {...frame} />;
     }
     return (
       <SubstanceRow
@@ -569,47 +579,67 @@ export default function SubstancesPage() {
         onClose={() => setActionSheetFor(null)}
       />
 
+      {/* Poubelle d'un bandeau. 1.41 : « désactivés » ; bandeau personnalisé = suppression définitive */}
       <ConfirmModal
         visible={!!pendingBannerDelete}
-        title="Supprimer ce bandeau ?"
+        title={pendingBannerDelete?.startsWith?.('custom:') ? 'Supprimer ce bandeau ?' : 'Désactiver ce bandeau ?'}
         message={(() => {
-          const isSobre = pendingBannerDelete === '__sobre';
-          const n = isSobre ? notifCountOf('all') : notifCountOf('color', pendingBannerDelete);
+          const e = pendingBannerDelete || '';
+          const isCustom = e.startsWith('custom:');
+          const n = e === '__sobre' ? notifCountOf('all')
+            : isCustom ? notifCountOf('custom', e.slice(7))
+              : e === 'record' ? notifCountOf('record')
+                : e.startsWith('#') ? notifCountOf('color', e) : 0;
+          const notifs = n > 0 ? ` et ${n > 1 ? 'ses notifications' : 'sa notification'}` : '';
+          if (isCustom) {
+            const def = customBanners.find((b) => b.id === e.slice(7));
+            return `Le bandeau « Sobre de ${def?.name || ''} »${notifs} ${n > 0 ? 'seront supprimés' : 'sera supprimé'}. Il faudra le recréer pour le retrouver.`;
+          }
+          const name = e === '__sobre' ? 'Le bandeau « Sobre de tout »'
+            : e === 'record' ? 'Le bandeau « Plus longue sobriété de tout »'
+              : e === 'last24' ? 'Le bandeau « Dernières 24 h »' : null;
           return (
             <Text>
-              {isSobre ? 'Le bandeau « Sobre de tout »' : 'Le bandeau '}
-              {!isSobre && <Text style={{ color: pendingBannerDelete || theme.colors.text, fontSize: 18 }}>●</Text>}
-              {n > 0 ? ` et ${n > 1 ? `ses ${n} notifications seront retirés` : 'sa notification seront retirés'}.` : ' sera retiré.'}
-              {' Les substances et leurs prises ne sont pas affectées.'}
+              {name || 'Le bandeau '}
+              {!name && <Text style={{ color: e || theme.colors.text, fontSize: 18 }}>●</Text>}
+              {notifs}{n > 0 ? ' seront désactivés.' : ' sera désactivé.'}
+              {' Tu peux le réactiver avec le « + ». Les substances et leurs prises ne sont pas affectées.'}
             </Text>
           );
         })()}
         cancelLabel="Annuler"
-        confirmLabel="Supprimer"
+        confirmLabel={pendingBannerDelete?.startsWith?.('custom:') ? 'Supprimer' : 'Désactiver'}
         destructive
         onCancel={() => setPendingBannerDelete(null)}
         onConfirm={() => {
-          if (pendingBannerDelete === '__sobre') { haptics.success(); setSobreBanner(false); }
-          else if (pendingBannerDelete) { haptics.success(); removeColorBanner(pendingBannerDelete); }
+          const e = pendingBannerDelete;
+          haptics.success();
+          if (e === '__sobre') setSobreBanner(false);
+          else if (e?.startsWith('custom:')) deleteCustomBanner(e.slice(7));
+          else if (e) removeColorBanner(e);
           setPendingBannerDelete(null);
         }}
       />
 
-      {/* 1.40 : « + » = bandeaux à cocher / décocher (« Sobre de tout » en premier, puis catégories) */}
+      {/* « + » = bandeaux à cocher / décocher. 1.41 : + record, 24 h, et création d'un bandeau personnalisé */}
       <ToggleListModal
         visible={addBannerOpen}
         title="Bandeaux"
-        message="Temps depuis la dernière prise, pour tout ou par catégorie (couleur partagée par au moins 2 substances)."
         options={[
           {
             id: '__sobre', color: theme.colors.text, label: 'Sobre de tout', checked: sobreBanner,
-            removeConfirm: notifCountOf('all') > 0 ? 'Le bandeau « Sobre de tout » et ses notifications seront retirés.' : null,
+            removeConfirm: notifCountOf('all') > 0 ? 'Le bandeau « Sobre de tout » et ses notifications seront désactivés.' : null,
           },
+          {
+            id: 'record', color: theme.colors.text, label: 'Plus longue sobriété de tout', checked: colorBanners.includes('record'),
+            removeConfirm: notifCountOf('record') > 0 ? 'Ce bandeau et sa notification seront désactivés.' : null,
+          },
+          { id: 'last24', color: theme.colors.text, label: 'Dernières 24 h', checked: colorBanners.includes('last24') },
           ...bannerInfo.categories.map((c) => ({
             id: c.color,
             color: c.color,
             checked: c.active,
-            removeConfirm: c.active && notifCountOf('color', c.color) > 0 ? 'Ce bandeau et ses notifications seront retirés.' : null,
+            removeConfirm: c.active && notifCountOf('color', c.color) > 0 ? 'Ce bandeau et ses notifications seront désactivés.' : null,
             label: (
               <Text style={[styles.catNames, { color: c.active ? c.color : theme.colors.textMuted }]} numberOfLines={2}>
                 {/* Séparateur collé au nom SUIVANT (espace insécable) : une ligne commence par « • » */}
@@ -624,6 +654,14 @@ export default function SubstancesPage() {
             ),
           })),
         ]}
+        actions={[{
+          id: 'custom', label: 'Bandeau personnalisé', icon: 'plus',
+          onPress: () => {
+            setAddBannerOpen(false);
+            setCustomHint(null);
+            setTimeout(() => setCustomFlow({ step: 'subs', subIds: [], name: '' }), 250);
+          },
+        }]}
         footer={bannerInfo.categories.length === 0 ? 'Les catégories apparaissent quand 2 substances partagent une couleur.' : null}
         onToggle={(id, on) => {
           if (id === '__sobre') setSobreBanner(on);
@@ -631,6 +669,53 @@ export default function SubstancesPage() {
           else removeColorBanner(id);
         }}
         onClose={() => setAddBannerOpen(false)}
+      />
+
+      {/* 1.41 — Bandeau personnalisé : 1) substances (au moins 2)  2) nom (« Sobre de … depuis ») */}
+      <SubstanceSelectModal
+        visible={customFlow?.step === 'subs'}
+        title="Bandeau personnalisé"
+        intro="Choisis les substances du bandeau (au moins 2)."
+        hint={customHint}
+        substances={substances}
+        statsById={subStats}
+        initialSelectedIds={customFlow?.step === 'subs' ? customFlow.subIds : EMPTY_IDS}
+        confirmLabel={customFlow?.id ? 'Enregistrer' : 'Suivant'}
+        onCancel={() => setCustomFlow(null)}
+        onConfirm={(ids) => {
+          if (ids.length < 2) { setCustomHint('Choisis au moins 2 substances.'); return; }
+          setCustomHint(null);
+          if (customFlow?.id) { // modification des substances d'un bandeau existant
+            updateCustomBanner(customFlow.id, { subIds: ids });
+            setCustomFlow(null);
+            endReorderAfterAction();
+            return;
+          }
+          const next = { ...customFlow, subIds: ids };
+          setCustomFlow(null);
+          setTimeout(() => setCustomFlow({ ...next, step: 'name' }), 250);
+        }}
+      />
+      <CustomBannerNameModal
+        visible={customFlow?.step === 'name'}
+        initialName={customFlow?.name || ''}
+        confirmLabel={customFlow?.id ? 'Enregistrer' : 'Créer'}
+        onCancel={() => setCustomFlow(null)}
+        onConfirm={(name) => {
+          if (customFlow?.id) { updateCustomBanner(customFlow.id, { name }); endReorderAfterAction(); }
+          else createCustomBanner(name, customFlow.subIds);
+          setCustomFlow(null);
+        }}
+      />
+      {/* Crayon d'un bandeau personnalisé (réorganisation) : nom ou substances incluses */}
+      <ActionSheet
+        visible={!!customActions}
+        title={customActions ? `Sobre de ${customActions.name}` : ''}
+        items={customActions ? [
+          { id: 'rename', label: 'Renommer', icon: 'pencil-outline', onPress: () => setCustomFlow({ step: 'name', id: customActions.id, name: customActions.name, subIds: customActions.subIds }) },
+          { id: 'subs', label: 'Substances incluses', icon: 'format-list-checks', onPress: () => { setCustomHint(null); setCustomFlow({ step: 'subs', id: customActions.id, name: customActions.name, subIds: customActions.subIds }); } },
+        ] : []}
+        onClose={() => setCustomActions(null)}
       />
 
       {/* 1.40 : cloche d'un bandeau → ses notifications de paliers */}

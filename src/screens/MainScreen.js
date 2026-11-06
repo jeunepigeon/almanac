@@ -112,7 +112,7 @@ export default function MainScreen() {
             disabled={pagerLocked}
             hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
           >
-            <MaterialCommunityIcons name="share-variant" size={18} color={theme.colors.textMuted} />
+            <MaterialCommunityIcons name="share-variant" size={18} color={theme.colors.text} />
           </TouchableOpacity>
         )}
         {/* Cloche sous « settings » (liste et Global) : vide si aucune notification, pleine sinon */}
@@ -122,7 +122,7 @@ export default function MainScreen() {
           disabled={pagerLocked}
           hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
         >
-          <MaterialCommunityIcons name={hasAnyNotif ? 'bell' : 'bell-outline'} size={18} color={theme.colors.textMuted} />
+          <MaterialCommunityIcons name={hasAnyNotif ? 'bell' : 'bell-outline'} size={18} color={theme.colors.text} />
         </TouchableOpacity>
       </View>
 

@@ -19,7 +19,7 @@ import { theme } from '../theme';
 import { useStore, notifRuleId } from '../store';
 import SubstanceIcon from './SubstanceIcon';
 import haptics from '../utils/haptics';
-import { PALIERS, PALIER_ORDER, palierLabel, ensureNotifPermission } from '../utils/notifications';
+import { PALIERS, palierLabel, ensureNotifPermission, toastNotifOn } from '../utils/notifications';
 
 // Couleur hex → rgba (fond pâle / liseré des lignes, style B de la planche)
 function rgba(hex, a) {
@@ -38,14 +38,16 @@ function Dot({ color, size = 10 }) {
 export default function NotifWizard({ visible, initialTarget = null, onClose }) {
   const substances = useStore((s) => s.substances);
   const notifRules = useStore((s) => s.notifRules);
+  const customBanners = useStore((s) => s.customBanners);
   const addNotifRule = useStore((s) => s.addNotifRule);
   const removeNotifRule = useStore((s) => s.removeNotifRule);
 
+  // 1.41 : 'list' (substances avec notifs, poubelle) · 'pick' (nouvelle) · 'target' (5 paliers à
+  // cocher) · 'confirm' (supprimer toutes les notifs d'une substance)
   const [step, setStep] = useState('list');
   const [target, setTarget] = useState(null);       // { target, key }
-  const [pendingDelete, setPendingDelete] = useState(null); // règle
+  const [pendingDelete, setPendingDelete] = useState(null); // cible dont on supprime tout
   const [permDenied, setPermDenied] = useState(false);
-  const [fromPick, setFromPick] = useState(false); // nouvelle notif : cible choisie → palier directement
 
   useEffect(() => {
     if (!visible) return;
@@ -55,26 +57,32 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
     else { setTarget(null); setStep('list'); }
   }, [visible]); // eslint-disable-line
 
-  // 1.40 : la cloche principale ne gère que les SUBSTANCES de la liste. « Toutes » et catégories
-  // se règlent depuis la cloche à gauche de leur bandeau (ouverture directe sur la cible).
+  // 1.40 : la cloche principale ne gère que les SUBSTANCES de la liste. « Toutes », catégories et
+  // bandeaux personnalisés se règlent depuis la cloche de leur bandeau (ouverture directe).
   const allTargets = useMemo(
     () => substances.map((s) => ({ target: 'sub', key: s.id })),
     [substances],
   );
 
-  const rulesOf = (t) => notifRules
-    .filter((r) => sameTarget(r, t))
-    .sort((a, b) => PALIER_ORDER.indexOf(a.palier) - PALIER_ORDER.indexOf(b.palier));
-
+  const rulesOf = (t) => notifRules.filter((r) => sameTarget(r, t));
   const activeTargets = allTargets.filter((t) => rulesOf(t).length > 0);
 
   const colorOf = (t) => {
-    if (!t || t.target === 'all') return theme.colors.text;
+    if (!t || t.target === 'all' || t.target === 'custom') return theme.colors.text;
     if (t.target === 'color') return t.key;
     return substances.find((s) => s.id === t.key)?.color || theme.colors.text;
   };
 
-  const renderTargetLabel = (t, style, forPick = false) => {
+  // Nom en clair (titre, message flottant)
+  const nameOf = (t) => {
+    if (!t) return '';
+    if (t.target === 'sub') return substances.find((s) => s.id === t.key)?.name || '—';
+    if (t.target === 'custom') return `Sobre de ${customBanners.find((b) => b.id === t.key)?.name || ''}`;
+    if (t.target === 'color') return substances.filter((s) => s.color === t.key).map((s) => s.name).join(' • ');
+    return 'Sobre de tout';
+  };
+
+  const renderTargetLabel = (t, style) => {
     if (t.target === 'sub') {
       const sub = substances.find((s) => s.id === t.key);
       return (
@@ -84,55 +92,49 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
         </View>
       );
     }
-    // « Toutes substances » / « Toutes les ● »
     return (
       <View style={styles.labelRow}>
-        <Text style={[styles.label, style]} numberOfLines={1}>
-          {t.target === 'color' ? 'Toutes les' : (forPick ? 'Toutes les substances' : 'Toutes substances')}
-        </Text>
         {t.target === 'color' && <Dot color={t.key} size={12} />}
+        <Text style={[styles.label, style]} numberOfLines={1}>
+          {t.target === 'color' ? 'Catégorie' : nameOf(t)}
+        </Text>
       </View>
     );
   };
 
   const goBack = () => {
-    if (step === 'palier' && fromPick) { setStep('pick'); return; }
-    if (step === 'confirm' || step === 'palier') { setStep('target'); return; }
+    if (step === 'confirm') { setStep('list'); return; }
     if (step === 'target') { if (initialTarget) onClose(); else setStep('list'); return; }
     if (step === 'pick') { setStep('list'); return; }
     onClose();
   };
 
-  const openTarget = (t) => { haptics.light(); setFromPick(false); setTarget(t); setStep('target'); };
-  // Depuis « + » de la liste : la cible choisie n'a encore aucune notification → choix du palier direct
-  const pickTarget = (t) => {
-    haptics.light(); setPermDenied(false); setTarget(t);
-    // Cible déjà équipée des 5 paliers : rien à ajouter → son écran
-    if (rulesOf(t).length >= PALIERS.length) { setFromPick(false); setStep('target'); return; }
-    setFromPick(true); setStep('palier');
-  };
+  const openTarget = (t) => { haptics.light(); setPermDenied(false); setTarget(t); setStep('target'); };
 
-  const addPalier = async (palier) => {
+  // Palier coché ↔ décoché ; à l'activation, message flottant Android
+  const togglePalier = async (palier, active) => {
     haptics.light();
+    const rule = { target: target.target, key: target.key, palier };
+    if (active) { removeNotifRule(rule); return; }
     const ok = await ensureNotifPermission();
     if (!ok) { setPermDenied(true); return; }
-    addNotifRule({ target: target.target, key: target.key, palier });
-    haptics.success();
-    setFromPick(false);
-    setStep('target'); // on atterrit sur l'écran de la cible pour voir la notification ajoutée
+    addNotifRule(rule);
+    toastNotifOn(`${palierLabel(palier)} · ${nameOf(target)}`);
   };
 
   const confirmDelete = () => {
-    if (pendingDelete) { removeNotifRule(pendingDelete); haptics.success(); }
+    if (pendingDelete) {
+      rulesOf(pendingDelete).forEach((r) => removeNotifRule(r));
+      haptics.success();
+    }
     setPendingDelete(null);
-    setStep('target');
+    setStep('list');
   };
 
   const titles = {
     list: 'Notifications',
     pick: 'Nouvelle notification',
-    palier: 'Choisir un palier',
-    confirm: 'Supprimer la notification ?',
+    confirm: 'Supprimer les notifications ?',
   };
 
   // Bouton « + » rond à liseré, centré (option 1 de la planche)
@@ -146,69 +148,64 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
   if (step === 'list') {
     body = (
       <>
-        <ScrollView keyboardShouldPersistTaps="handled" style={styles.list} showsVerticalScrollIndicator={false}>
-          {activeTargets.length === 0 && <View style={styles.emptyWrap}><Text style={styles.empty}>Aucune notification active</Text></View>}
-          {activeTargets.map((t) => {
-            const n = rulesOf(t).length;
-            return (
-              <TouchableOpacity key={`${t.target}:${t.key}`} style={[styles.row, rowTint(colorOf(t))]} onPress={() => openTarget(t)} activeOpacity={0.7}>
-                {renderTargetLabel(t)}
-                <Text style={styles.count}>{n} notif{n > 1 ? 's' : ''}</Text>
-                <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.textMuted} />
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+        {activeTargets.length === 0 ? (
+          // 1.41 : vraiment centré dans la hauteur disponible
+          <View style={styles.centerFill}><Text style={styles.empty}>Aucune notification active</Text></View>
+        ) : (
+          <ScrollView keyboardShouldPersistTaps="handled" style={styles.list} showsVerticalScrollIndicator={false}>
+            {activeTargets.map((t) => {
+              const n = rulesOf(t).length;
+              return (
+                <TouchableOpacity key={`${t.target}:${t.key}`} style={[styles.row, rowTint(colorOf(t))]} onPress={() => openTarget(t)} activeOpacity={0.7}>
+                  {renderTargetLabel(t)}
+                  <Text style={styles.count}>{n} notif{n > 1 ? 's' : ''}</Text>
+                  <TouchableOpacity
+                    onPress={() => { haptics.light(); setPendingDelete(t); setStep('confirm'); }}
+                    hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
+                  >
+                    <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.danger} />
+                  </TouchableOpacity>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
         <AddBox color={theme.colors.text} onPress={() => { haptics.light(); setStep('pick'); }} />
       </>
     );
   } else if (step === 'pick') {
-    // Toutes les cibles (avec ou sans notification) → choix du palier directement
     body = (
       <ScrollView keyboardShouldPersistTaps="handled" style={styles.list} showsVerticalScrollIndicator={false}>
         {allTargets.map((t) => (
-          <TouchableOpacity key={`${t.target}:${t.key}`} style={[styles.row, rowTint(colorOf(t))]} onPress={() => pickTarget(t)} activeOpacity={0.7}>
-            {renderTargetLabel(t, null, true)}
+          <TouchableOpacity key={`${t.target}:${t.key}`} style={[styles.row, rowTint(colorOf(t))]} onPress={() => openTarget(t)} activeOpacity={0.7}>
+            {renderTargetLabel(t)}
             <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.textMuted} />
           </TouchableOpacity>
         ))}
       </ScrollView>
     );
   } else if (step === 'target' && target) {
-    const rules = rulesOf(target);
-    body = (
-      <>
-        <ScrollView keyboardShouldPersistTaps="handled" style={styles.list} showsVerticalScrollIndicator={false}>
-          {rules.length === 0 && <View style={styles.emptyWrap}><Text style={styles.empty}>Aucune notification</Text></View>}
-          {rules.map((r) => (
-            <View key={notifRuleId(r)} style={[styles.row, rowTint(colorOf(target))]}>
-              <MaterialCommunityIcons name="bell-outline" size={18} color={colorOf(target)} />
-              <Text style={[styles.label, { flex: 1 }]}>{palierLabel(r.palier)}</Text>
-              <TouchableOpacity
-                onPress={() => { haptics.light(); setPendingDelete(r); setStep('confirm'); }}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              >
-                <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.danger} />
-              </TouchableOpacity>
-            </View>
-          ))}
-        </ScrollView>
-        {rules.length < PALIERS.length && (
-          <AddBox color={colorOf(target)} onPress={() => { haptics.light(); setPermDenied(false); setFromPick(false); setStep('palier'); }} />
-        )}
-      </>
-    );
-  } else if (step === 'palier' && target) {
+    // 1.41 : les 5 paliers toujours listés, à cocher / décocher (comme la sélection des bandeaux)
     const active = new Set(rulesOf(target).map((r) => r.palier));
+    const c = colorOf(target);
     body = (
       <>
         <ScrollView keyboardShouldPersistTaps="handled" style={styles.list} showsVerticalScrollIndicator={false}>
-          {PALIERS.filter((p) => !active.has(p.id)).map((p) => (
-            <TouchableOpacity key={p.id} style={[styles.row, rowTint(colorOf(target))]} onPress={() => addPalier(p.id)} activeOpacity={0.7}>
-              <Text style={[styles.label, { flex: 1 }]}>{p.label}</Text>
-              <MaterialCommunityIcons name="plus" size={18} color={colorOf(target)} />
-            </TouchableOpacity>
-          ))}
+          {PALIERS.map((p) => {
+            const on = active.has(p.id);
+            return (
+              <TouchableOpacity
+                key={p.id}
+                style={[styles.row, on ? rowTint(c) : { borderColor: rgba(c, 0.3) }]}
+                onPress={() => togglePalier(p.id, on)}
+                activeOpacity={0.7}
+              >
+                <MaterialCommunityIcons name={on ? 'bell' : 'bell-outline'} size={18} color={on ? c : theme.colors.textMuted} />
+                <Text style={[styles.label, { flex: 1, color: on ? theme.colors.text : theme.colors.textMuted }]}>{p.label}</Text>
+                {on && <MaterialCommunityIcons name="check" size={18} color={c} />}
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
         {permDenied ? (
           <View style={styles.permBox}>
@@ -223,19 +220,16 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
       </>
     );
   } else if (step === 'confirm' && pendingDelete) {
+    const n = rulesOf(pendingDelete).length;
     body = (
       <View style={styles.centerFill}>
         <Text style={styles.confirmText}>
-          {'« '}{palierLabel(pendingDelete.palier)}{' » pour '}
-          {target?.target === 'sub'
-            ? (substances.find((s) => s.id === target.key)?.name || '—')
-            : (target?.target === 'color' ? 'toutes les' : 'toutes substances')}
-          {target?.target === 'color' ? ' ' : ''}
-          {target?.target === 'color' && <Text style={{ color: target.key, fontSize: 18 }}>●</Text>}
-          {' sera supprimée.'}
+          {n > 1 ? `Les ${n} notifications de ` : 'La notification de '}
+          {nameOf(pendingDelete)}
+          {n > 1 ? ' seront supprimées.' : ' sera supprimée.'}
         </Text>
         <View style={styles.confirmActions}>
-          <TouchableOpacity onPress={() => setStep('target')} style={styles.actionBtn}>
+          <TouchableOpacity onPress={() => setStep('list')} style={styles.actionBtn}>
             <Text style={styles.actionMuted}>Annuler</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={confirmDelete} style={styles.actionBtn}>
@@ -252,7 +246,6 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
       <Pressable style={styles.overlay} onPress={onClose}>
         <Pressable style={styles.card} onPress={() => {}}>
           <View style={styles.header}>
-            {/* Chevron toujours au même endroit (on peut l'enchaîner) */}
             <TouchableOpacity onPress={goBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={styles.back}>
               <MaterialCommunityIcons name="chevron-left" size={24} color={theme.colors.textMuted} />
             </TouchableOpacity>
@@ -263,8 +256,6 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
             </View>
             <View style={styles.back} />
           </View>
-          {/* Taille fixe pour tous les écrans (celle d'une cible avec ses 5 paliers), sauf la
-              sélection d'une nouvelle cible qui peut être plus haute */}
           <View style={step === 'pick' ? styles.bodyPick : styles.bodyFixed}>{body}</View>
         </Pressable>
       </Pressable>
@@ -288,7 +279,7 @@ const styles = StyleSheet.create({
   title: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '600', letterSpacing: 0.3 },
   list: { flexGrow: 0, flexShrink: 1 },
   emptyWrap: { height: 200, justifyContent: 'center' },
-  centerFill: { flex: 1, justifyContent: 'center' },
+  centerFill: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   // Lignes en haut, bouton + en bas (1.29) ; messages vides et confirmation centrés
   bodyFixed: { height: 292, justifyContent: 'space-between' },
   bodyPick: { maxHeight: 460 },
@@ -302,7 +293,8 @@ const styles = StyleSheet.create({
   },
   labelRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
   label: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '300', letterSpacing: 0.3, flexShrink: 1 },
-  count: { color: theme.colors.textMuted, fontSize: theme.font.sizes.sm },
+  // 1.41 : nombre de notifs plus lisible (info principale de la ligne avec le nom)
+  count: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '600' },
   addBox: {
     width: 36, height: 36, borderRadius: 18, borderWidth: 1,
     alignSelf: 'center', alignItems: 'center', justifyContent: 'center',

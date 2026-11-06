@@ -63,7 +63,8 @@ export default function App() {
     // empilait un 2e écran principal par-dessus (depuis une page substance ou Paramètres) : le flash
     // se jouait sur l'ancien, caché dessous, et le nouveau (visible) n'avait rien à flasher.
     navRef.navigate('Main', undefined, { pop: true });
-    st.requestNotifFocus(t.target === 'color' ? 'color' : 'all', t.target === 'color' ? t.key : null);
+    // 1.41 : 'all' | 'color' | 'custom' | 'record' → bandeau correspondant
+    st.requestNotifFocus(['color', 'custom', 'record'].includes(t.target) ? t.target : 'all', t.key ?? null);
   };
   const handleResponse = (response, via = 'listener') => {
     const t = readNotificationTarget(response);

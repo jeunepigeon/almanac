@@ -11,7 +11,7 @@ import haptics from '../utils/haptics';
 import { hexToRgba } from '../utils/flash';
 
 // options : [{ id, color, label (texte ou élément), checked, removeConfirm?: string, hint?: string }]
-export default function ToggleListModal({ visible, title, message, options, onToggle, onClose, footer }) {
+export default function ToggleListModal({ visible, title, message, options, onToggle, onClose, footer, actions = [] }) {
   const [confirm, setConfirm] = useState(null); // option à retirer après confirmation
   useEffect(() => { if (!visible) setConfirm(null); }, [visible]);
 
@@ -25,10 +25,13 @@ export default function ToggleListModal({ visible, title, message, options, onTo
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}>
         <Pressable style={styles.card} onPress={() => {}}>
-          <Text style={styles.title}>{confirm ? 'Retirer ?' : title}</Text>
+          <Text style={styles.title}>{confirm ? 'Désactiver ?' : title}</Text>
           {confirm ? (
             <>
-              <Text style={styles.message}>{confirm.removeConfirm}</Text>
+              {/* 1.41 : message centré entre le titre et les boutons */}
+              <View style={styles.confirmBody}>
+                <Text style={[styles.message, { marginBottom: 0 }]}>{confirm.removeConfirm}</Text>
+              </View>
               <View style={styles.actions}>
                 <TouchableOpacity onPress={() => setConfirm(null)} style={styles.btn}>
                   <Text style={styles.btnMuted}>Annuler</Text>
@@ -37,7 +40,7 @@ export default function ToggleListModal({ visible, title, message, options, onTo
                   onPress={() => { haptics.success(); onToggle(confirm.id, false); setConfirm(null); }}
                   style={styles.btn}
                 >
-                  <Text style={styles.btnDanger}>Retirer</Text>
+                  <Text style={styles.btnDanger}>Désactiver</Text>
                 </TouchableOpacity>
               </View>
             </>
@@ -60,13 +63,29 @@ export default function ToggleListModal({ visible, title, message, options, onTo
                     <View style={[styles.dot, { backgroundColor: o.checked ? o.color : hexToRgba(o.color, 0.45) }]} />
                     <View style={styles.labelWrap}>
                       {typeof o.label === 'string'
-                        ? <Text style={[styles.label, { color: o.checked ? theme.colors.text : theme.colors.textMuted }]}>{o.label}</Text>
+                        ? (
+                          <Text
+                            style={[styles.label, { color: o.checked ? theme.colors.text : theme.colors.textMuted }]}
+                            numberOfLines={1}
+                            adjustsFontSizeToFit
+                            minimumFontScale={0.85}
+                          >
+                            {o.label}
+                          </Text>
+                        )
                         : o.label}
                       {o.hint ? <Text style={styles.hint}>{o.hint}</Text> : null}
                     </View>
                     <View style={styles.checkSlot}>
                       {o.checked && <MaterialCommunityIcons name="check" size={20} color={o.color} />}
                     </View>
+                  </TouchableOpacity>
+                ))}
+                {/* 1.41 : actions (ex. « + Bandeau personnalisé ») sous les cases */}
+                {actions.map((a) => (
+                  <TouchableOpacity key={a.id} style={styles.action} onPress={() => { haptics.light(); a.onPress(); }} activeOpacity={0.7}>
+                    <MaterialCommunityIcons name={a.icon || 'plus'} size={16} color={theme.colors.text} />
+                    <Text style={styles.actionText}>{a.label}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -89,7 +108,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: theme.colors.surface, borderRadius: 10,
-    paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.lg,
+    paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.lg,
     width: '100%', maxWidth: 400, maxHeight: '80%',
     borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border, alignItems: 'center',
   },
@@ -102,12 +121,20 @@ const styles = StyleSheet.create({
     lineHeight: 20, textAlign: 'center', marginBottom: theme.spacing.md,
   },
   list: { alignSelf: 'stretch', flexGrow: 0 },
+  // 1.41 : marges réduites → les libellés tiennent sur une ligne
   option: {
     flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 11, paddingHorizontal: theme.spacing.md,
+    paddingVertical: 11, paddingHorizontal: theme.spacing.sm + 2,
     borderWidth: 1, borderRadius: 8, marginBottom: theme.spacing.sm,
   },
-  dot: { width: 12, height: 12, borderRadius: 6, marginRight: theme.spacing.md },
+  dot: { width: 12, height: 12, borderRadius: 6, marginRight: theme.spacing.sm + 2 },
+  action: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: theme.spacing.sm,
+    paddingVertical: 11, borderWidth: 1, borderStyle: 'dashed', borderRadius: 8,
+    borderColor: theme.colors.textMuted, marginBottom: theme.spacing.sm,
+  },
+  actionText: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '300', letterSpacing: 0.3 },
+  confirmBody: { minHeight: 90, justifyContent: 'center', alignSelf: 'stretch', paddingVertical: theme.spacing.md },
   labelWrap: { flex: 1 },
   label: { fontSize: theme.font.sizes.md, fontWeight: '300', letterSpacing: 0.3 },
   hint: { color: theme.colors.textFaint, fontSize: theme.font.sizes.xs, marginTop: 2 },

@@ -17,6 +17,8 @@ import {
 import { BarChart, PieChart, ChartCard, MultiLineChart } from './Charts';
 import LiveCounter from './LiveCounter';
 import ExtraCounters from './ExtraCounters';
+import { DateLine } from './Banners';
+import { rangeFR } from '../utils/soberPeriods';
 
 const WEEKDAY_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 const HOUR_LABELS_24 = ['0','','','','','','6','','','','','','12','','','','','','18','','','','',''];
@@ -262,6 +264,7 @@ export default function StatsView({
               style={styles.globalHeroCounter}
             />
           </View>
+          <DateLine text={rangeFR(lastGlobalTimestamp, null)} />
           <ExtraCounters scope="__global" timestamps={globalTimestamps} color={theme.colors.text} />
         </View>
       )}

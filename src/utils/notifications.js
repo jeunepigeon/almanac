@@ -4,7 +4,8 @@
 // DERNIÈRE PRISE de la cible et on programme une notification locale à cet instant.
 // Chaque nouvelle prise / modification du calendrier → tout est reprogrammé (rescheduleAll).
 //
-//  - Cibles : 'all' (toutes les substances), 'color' (catégorie = couleur ≥ 2 substances), 'sub'.
+//  - Cibles : 'all' (toutes les substances), 'color' (catégorie = couleur ≥ 2 substances), 'sub',
+//    'custom' (bandeau personnalisé, 1.41) et 'record' (record de sobriété de tout battu, 1.41).
 //  - Paliers : 24 h, 48 h, 7 j, 15 j (une fois par période de sobriété) et « Tous les mois »
 //    (1 mois, 2 mois… sans fin ; on programme les 12 prochains, reprogrammés à chaque ouverture).
 //  - Pas rétroactif : un palier déjà dépassé ne part pas.
@@ -17,7 +18,7 @@
 //  - Redémarrage du téléphone : expo-notifications reprogramme (BOOT_COMPLETED) ; on reprogramme
 //    aussi à chaque ouverture de l'app.
 
-import { Platform } from 'react-native';
+import { Platform, ToastAndroid } from 'react-native';
 import * as Notifications from 'expo-notifications';
 
 const MS_HOUR = 3600 * 1000;
@@ -37,7 +38,7 @@ export const PALIERS = [
 export const palierLabel = (id) => PALIERS.find((p) => p.id === id)?.label || id;
 export const PALIER_ORDER = PALIERS.map((p) => p.id);
 
-const PRIORITY = { sub: 3, color: 2, all: 1 };
+const PRIORITY = { sub: 3, color: 2, custom: 2, all: 1 };
 
 // --- Configuration (au démarrage) ---
 export async function configureNotifications() {
@@ -82,11 +83,14 @@ export async function ensureNotifPermission() {
 }
 
 // Dernière prise d'une cible → { ts, subId }
-function lastFor(rule, substances, lastTimestamps) {
+function lastFor(rule, substances, lastTimestamps, customBanners = []) {
   let best = { ts: 0, subId: null };
+  const custom = rule.target === 'custom' ? customBanners.find((b) => b.id === rule.key) : null;
+  if (rule.target === 'custom' && !custom) return best;
   for (const s of substances) {
     if (rule.target === 'sub' && s.id !== rule.key) continue;
     if (rule.target === 'color' && s.color !== rule.key) continue;
+    if (custom && !custom.subIds.includes(s.id)) continue;
     const ts = lastTimestamps[s.id] || 0;
     if (ts > best.ts) best = { ts, subId: s.id };
   }
@@ -94,10 +98,22 @@ function lastFor(rule, substances, lastTimestamps) {
 }
 
 // Liste des notifications à programmer (triées, dédoublonnées)
-export function computeSchedule({ notifRules = [], substances = [], lastTimestamps = {} }, now = Date.now()) {
+export function computeSchedule({ notifRules = [], substances = [], lastTimestamps = {}, customBanners = [], allConsumptions = [] }, now = Date.now()) {
   const byRecord = new Map(); // `${subId}:${instant}` → candidat le plus précis
   for (const rule of notifRules) {
-    const { ts, subId } = lastFor(rule, substances, lastTimestamps || {});
+    // 1.41 — « Record battu » : l'instant où la période sobre en cours (toutes substances)
+    // dépasse la plus longue période passée. Rien si elle l'a déjà dépassée (pas rétroactif).
+    if (rule.target === 'record') {
+      const ids = new Set(substances.map((s) => s.id));
+      const ts = allConsumptions.filter((c) => ids.has(c.substanceId)).map((c) => c.timestamp).sort((a, b) => a - b);
+      if (ts.length < 2) continue;
+      let best = 0;
+      for (let i = 1; i < ts.length; i++) best = Math.max(best, ts[i] - ts[i - 1]);
+      const t = ts[ts.length - 1] + best + 60 * 1000; // 1 min après l'égalité : record vraiment battu
+      if (t > now + 5000) byRecord.set(`record:${Math.round(t)}`, { time: Math.round(t), priority: 0, data: { target: 'record', key: null, palier: 'record' } });
+      continue;
+    }
+    const { ts, subId } = lastFor(rule, substances, lastTimestamps || {}, customBanners);
     if (!ts || !subId) continue; // aucune prise : rien ne part
     const times = [];
     if (rule.palier === 'monthly') {
@@ -122,7 +138,9 @@ export function computeSchedule({ notifRules = [], substances = [], lastTimestam
 function buildContent(data) {
   return {
     title: 'Almanac',
-    body: "Nouveau palier atteint, cliquez pour plus d'info",
+    body: data?.target === 'record'
+      ? "Nouveau record atteint, cliquez pour plus d'info"
+      : "Nouveau palier atteint, cliquez pour plus d'info",
     data,
   };
 }
@@ -189,7 +207,9 @@ export function startNotificationSync(useStore) {
     if (!prev) return;
     if (state.lastTimestamps !== prev.lastTimestamps
       || state.substances !== prev.substances
-      || state.notifRules !== prev.notifRules) kick();
+      || state.notifRules !== prev.notifRules
+      || state.customBanners !== prev.customBanners
+      || state.allConsumptions !== prev.allConsumptions) kick();
   });
 }
 
@@ -198,4 +218,9 @@ export function readNotificationTarget(response) {
   const d = response?.notification?.request?.content?.data;
   if (!d || !d.target) return null;
   return { target: d.target, key: d.key ?? null, id: response?.notification?.request?.identifier };
+}
+
+// 1.41 — Message flottant Android à l'activation d'une notification (comme un réveil)
+export function toastNotifOn(text) {
+  try { if (Platform.OS === 'android') ToastAndroid.show(`Notification activée : ${text}`, ToastAndroid.SHORT); } catch (e) { /* rien */ }
 }

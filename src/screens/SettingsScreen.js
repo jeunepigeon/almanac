@@ -440,7 +440,12 @@ export default function SettingsScreen() {
           useStore.getState().traceNotif('rejeu depuis Debug', id, true);
           navigation.navigate('Main', undefined, { pop: true }); // 1.35 : pas de 2e écran principal empilé
           if (id === '__sobre') useStore.getState().requestNotifFocus('all');
-          else useStore.getState().requestNotifFocus('color', id.replace('banner:', ''));
+          else {
+            const e = id.replace('banner:', ''); // 1.41 : couleur, custom:<id> ou record
+            if (e.startsWith('custom:')) useStore.getState().requestNotifFocus('custom', e.slice(7));
+            else if (e === 'record') useStore.getState().requestNotifFocus('record');
+            else useStore.getState().requestNotifFocus('color', e);
+          }
         }}
       >
         <Text style={styles.rowLabel}>Dernier flash bandeau</Text>

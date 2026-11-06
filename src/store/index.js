@@ -67,8 +67,10 @@ const NOTIF_RULES_KEY = 'almanac.notifRules';
 const APP_LOCK_KEY = 'almanac.appLock';
 const SOBRE_BANNER_KEY = 'almanac.sobreBanner';     // 1.40 : bandeau « Sobre de tout » affiché ?
 const EXTRA_COUNTERS_KEY = 'almanac.extraCounters'; // 1.40 : compteurs ajoutés sous « Sobre depuis »
+const CUSTOM_BANNERS_KEY = 'almanac.customBanners'; // 1.41 : bandeaux personnalisés [{ id, name, subIds }]
 
 // Notifications de paliers (1.25). Une règle = { target: 'all' | 'color' | 'sub', key, palier }
+// 1.41 : + 'custom' (key = id du bandeau personnalisé) et 'record' (key null, palier 'record')
 //  - key : null pour 'all', la couleur pour 'color', l'id de substance pour 'sub'
 //  - palier : '24h' | '48h' | '7d' | '15d' | 'monthly'
 export const notifRuleId = (r) => `${r.target}:${r.key || ''}:${r.palier}`;
@@ -77,8 +79,9 @@ function normalizeRules(list) {
   const out = [];
   for (const r of Array.isArray(list) ? list : []) {
     if (!r || !r.target || !r.palier) continue;
-    const rule = { target: r.target, key: r.target === 'all' ? null : (r.key || null), palier: r.palier };
-    if (rule.target !== 'all' && !rule.key) continue;
+    const noKey = r.target === 'all' || r.target === 'record';
+    const rule = { target: r.target, key: noKey ? null : (r.key || null), palier: r.palier };
+    if (!noKey && !rule.key) continue;
     const id = notifRuleId(rule);
     if (seen.has(id)) continue;
     seen.add(id);
@@ -167,6 +170,26 @@ export const useStore = create((set, get) => ({
       .filter((r) => r.target === 'color' && (count[r.key] || 0) >= 2 && !colorBanners.includes(r.key))
       .map((r) => r.key))];
     missing.forEach((c) => get().addColorBanner(c));
+    if (notifRules.some((r) => r.target === 'record') && !get().colorBanners.includes('record')) get().addColorBanner('record');
+  },
+
+  // 1.41 — Bandeaux personnalisés : « Sobre de <nom> depuis » sur un groupe de substances (≥ 2).
+  // Ils vivent dans la liste des bandeaux (colorBanners) sous l'entrée `custom:<id>`.
+  customBanners: [],
+  saveCustomBanners: (list) => { set({ customBanners: list }); setJSON(CUSTOM_BANNERS_KEY, list); },
+  createCustomBanner: (name, subIds) => {
+    const id = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    get().saveCustomBanners([...get().customBanners, { id, name: name.trim(), subIds }]);
+    get().addColorBanner(`custom:${id}`);
+    return id;
+  },
+  updateCustomBanner: (id, fields) => {
+    get().saveCustomBanners(get().customBanners.map((b) => (b.id === id ? { ...b, ...fields } : b)));
+    get().pruneOrphans();
+  },
+  deleteCustomBanner: (id) => {
+    get().saveCustomBanners(get().customBanners.filter((b) => b.id !== id));
+    get().removeColorBanner(`custom:${id}`);
   },
 
   // 1.40 — Bandeau « Sobre de tout » activable (toujours en haut quand il est là).
@@ -185,9 +208,13 @@ export const useStore = create((set, get) => ({
   extraCounters: {},
   toggleExtraCounter: (scope, id) => {
     const cur = get().extraCounters[scope] || [];
-    const list = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
-    const order = ['prev', 'record'];
-    const next = { ...get().extraCounters, [scope]: order.filter((x) => list.includes(x)) };
+    const list = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]; // 1.41 : ajouté en dernier
+    const next = { ...get().extraCounters, [scope]: list };
+    set({ extraCounters: next });
+    setJSON(EXTRA_COUNTERS_KEY, next);
+  },
+  setExtraCountersOrder: (scope, list) => {
+    const next = { ...get().extraCounters, [scope]: list };
     set({ extraCounters: next });
     setJSON(EXTRA_COUNTERS_KEY, next);
   },
@@ -198,6 +225,7 @@ export const useStore = create((set, get) => ({
   setLastNotifTap: (v) => set({ lastNotifTap: v }),
   lastBannerFlash: null, // debug : { id, at }
   setLastBannerFlash: (v) => set({ lastBannerFlash: v }),
+  // kind : 'all' | 'color' | 'custom' | 'record' ; color = clé (couleur ou id du bandeau personnalisé)
   requestNotifFocus: (kind, color = null) => set((s) => ({
     notifFocus: { kind, color, tick: (s.notifFocus?.tick || 0) + 1 },
   })),
@@ -210,17 +238,29 @@ export const useStore = create((set, get) => ({
   // changement de couleur, remise à zéro…), son bandeau et ses notifications sont SUPPRIMÉS.
   // Les notifications de substances qui n'existent plus sont supprimées aussi.
   pruneOrphans: () => {
-    const { substances, colorBanners, notifRules, sobreBanner } = get();
+    const { substances, colorBanners, notifRules, sobreBanner, customBanners } = get();
     const count = {};
     for (const sub of substances) count[sub.color] = (count[sub.color] || 0) + 1;
     const ids = new Set(substances.map((x) => x.id));
-    const banners = colorBanners.filter((c) => (count[c] || 0) >= 2);
+    // 1.41 : bandeaux personnalisés réduits à leurs substances existantes ; moins de 2 → supprimés
+    const customs = customBanners
+      .map((b) => ({ ...b, subIds: b.subIds.filter((id) => ids.has(id)) }))
+      .filter((b) => b.subIds.length >= 2);
+    const customIds = new Set(customs.map((b) => b.id));
+    const banners = colorBanners.filter((c) => (
+      c.startsWith('#') ? (count[c] || 0) >= 2
+        : c.startsWith('custom:') ? customIds.has(c.slice(7))
+          : true // 'record', 'last24'
+    ));
     // 1.40 : une notification « toutes » / de catégorie n'existe qu'avec son bandeau
     const rules = notifRules.filter((r) => (
       (r.target === 'all' && sobreBanner)
       || (r.target === 'color' && (count[r.key] || 0) >= 2 && banners.includes(r.key))
+      || (r.target === 'custom' && banners.includes(`custom:${r.key}`))
+      || (r.target === 'record' && banners.includes('record'))
       || (r.target === 'sub' && ids.has(r.key))
     ));
+    if (JSON.stringify(customs) !== JSON.stringify(customBanners)) get().saveCustomBanners(customs);
     if (banners.length !== colorBanners.length) { set({ colorBanners: banners }); setJSON(COLOR_BANNERS_KEY, banners); }
     if (rules.length !== notifRules.length) { set({ notifRules: rules }); setJSON(NOTIF_RULES_KEY, rules); }
   },
@@ -247,8 +287,12 @@ export const useStore = create((set, get) => ({
     const next = get().colorBanners.filter((c) => c !== color);
     set({ colorBanners: next });
     setJSON(COLOR_BANNERS_KEY, next);
-    // 1.40 : ses notifications partent avec lui
-    const rules = get().notifRules.filter((r) => !(r.target === 'color' && r.key === color));
+    // 1.40 : ses notifications partent avec lui (1.41 : aussi bandeaux personnalisés et record)
+    const rules = get().notifRules.filter((r) => !(
+      (r.target === 'color' && r.key === color)
+      || (r.target === 'custom' && `custom:${r.key}` === color)
+      || (r.target === 'record' && color === 'record')
+    ));
     if (rules.length !== get().notifRules.length) get().setNotifRules(rules);
   },
   // newOrder : couleurs visibles dans le nouvel ordre ; les couleurs masquées (0 substance) gardent leur place en fin
@@ -262,7 +306,7 @@ export const useStore = create((set, get) => ({
 
   loadAll: async () => {
     // Lectures en parallèle (avant : l'une après l'autre)
-    const [all, rawCons, snapshots, colorBanners, notifRules, appLockEnabled, sobrePref, extraCounters] = await Promise.all([
+    const [all, rawCons, snapshots, colorBanners, notifRules, appLockEnabled, sobrePref, extraCounters, customBanners] = await Promise.all([
       dbGetSubstances({ includeArchived: true }),
       dbGetAllConsumptions(),
       dbGetAllSnapshots(),
@@ -271,6 +315,7 @@ export const useStore = create((set, get) => ({
       getJSON(APP_LOCK_KEY, false),
       getJSON(SOBRE_BANNER_KEY, null),
       getJSON(EXTRA_COUNTERS_KEY, {}),
+      getJSON(CUSTOM_BANNERS_KEY, []),
     ]);
     // 1.40 : jamais réglé → affiché si l'app contient déjà des données (il l'était avant), sinon
     // masqué (nouvelle installation : aucun bandeau au départ)
@@ -290,6 +335,7 @@ export const useStore = create((set, get) => ({
       appLockEnabled: !!appLockEnabled,
       sobreBanner: !!sobreBanner,
       extraCounters: extraCounters && typeof extraCounters === 'object' ? extraCounters : {},
+      customBanners: Array.isArray(customBanners) ? customBanners : [],
       substances: all.filter((s) => !s.archived),
       archivedSubstances: all.filter((s) => s.archived),
       lastTimestamps,
