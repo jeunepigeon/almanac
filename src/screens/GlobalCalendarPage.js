@@ -101,7 +101,7 @@ export default function GlobalCalendarPage() {
         <Tab label="Stats" active={activeTab === 'stats'} onPress={() => { requestCountersExit(); setActiveTab('stats'); }} />
       </View>
       {/* 1.46 : petit compteur sous les onglets (même disposition que la page d'une substance) */}
-      <TopCounter label="Sobre de tout depuis" timestamp={lastGlobalTs} dimmed={countersEditing} />
+      <TopCounter label="Sobre de tout depuis" timestamp={lastGlobalTs} dimmed={countersEditing} noBorder={activeTab === 'stats'} />
 
       {activeTab === 'calendar' && (
         <View style={{ flex: 1 }}>

@@ -15,11 +15,8 @@ import {
   windowRange,
 } from '../utils/stats';
 import { BarChart, PieChart, ChartCard, MultiLineChart } from './Charts';
-import LiveCounter from './LiveCounter';
 import { useStore } from '../store';
 import ExtraCounters from './ExtraCounters';
-import { DateLine } from './Banners';
-import { rangeFR } from '../utils/soberPeriods';
 
 const WEEKDAY_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 const HOUR_LABELS_24 = ['0','','','','','','6','','','','','','12','','','','','','18','','','','',''];
@@ -230,16 +227,12 @@ export default function StatsView({
     return max || null;
   }, [mode, consumptionsBySubstance]);
 
-  // 1.46 : grand compteur + compteurs ajoutés dans l'onglet Stats des DEUX côtés (global et substance)
+  // 1.47 : seulement les compteurs ajoutés dans l'onglet Stats (le principal est sous les onglets)
   const heroScope = mode === 'global' ? '__global' : substanceId;
   const countersEditing = useStore((st) => !!heroScope && st.countersEditing === heroScope);
   const substanceTimestamps = useMemo(
     () => (mode === 'substance' ? (consumptions || []).map((c) => c.timestamp) : []),
     [mode, consumptions],
-  );
-  const lastSubstanceTimestamp = useMemo(
-    () => (substanceTimestamps.length ? Math.max(...substanceTimestamps) : null),
-    [substanceTimestamps],
   );
   // 1.40 : toutes les prises (toutes substances) pour les compteurs ajoutés du global
   const globalTimestamps = useMemo(() => {
@@ -266,30 +259,17 @@ export default function StatsView({
   return (
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent} scrollEnabled={!countersEditing}>
 
-      {/* Grand compteur + compteurs ajoutés — global (« Sobre de tout ») et substance (1.46) */}
-      {mode === 'global' && lastGlobalTimestamp !== null && (
-        <View style={styles.globalHero}>
-          <Text style={styles.globalHeroLabel}>Sobre de tout depuis</Text>
-          <View style={styles.counterWrap}>
-            <LiveCounter
-              timestamp={lastGlobalTimestamp}
-              style={styles.globalHeroCounter}
-            />
-          </View>
-          <DateLine text={rangeFR(lastGlobalTimestamp, null)} />
-          <ExtraCounters scope="__global" timestamps={globalTimestamps} color={theme.colors.text} />
+      {/* 1.47 : le compteur principal est le petit compteur sous les onglets ; ici, seulement les
+          compteurs ajoutés (précédente / plus longue) et la pilule « + », posée sur le séparateur
+          qui sert de bordure au petit compteur. */}
+      {mode === 'global' && (
+        <View style={styles.extraOnly}>
+          <ExtraCounters scope="__global" timestamps={globalTimestamps} color={theme.colors.text} flushTop />
         </View>
       )}
       {mode === 'substance' && !!substanceId && (
-        <View style={styles.globalHero}>
-          <Text style={styles.globalHeroLabel}>Sobre depuis</Text>
-          <View style={styles.counterWrap}>
-            {lastSubstanceTimestamp
-              ? <LiveCounter timestamp={lastSubstanceTimestamp} style={[styles.globalHeroCounter, { color }]} />
-              : <Text style={[styles.globalHeroCounter, { color }]}>—</Text>}
-          </View>
-          <DateLine text={lastSubstanceTimestamp ? rangeFR(lastSubstanceTimestamp, null) : null} />
-          <ExtraCounters scope={substanceId} timestamps={substanceTimestamps} color={color} />
+        <View style={styles.extraOnly}>
+          <ExtraCounters scope={substanceId} timestamps={substanceTimestamps} color={color} flushTop />
         </View>
       )}
 
@@ -519,32 +499,8 @@ function PieCheckbox({ label, value, color, checked, onToggle }) {
 
 const styles = StyleSheet.create({
   scrollContent: { paddingTop: theme.spacing.sm, paddingBottom: 20 },
-  // 1.42 : le dernier séparateur des compteurs (avec la pilule « + ») sert de bordure basse
-  globalHero: {
-    alignItems: 'center', paddingTop: theme.spacing.lg,
-    marginBottom: theme.spacing.md,
-  },
-  globalHeroLabel: {
-    color: theme.colors.textMuted, fontSize: theme.font.sizes.xs, fontWeight: '300',
-    letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: theme.spacing.xs,
-  },
-  counterWrap: {
-    minHeight: 36, justifyContent: 'center', alignItems: 'center',
-    paddingHorizontal: theme.spacing.md, width: '100%',
-  },
-  globalHeroCounter: {
-    color: theme.colors.text,
-    fontSize: theme.font.sizes.xl, fontWeight: '300', letterSpacing: 0.5,
-    fontVariant: ['tabular-nums'], textAlign: 'center', flexShrink: 1,
-  },
-  globalHeroSubLabel: {
-    color: theme.colors.textFaint, fontSize: theme.font.sizes.xs, fontWeight: '300',
-    letterSpacing: 0.5, marginTop: theme.spacing.sm,
-  },
-  globalHeroValue: {
-    color: theme.colors.text, fontSize: 56, fontWeight: '200',
-    fontVariant: ['tabular-nums'], letterSpacing: 1,
-  },
+  // collé sous le petit compteur (annule le paddingTop du ScrollView) : son 1er séparateur = la bordure
+  extraOnly: { alignItems: 'center', marginTop: -theme.spacing.sm, marginBottom: theme.spacing.md },
   windowSelector: { flexDirection: 'row', flexWrap: 'wrap', gap: theme.spacing.xs, paddingHorizontal: theme.spacing.md, marginBottom: theme.spacing.xs, justifyContent: 'center' },
   windowChip: { paddingHorizontal: theme.spacing.sm, paddingVertical: theme.spacing.xs, borderRadius: 4, borderWidth: 1, borderColor: theme.colors.border },
   windowChipText: { color: theme.colors.textMuted, fontSize: theme.font.sizes.sm, fontWeight: '300', letterSpacing: 0.5 },

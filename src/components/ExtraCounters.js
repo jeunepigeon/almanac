@@ -68,7 +68,8 @@ function ActiveItem({ index, handlers, picked, phase, onDelete, children }) {
   );
 }
 
-export default function ExtraCounters({ scope, timestamps, color = theme.colors.text, bleed = 0 }) {
+// flushTop (1.47) : collé au petit compteur au-dessus (son 1er séparateur lui sert de bordure)
+export default function ExtraCounters({ scope, timestamps, color = theme.colors.text, bleed = 0, flushTop = false }) {
   const enabled = useStore((s) => s.extraCounters[scope]) || EMPTY;
   const toggle = useStore((s) => s.toggleExtraCounter);
   const setOrder = useStore((s) => s.setExtraCountersOrder);
@@ -197,7 +198,7 @@ export default function ExtraCounters({ scope, timestamps, color = theme.colors.
   const openPicker = () => { haptics.light(); setOpen(true); };
 
   return (
-    <View style={[styles.wrap, bleed ? { marginHorizontal: -bleed } : null]}>
+    <View style={[styles.wrap, bleed ? { marginHorizontal: -bleed } : null, flushTop && { marginTop: 0 }]}>
       {/* 1.44 : chaque compteur porte le séparateur AU-DESSUS de lui (il glisse avec) ; le dernier
           séparateur, avec la pilule « + », est FIXE (il ne part plus avec le compteur du bas) */}
       <View style={styles.listArea} onLayout={(e) => { listH.current = e.nativeEvent.layout.height; }}>

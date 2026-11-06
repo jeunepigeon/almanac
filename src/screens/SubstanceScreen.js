@@ -162,6 +162,7 @@ export default function SubstanceScreen() {
         iconId={substance.icon}
         flashBg={heroFlashBg}
         dimmed={countersEditing}
+        noBorder={activeTab === 'stats'}
       />
 
       {activeTab === 'calendar' && (
