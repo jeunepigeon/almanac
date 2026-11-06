@@ -12,6 +12,7 @@ import SubstancePicker from '../components/SubstancePicker';
 import LogConsumptionModal from '../components/LogConsumptionModal';
 import StatsView from '../components/StatsView';
 import GlobalHistoryView from '../components/GlobalHistoryView';
+import ReorgBar from '../components/ReorgBar';
 
 
 export default function GlobalCalendarPage() {
@@ -25,6 +26,8 @@ export default function GlobalCalendarPage() {
   const createConsumption = useStore((s) => s.createConsumption);
   const updateConsumption = useStore((s) => s.updateConsumption);
   const deleteConsumption = useStore((s) => s.deleteConsumption);
+  const countersEditing = useStore((s) => s.countersEditing);
+  const requestCountersExit = useStore((s) => s.requestCountersExit);
 
   const [activeTab, setActiveTab] = useState('calendar');
   const gotoGlobalStatsTick = useStore((s) => s.gotoGlobalStatsTick);
@@ -80,9 +83,9 @@ export default function GlobalCalendarPage() {
   return (
     <View style={styles.container}>
       <View style={styles.tabs}>
-        <Tab label="Calendrier" active={activeTab === 'calendar'} onPress={() => setActiveTab('calendar')} />
-        <Tab label="Recherche" active={activeTab === 'history'} onPress={() => setActiveTab('history')} />
-        <Tab label="Stats" active={activeTab === 'stats'} onPress={() => setActiveTab('stats')} />
+        <Tab label="Calendrier" active={activeTab === 'calendar'} onPress={() => { requestCountersExit(); setActiveTab('calendar'); }} />
+        <Tab label="Recherche" active={activeTab === 'history'} onPress={() => { requestCountersExit(); setActiveTab('history'); }} />
+        <Tab label="Stats" active={activeTab === 'stats'} onPress={() => { requestCountersExit(); setActiveTab('stats'); }} />
       </View>
 
       {activeTab === 'calendar' && (
@@ -123,12 +126,16 @@ export default function GlobalCalendarPage() {
         />
       )}
       {activeTab === 'stats' && (
-        <StatsView
-          mode="global"
-          consumptionsBySubstance={consumptionsBySubstance}
-          substancesById={substancesById}
-          navigation={navigation}
-        />
+        <View style={{ flex: 1 }}>
+          <StatsView
+            mode="global"
+            consumptionsBySubstance={consumptionsBySubstance}
+            substancesById={substancesById}
+            navigation={navigation}
+          />
+          {/* 1.43 : barre de réorganisation des compteurs, sous les onglets (qui restent actifs) */}
+          {countersEditing && <ReorgBar onDone={requestCountersExit} />}
+        </View>
       )}
 
       {/* Détail d'un jour */}
@@ -158,6 +165,7 @@ export default function GlobalCalendarPage() {
       <LogConsumptionModal
         visible={!!editingConso}
         mode="edit"
+        directEdit
         substance={editingConso?.substance}
         initial={editingConso?.consumption}
         onSubmit={async (payload) => {

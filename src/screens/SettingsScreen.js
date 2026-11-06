@@ -281,7 +281,7 @@ export default function SettingsScreen() {
       { kind: 'custom-name' },
       { kind: 'custom-actions' },
       { kind: 'confirm', title: 'Désactiver ce bandeau ?', message: 'bandeau' },
-      { kind: 'confirm', title: 'Supprimer ce bandeau ?', message: 'Le bandeau « Sobre de mes soirées » et ses notifications\nseront supprimés définitivement. Pour le retrouver, il faudra le recréer.', confirm: 'Supprimer' },
+      { kind: 'confirm', title: 'Supprimer ce bandeau ?', message: 'Le bandeau «\u00A0Sobre de mes soirées\u00A0» et ses notifications seront supprimés. Recréable depuis le +. Les substances et leurs prises ne sont pas affectées.', confirm: 'Supprimer' },
       { kind: 'confirm', title: 'Supprimer cette prise ?', message: 'Nicotine · 17:42\nLa prise sera supprimée définitivement.', confirm: 'Supprimer' },
       { kind: 'toggle-counters' },
       { kind: 'notif-list' },

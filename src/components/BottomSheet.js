@@ -15,7 +15,7 @@ const MAX_HEIGHT = SCREEN_H * 0.85;
 // - bouton X dans le header
 // Props:
 //   visible, title, onClose, children
-export default function BottomSheet({ visible, title, onClose, children }) {
+export default function BottomSheet({ visible, title, onClose, children, keepTitleCase = false }) {
   const translateY = useRef(new Animated.Value(SCREEN_H)).current;
   const dragY = useRef(0);
 
@@ -80,7 +80,7 @@ export default function BottomSheet({ visible, title, onClose, children }) {
             </View>
 
             <View style={styles.header}>
-              {title ? <Text style={styles.title}>{title}</Text> : <View />}
+              {title ? <Text style={[styles.title, keepTitleCase && { textTransform: 'none' }]}>{title}</Text> : <View />}
               <TouchableOpacity
                 onPress={onClose}
                 style={styles.closeBtn}

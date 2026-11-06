@@ -11,6 +11,7 @@ import { formatDate, formatTime } from '../utils/dates';
 export default function LogConsumptionModal({
   visible, mode = 'create', substance, initial, prefilledDate,
   onSubmit, onDelete, onClose,
+  directEdit = false, // 1.43 : ouverte par un crayon → déjà modifiable, sans « Supprimer », bouton « Valider »
 }) {
   const [date, setDate] = useState(new Date());
   const [dosage, setDosage] = useState('');
@@ -30,7 +31,7 @@ export default function LogConsumptionModal({
         setDate(new Date(initial.timestamp));
         setDosage(initial.dosage != null ? String(initial.dosage) : '');
         setNotes(initial.notes ?? '');
-        setEditLocked(true);
+        setEditLocked(!directEdit);
       } else if (prefilledDate) {
         const today = new Date(); today.setHours(0,0,0,0);
         const target = new Date(prefilledDate); target.setHours(0,0,0,0);
@@ -180,7 +181,7 @@ export default function LogConsumptionModal({
               />
 
               <View style={styles.actions}>
-                {mode === 'edit' && onDelete && (
+                {mode === 'edit' && onDelete && !directEdit && (
                   <TouchableOpacity onPress={onDelete} style={styles.actionBtn}>
                     <Text style={styles.actionDanger}>Supprimer</Text>
                   </TouchableOpacity>
@@ -196,7 +197,7 @@ export default function LogConsumptionModal({
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity onPress={handleSubmit} style={styles.actionBtn}>
-                      <Text style={styles.actionPrimary}>Enregistrer</Text>
+                      <Text style={styles.actionPrimary}>{directEdit ? 'Valider' : 'Enregistrer'}</Text>
                     </TouchableOpacity>
                   )
                 ) : (

@@ -271,6 +271,8 @@ export default function StatsView({
         </View>
       )}
 
+      {/* 1.43 : compteurs en réorganisation → tout le reste assombri et figé */}
+      <View style={countersEditing && { opacity: 0.25 }} pointerEvents={countersEditing ? 'none' : 'auto'}>
       {/* Sélecteur fenêtre */}
       <View style={styles.windowSelector}>
         {ALL_WINDOWS.map((w) => (
@@ -466,6 +468,7 @@ export default function StatsView({
         </>
       )}
       <View style={{ height: 60 }} />
+      </View>
     </ScrollView>
   );
 }

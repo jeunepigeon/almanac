@@ -160,12 +160,6 @@ export default function NotifWizard({ visible, initialTarget = null, onClose, de
                 <TouchableOpacity key={`${t.target}:${t.key}`} style={[styles.row, rowTint(colorOf(t))]} onPress={() => openTarget(t)} activeOpacity={0.7}>
                   {renderTargetLabel(t)}
                   <Text style={styles.count}>{n} notif{n > 1 ? 's' : ''}</Text>
-                  <TouchableOpacity
-                    onPress={() => { haptics.light(); setPendingDelete(t); setStep('confirm'); }}
-                    hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
-                  >
-                    <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.danger} />
-                  </TouchableOpacity>
                   <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.textMuted} />
                 </TouchableOpacity>
               );

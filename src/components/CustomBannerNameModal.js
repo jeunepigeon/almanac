@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { theme } from '../theme';
 
-const MAX = 20;
+const MAX = 15; // 1.43
 
 export default function CustomBannerNameModal({ visible, initialName = '', confirmLabel = 'Créer', onConfirm, onCancel }) {
   const [name, setName] = useState('');

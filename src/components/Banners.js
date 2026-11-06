@@ -246,7 +246,7 @@ const styles = StyleSheet.create({
     color: theme.colors.text, fontSize: theme.font.sizes.xl, fontWeight: '300',
     letterSpacing: 0.5, fontVariant: ['tabular-nums'], textAlign: 'center',
   },
-  last24Count: { minHeight: 30 },
+  last24Count: { lineHeight: 30 },
   date: { color: theme.colors.textMuted, fontSize: theme.font.sizes.xs, fontWeight: '300', letterSpacing: 0.3, marginTop: 2 },
   emptyHint: {
     color: theme.colors.textFaint, fontSize: theme.font.sizes.xs, fontWeight: '300',
@@ -261,9 +261,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, zIndex: 2,
   },
   toolBtn: { padding: theme.spacing.xs },
+  // 1.43 : points centrés, même écart au-dessus (chiffre) et en dessous (« clic pour plus de détails »)
   dotsRow: {
-    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center',
-    columnGap: CLUSTER_GAP, rowGap: 2, marginTop: 2, minHeight: 26,
+    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', alignSelf: 'center',
+    columnGap: CLUSTER_GAP, rowGap: 2, marginTop: 6, marginBottom: 6,
   },
   num: { fontWeight: '700', fontSize: 17, fontVariant: ['tabular-nums'] },
 });

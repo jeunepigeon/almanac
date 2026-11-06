@@ -29,7 +29,7 @@ export default function DayDetailModal({
   const [pendingDelete, setPendingDelete] = useState(null); // { item, sub }
 
   return (
-    <BottomSheet visible={visible} title={title} onClose={onClose}>
+    <BottomSheet visible={visible} title={title} onClose={onClose} keepTitleCase={!!titleOverride}>
       {consumptions.length === 0 ? (
         <View style={styles.empty}>
           <Text style={styles.emptyText}>Aucune consommation ce jour</Text>

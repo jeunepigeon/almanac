@@ -131,7 +131,7 @@ export default function MainScreen() {
         style={styles.pager}
         initialPage={0}
         scrollEnabled={!pagerLocked}
-        onPageSelected={(e) => setPage(e.nativeEvent.position)}
+        onPageSelected={(e) => { setPage(e.nativeEvent.position); useStore.getState().requestCountersExit(); }}
       >
         <View key="1" style={styles.page}>
           <SubstancesPage />

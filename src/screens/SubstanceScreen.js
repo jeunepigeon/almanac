@@ -12,6 +12,7 @@ import SubstanceIcon from '../components/SubstanceIcon';
 import { formatDateLong, formatTime } from '../utils/dates';
 import LiveCounter from '../components/LiveCounter';
 import ExtraCounters from '../components/ExtraCounters';
+import ReorgBar from '../components/ReorgBar';
 import { DateLine } from '../components/Banners';
 import { rangeFR } from '../utils/soberPeriods';
 import LogConsumptionModal from '../components/LogConsumptionModal';
@@ -45,6 +46,8 @@ export default function SubstanceScreen() {
   // 1.40 : horodatages pour les compteurs ajoutés (précédente / plus longue)
   const consoTimestamps = useMemo(() => (consumptions || []).map((c) => c.timestamp), [consumptions]);
   const createConsumption = useStore((s) => s.createConsumption);
+  const countersEditing = useStore((s) => s.countersEditing);
+  const requestCountersExit = useStore((s) => s.requestCountersExit);
   const updateConsumption = useStore((s) => s.updateConsumption);
   const deleteConsumption = useStore((s) => s.deleteConsumption);
 
@@ -129,7 +132,7 @@ export default function SubstanceScreen() {
     <View style={styles.container}>
       <Animated.View style={[styles.hero, { backgroundColor: heroFlashBg }]}>
         <View style={[styles.heroIcon, { borderColor: substance.color }]}>
-          <SubstanceIcon iconId={substance.icon} size={28} color={substance.color} />
+          <SubstanceIcon iconId={substance.icon} size={20} color={substance.color} />
         </View>
         <Text style={styles.heroLabel}>Sobre depuis</Text>
         <View style={styles.counterWrap}>
@@ -142,11 +145,14 @@ export default function SubstanceScreen() {
         <ExtraCounters scope={substance.id} timestamps={consoTimestamps} color={substance.color} bleed={theme.spacing.lg} />
       </Animated.View>
 
+      {/* Changer d'onglet fait sortir de la réorganisation des compteurs (1.43) */}
       <View style={styles.tabs}>
-        <Tab label="Calendrier" active={activeTab === 'calendar'} onPress={() => setActiveTab('calendar')} />
-        <Tab label="Recherche" active={activeTab === 'history'} onPress={() => setActiveTab('history')} />
-        <Tab label="Stats" active={activeTab === 'stats'} onPress={() => setActiveTab('stats')} />
+        <Tab label="Calendrier" active={activeTab === 'calendar'} onPress={() => { requestCountersExit(); setActiveTab('calendar'); }} />
+        <Tab label="Recherche" active={activeTab === 'history'} onPress={() => { requestCountersExit(); setActiveTab('history'); }} />
+        <Tab label="Stats" active={activeTab === 'stats'} onPress={() => { requestCountersExit(); setActiveTab('stats'); }} />
       </View>
+
+      <View style={[{ flex: 1 }, countersEditing && styles.dimmed]} pointerEvents={countersEditing ? 'none' : 'auto'}>
 
       {activeTab === 'calendar' && (
         <ScrollableCalendar
@@ -158,7 +164,7 @@ export default function SubstanceScreen() {
         />
       )}
       {activeTab === 'history' && (
-        <HistoryList consumptions={consumptions} color={substance.color} onEdit={(c) => setEditing(c)} />
+        <HistoryList consumptions={consumptions} color={substance.color} onEdit={(c) => setEditing(c)} onDelete={(c) => setPendingDelete(c)} />
       )}
       {activeTab === 'stats' && (
         <StatsView
@@ -169,6 +175,7 @@ export default function SubstanceScreen() {
           substanceId={substanceId}
         />
       )}
+      </View>
 
       <NotifWizard
         visible={notifOpen}
@@ -176,7 +183,8 @@ export default function SubstanceScreen() {
         onClose={() => setNotifOpen(false)}
       />
 
-      <FAB color={substance.color} onPress={() => setLogOpen(true)} />
+      {!countersEditing && <FAB color={substance.color} onPress={() => setLogOpen(true)} />}
+      {countersEditing && <ReorgBar onDone={requestCountersExit} />}
 
       <LogConsumptionModal
         visible={logOpen}
@@ -194,20 +202,21 @@ export default function SubstanceScreen() {
       <LogConsumptionModal
         visible={!!editing}
         mode="edit"
+        directEdit
         substance={substance}
         initial={editing}
         onSubmit={async (payload) => {
           if (editing) await updateConsumption(editing.id, substance.id, payload);
           setEditing(null);
         }}
-        onDelete={() => { setPendingDelete(editing); setEditing(null); }}
         onClose={() => setEditing(null)}
       />
 
       <ConfirmModal
         visible={!!pendingDelete}
-        title="Supprimer ?"
-        message="Cette entrée sera retirée de l'historique."
+        title="Supprimer cette prise ?"
+        message={pendingDelete ? `${substance.name} · ${formatTime(pendingDelete.timestamp)}\nLa prise sera supprimée définitivement.` : ''}
+        cancelLabel="Annuler"
         confirmLabel="Supprimer"
         destructive
         onCancel={() => setPendingDelete(null)}
@@ -248,7 +257,7 @@ function Tab({ label, active, onPress }) {
   );
 }
 
-function HistoryList({ consumptions, color, onEdit }) {
+function HistoryList({ consumptions, color, onEdit, onDelete }) {
   const grouped = useMemo(() => {
     if (!consumptions) return null;
     const map = new Map();
@@ -285,7 +294,7 @@ function HistoryList({ consumptions, color, onEdit }) {
         <View>
           <Text style={styles.dayHeader}>{formatDateLong(item.dayTs)}</Text>
           {item.items.map((c) => (
-            <ConsumptionRow key={c.id} consumption={c} color={color} onPress={() => onEdit(c)} />
+            <ConsumptionRow key={c.id} consumption={c} color={color} onEdit={() => onEdit(c)} onDelete={() => onDelete(c)} />
           ))}
         </View>
       )}
@@ -293,9 +302,10 @@ function HistoryList({ consumptions, color, onEdit }) {
   );
 }
 
-function ConsumptionRow({ consumption, color, onPress }) {
+// 1.43 : comme les cartes du jour — la ligne ne réagit plus au tap ; crayon et poubelle à droite
+function ConsumptionRow({ consumption, color, onEdit, onDelete }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.consoRow, pressed && styles.consoRowPressed]}>
+    <View style={styles.consoRow}>
       <View style={[styles.consoBullet, { backgroundColor: color }]} />
       <View style={styles.consoMiddle}>
         <Text style={styles.consoTime}>{formatTime(consumption.timestamp)}</Text>
@@ -307,8 +317,15 @@ function ConsumptionRow({ consumption, color, onPress }) {
         {consumption.notes ? <Text style={styles.consoNotes} numberOfLines={2}>{consumption.notes}</Text> : null}
       </View>
       <LiveCounter timestamp={consumption.timestamp} style={styles.consoTimeAgo} />
-      <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.textFaint} />
-    </Pressable>
+      <View style={styles.consoTools}>
+        <TouchableOpacity onPress={onEdit} hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
+          <MaterialCommunityIcons name="pencil-outline" size={20} color={theme.colors.textMuted} />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onDelete} hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
+          <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.danger} />
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
@@ -325,11 +342,14 @@ const styles = StyleSheet.create({
   notFound: { color: theme.colors.textMuted, textAlign: 'center', marginTop: theme.spacing.xl },
   // 1.42 : le dernier séparateur des compteurs (avec la pilule « + ») sert de bordure basse
   hero: {
-    alignItems: 'center', paddingTop: theme.spacing.lg, paddingHorizontal: theme.spacing.lg,
+    alignItems: 'center', paddingTop: theme.spacing.md, paddingHorizontal: theme.spacing.lg,
   },
+  // 1.43 : compteurs en réorganisation → le reste de la page est assombri et figé
+  dimmed: { opacity: 0.25 },
+  // 1.43 : logo 40 (avant 56), marges réduites → plus de place pour le calendrier
   heroIcon: {
-    width: 56, height: 56, borderRadius: 28, borderWidth: 2,
-    justifyContent: 'center', alignItems: 'center', marginBottom: theme.spacing.sm,
+    width: 40, height: 40, borderRadius: 20, borderWidth: 1.5,
+    justifyContent: 'center', alignItems: 'center', marginBottom: theme.spacing.xs + 2,
   },
   heroLabel: {
     color: theme.colors.textMuted, fontSize: theme.font.sizes.xs, fontWeight: '300',
@@ -366,6 +386,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing.md,
   },
   consoRowPressed: { backgroundColor: theme.colors.surface },
+  consoTools: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md, marginLeft: theme.spacing.sm },
   consoBullet: { width: 8, height: 8, borderRadius: 4 },
   consoMiddle: { flex: 1, gap: 2 },
   consoTime: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '300', fontVariant: ['tabular-nums'] },

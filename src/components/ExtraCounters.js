@@ -1,14 +1,16 @@
 // Compteurs ajoutés sous « Sobre depuis » (1.40) — page d'une substance et stats globales.
-//  - séparateurs entre les compteurs (comme la liste), pilule « + » posée sur le dernier (1.42) ;
-//  - « + » : fenêtre à cocher pour ajouter / retirer ;
-//  - appui long puis glisser, dans le même geste (comme la liste) → réorganisation : les compteurs
-//    vibrent, le séparateur où le compteur va se poser s'allume (1.42), poubelle pour retirer,
-//    « Terminé » (ou retour) pour sortir ;
-//  - réglage propre à chaque substance (scope = id) et un pour le global (scope = '__global').
-// Taille : 18, plus petite que les compteurs principaux (24), identique partout.
+// 1.43 : réorganisation IDENTIQUE à la liste des substances :
+//  - 1er appui long → mode réorganisation (les compteurs vibrent, poubelle à droite,
+//    barre « RÉORGANISATION · Terminé » en haut de la page, le reste de la page assombri et figé) ;
+//  - en réorganisation, appui long sur un compteur → saisi (vibration, agrandi, transparent),
+//    il suit le doigt, l'autre glisse pour libérer la place, barre blanche sur le séparateur visé ;
+//  - sortie : « Terminé », retour Android, changement d'onglet / de page.
+// Séparateurs entre les compteurs, pilule « + » posée sur le dernier (toujours visible).
+// Réglage propre à chaque substance (scope = id) et un pour le global (scope = '__global').
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, BackHandler } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Pressable, Animated, Easing, BackHandler } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { useIsFocused } from '@react-navigation/native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from '../theme';
 import { useStore } from '../store';
@@ -24,62 +26,62 @@ const DEFS = [
   { id: 'prev', label: 'Période de sobriété précédente' },
   { id: 'record', label: 'Plus longue période sobre' },
 ];
-const LONG_PRESS_MS = 400;
+const LONG_PRESS_MS = 400;     // = liste
+const PICKUP_SCALE = 1.06;     // = liste
+const PICKUP_OPACITY = 0.92;   // = liste
 
-function Separator({ lit, children }) {
+function Pill({ onPress }) {
   return (
-    <View style={styles.sepWrap}>
-      <View style={[styles.sep, lit && styles.sepLit]} />
-      {children}
+    <View pointerEvents="box-none" style={styles.pillOverlay}>
+      <TouchableOpacity style={styles.pill} onPress={onPress} hitSlop={{ top: 10, bottom: 10, left: 14, right: 14 }} activeOpacity={0.6}>
+        <MaterialCommunityIcons name="plus" size={10} color={theme.colors.background} />
+      </TouchableOpacity>
     </View>
   );
 }
 
-// Un compteur déplaçable : appui long (ou direct en réorganisation) puis glisser
-function DraggableItem({ index, editing, onStart, onMove, onEnd, dragging, dy, phase, onDelete, onLayout, children }) {
-  const handlers = useRef({});
-  handlers.current = { onStart, onMove, onEnd };
-  const gesture = useMemo(() => {
-    const g = Gesture.Pan().runOnJS(true)
-      .onStart(() => handlers.current.onStart(index))
-      .onUpdate((e) => handlers.current.onMove(e.translationY))
-      .onEnd(() => handlers.current.onEnd())
-      .onFinalize(() => handlers.current.onEnd());
-    return editing ? g.minDistance(4) : g.activateAfterLongPress(LONG_PRESS_MS);
-  }, [editing, index]);
+// Compteur en réorganisation : appui long → saisi, glisser dans le même geste (comme la liste)
+function ActiveItem({ index, handlers, picked, phase, onDelete, children }) {
+  const h = useRef(handlers); h.current = handlers;
+  const gesture = useMemo(() => Gesture.Pan()
+    .activateAfterLongPress(LONG_PRESS_MS)
+    .runOnJS(true)
+    .onStart(() => h.current.start(index))
+    .onUpdate((e) => h.current.move(e.translationY))
+    .onEnd(() => h.current.end())
+    .onFinalize(() => h.current.end()), [index]);
   return (
-    <GestureDetector gesture={gesture}>
-      <Animated.View
-        collapsable={false}
-        onLayout={onLayout}
-        style={[styles.item, dragging && { transform: [{ translateY: dy }, { scale: 1.04 }], zIndex: 10, opacity: 0.92 }]}
-      >
-        <WiggleContent isWiggling={editing && !dragging} phase={phase} style={[styles.block, editing && styles.blockEditing]}>
-          {children}
-        </WiggleContent>
-        {editing && (
-          <TouchableOpacity onPress={onDelete} style={styles.trash} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-            <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.danger} />
-          </TouchableOpacity>
-        )}
-      </Animated.View>
-    </GestureDetector>
+    <View style={styles.itemRow}>
+      <GestureDetector gesture={gesture}>
+        <Animated.View collapsable={false} style={[styles.grab, picked && { opacity: PICKUP_OPACITY, transform: [{ scale: PICKUP_SCALE }] }]}>
+          <WiggleContent isWiggling={!picked} phase={phase} style={[styles.block, styles.blockEditing]}>
+            {children}
+          </WiggleContent>
+        </Animated.View>
+      </GestureDetector>
+      <TouchableOpacity onPress={onDelete} style={styles.trash} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+        <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.danger} />
+      </TouchableOpacity>
+    </View>
   );
 }
 
-// bleed : marge intérieure du conteneur, compensée pour que les séparateurs aillent bord à bord
 export default function ExtraCounters({ scope, timestamps, color = theme.colors.text, bleed = 0 }) {
   const enabled = useStore((s) => s.extraCounters[scope]) || EMPTY;
   const toggle = useStore((s) => s.toggleExtraCounter);
   const setOrder = useStore((s) => s.setExtraCountersOrder);
   const setCountersEditing = useStore((s) => s.setCountersEditing);
+  const exitTick = useStore((s) => s.countersExitTick);
+  const isFocused = useIsFocused();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [drag, setDragState] = useState(null); // { from, target }
   const dragRef = useRef(null);
   const setDrag = (d) => { dragRef.current = d; setDragState(d); };
   const dy = useRef(new Animated.Value(0)).current;
-  const heights = useRef({});
+  const shifts = useRef({});
+  const shiftOf = (id) => { if (!shifts.current[id]) shifts.current[id] = new Animated.Value(0); return shifts.current[id]; };
+  const layout = useRef({}); // index → { y, h } (bloc compteur + son séparateur)
   const p = useMemo(() => soberPeriods(timestamps), [timestamps]);
 
   // La période en cours peut dépasser le record pendant qu'on regarde : réévalué toutes les 30 s
@@ -90,8 +92,12 @@ export default function ExtraCounters({ scope, timestamps, color = theme.colors.
     return () => clearInterval(t);
   }, [enabled]);
 
-  // Pendant la réorganisation, la page ne défile plus (sinon elle « vole » le glissement)
-  useEffect(() => { setCountersEditing(editing); return () => setCountersEditing(false); }, [editing]); // eslint-disable-line
+  // --- entrée / sortie du mode ---
+  useEffect(() => { setCountersEditing(editing); }, [editing]); // eslint-disable-line
+  useEffect(() => () => setCountersEditing(false), []); // eslint-disable-line
+  const firstTick = useRef(exitTick);
+  useEffect(() => { if (exitTick !== firstTick.current) setEditing(false); }, [exitTick]);
+  useEffect(() => { if (!isFocused) setEditing(false); }, [isFocused]);
   useEffect(() => {
     if (!editing) return undefined;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => { setEditing(false); return true; });
@@ -127,74 +133,101 @@ export default function ExtraCounters({ scope, timestamps, color = theme.colors.
     );
   };
 
-  // --- glisser-déposer ---
-  const avgH = () => {
-    const hs = Object.values(heights.current);
-    return hs.length ? hs.reduce((a, b) => a + b, 0) / hs.length : 70;
+  // --- glisser-déposer (logique de la liste) ---
+  const hOf = (i) => layout.current[i]?.h || 70;
+  const applyShifts = (d) => {
+    enabled.forEach((id, i) => {
+      let to = 0;
+      if (d && i !== d.from) {
+        if (d.from < d.target && i > d.from && i <= d.target) to = -hOf(d.from);
+        if (d.target < d.from && i >= d.target && i < d.from) to = hOf(d.from);
+      }
+      Animated.timing(shiftOf(id), { toValue: to, duration: 140, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    });
   };
-  const start = (from) => {
-    if (!editing) { haptics.medium(); setEditing(true); }
-    dy.setValue(0);
-    setDrag({ from, target: from });
+  const handlers = {
+    start: (from) => { haptics.medium(); dy.setValue(0); const d = { from, target: from }; setDrag(d); applyShifts(d); },
+    move: (ty) => {
+      dy.setValue(ty);
+      const d = dragRef.current;
+      if (!d) return;
+      // place visée : d'après le centre du compteur saisi
+      const center = (layout.current[d.from]?.y || 0) + hOf(d.from) / 2 + ty;
+      // nombre d'autres compteurs dont le milieu est au-dessus du doigt = nouvelle place
+      let target = 0;
+      enabled.forEach((_, i) => { const l = layout.current[i]; if (i !== d.from && l && l.y + l.h / 2 < center) target += 1; });
+      target = Math.max(0, Math.min(enabled.length - 1, target));
+      if (target !== d.target) { haptics.light(); const nd = { ...d, target }; setDrag(nd); applyShifts(nd); }
+    },
+    end: () => {
+      const d = dragRef.current;
+      if (!d) return;
+      if (d.target !== d.from) {
+        const list = [...enabled];
+        const [x] = list.splice(d.from, 1);
+        list.splice(d.target, 0, x);
+        setOrder(scope, list);
+      }
+      setDrag(null);
+      dy.setValue(0);
+      enabled.forEach((id) => shiftOf(id).setValue(0));
+    },
   };
-  const move = (ty) => {
-    dy.setValue(ty);
-    const d = dragRef.current;
-    if (!d) return;
-    const target = Math.max(0, Math.min(enabled.length - 1, d.from + Math.round(ty / avgH())));
-    if (target !== d.target) { haptics.light(); setDrag({ ...d, target }); }
-  };
-  const end = () => {
-    const d = dragRef.current;
-    if (!d) return;
-    if (d.target !== d.from) {
-      const list = [...enabled];
-      const [x] = list.splice(d.from, 1);
-      list.splice(d.target, 0, x);
-      setOrder(scope, list);
-      haptics.medium();
-    }
-    setDrag(null);
-    dy.setValue(0);
-  };
-  // Séparateur allumé = là où le compteur va se poser (k = 0 : au-dessus du 1er)
-  const litSep = drag && drag.target !== drag.from ? (drag.target < drag.from ? drag.target : drag.target + 1) : -1;
+  // Barre blanche posée sur le séparateur visé (même formule que la liste)
+  let barTop = null;
+  if (drag && drag.target !== drag.from) {
+    const l = layout.current[drag.target];
+    if (l) barTop = drag.target < drag.from ? l.y : l.y + hOf(drag.from);
+  }
+
+  const openPicker = () => { haptics.light(); setOpen(true); };
 
   return (
     <View style={[styles.wrap, bleed ? { marginHorizontal: -bleed } : null]}>
       {/* Séparateur sous le compteur principal ; sans compteur ajouté, la pilule est posée dessus */}
-      <Separator lit={litSep === 0}>
-        {enabled.length === 0 && <Pill onPress={() => { haptics.light(); setOpen(true); }} />}
-      </Separator>
-      {enabled.map((id, i) => (
-        <View key={id} style={{ alignSelf: 'stretch' }}>
-          <DraggableItem
-            index={i}
-            editing={editing}
-            dragging={drag?.from === i}
-            dy={dy}
-            phase={i % 3}
-            onStart={start}
-            onMove={move}
-            onEnd={end}
-            onDelete={() => { haptics.medium(); toggle(scope, id); }}
-            onLayout={(e) => { heights.current[id] = e.nativeEvent.layout.height; }}
+      <View style={styles.sepWrap}>
+        <View style={styles.sep} />
+        {enabled.length === 0 && <Pill onPress={openPicker} />}
+      </View>
+      <View style={styles.listArea}>
+        {enabled.map((id, i) => (
+          // Le bloc (compteur + son séparateur) glisse en entier, comme une ligne de la liste
+          <Animated.View
+            key={id}
+            style={{
+              alignSelf: 'stretch',
+              zIndex: drag?.from === i ? 10 : 1,
+              transform: [{ translateY: drag?.from === i ? dy : shiftOf(id) }],
+            }}
+            onLayout={(e) => { const { y, height } = e.nativeEvent.layout; layout.current[i] = { y, h: height }; }}
           >
-            {content(id)}
-          </DraggableItem>
-          {i < enabled.length - 1 && <Separator lit={litSep === i + 1} />}
-        </View>
-      ))}
-      {enabled.length > 0 && (
-        <Separator lit={litSep === enabled.length}>
-          {!editing && <Pill onPress={() => { haptics.light(); setOpen(true); }} />}
-        </Separator>
-      )}
-      {editing && (
-        <TouchableOpacity onPress={() => { haptics.light(); setEditing(false); }} style={styles.done} hitSlop={{ top: 10, bottom: 10, left: 14, right: 14 }}>
-          <Text style={styles.doneText}>Terminé</Text>
-        </TouchableOpacity>
-      )}
+            {editing ? (
+              <ActiveItem
+                index={i}
+                handlers={handlers}
+                picked={drag?.from === i}
+                phase={i % 3}
+                onDelete={() => { haptics.medium(); toggle(scope, id); }}
+              >
+                {content(id)}
+              </ActiveItem>
+            ) : (
+              <Pressable
+                onLongPress={() => { haptics.medium(); setEditing(true); }}
+                delayLongPress={LONG_PRESS_MS}
+                style={styles.block}
+              >
+                {content(id)}
+              </Pressable>
+            )}
+            <View style={styles.sepWrap}>
+              <View style={styles.sep} />
+              {i === enabled.length - 1 && <Pill onPress={openPicker} />}
+            </View>
+          </Animated.View>
+        ))}
+        {barTop != null && <View pointerEvents="none" style={[styles.indicatorBar, { top: barTop - 1 }]} />}
+      </View>
       <ToggleListModal
         visible={open}
         title="Compteurs"
@@ -206,25 +239,16 @@ export default function ExtraCounters({ scope, timestamps, color = theme.colors.
   );
 }
 
-function Pill({ onPress }) {
-  return (
-    <View pointerEvents="box-none" style={styles.pillOverlay}>
-      <TouchableOpacity style={styles.pill} onPress={onPress} hitSlop={{ top: 10, bottom: 10, left: 14, right: 14 }} activeOpacity={0.6}>
-        <MaterialCommunityIcons name="plus" size={10} color={theme.colors.background} />
-      </TouchableOpacity>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  wrap: { alignItems: 'center', alignSelf: 'stretch', marginTop: theme.spacing.md },
+  wrap: { alignItems: 'center', alignSelf: 'stretch', marginTop: theme.spacing.sm },
+  listArea: { alignSelf: 'stretch', position: 'relative' },
   sepWrap: { alignSelf: 'stretch', height: 12, justifyContent: 'center' },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border, alignSelf: 'stretch' },
-  sepLit: { height: 2, backgroundColor: theme.colors.text },
-  item: { alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', backgroundColor: 'transparent' },
-  block: { flex: 1, alignItems: 'center', paddingVertical: theme.spacing.xs, paddingHorizontal: theme.spacing.lg },
+  itemRow: { alignSelf: 'stretch', flexDirection: 'row', alignItems: 'center', backgroundColor: theme.colors.background },
+  grab: { flex: 1 },
+  block: { alignSelf: 'stretch', alignItems: 'center', paddingVertical: theme.spacing.xs, paddingHorizontal: theme.spacing.lg },
   blockEditing: { paddingHorizontal: 48 },
-  trash: { position: 'absolute', right: theme.spacing.sm, top: 0, bottom: 0, width: 32, alignItems: 'center', justifyContent: 'center' },
+  trash: { position: 'absolute', right: theme.spacing.md, top: 0, bottom: 0, justifyContent: 'center' },
   label: {
     color: theme.colors.textMuted, fontSize: theme.font.sizes.xs, fontWeight: '300',
     letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: theme.spacing.xs,
@@ -240,6 +264,9 @@ const styles = StyleSheet.create({
     height: 12, width: 32, borderRadius: 6, backgroundColor: theme.colors.text,
     alignItems: 'center', justifyContent: 'center',
   },
-  done: { marginTop: theme.spacing.xs, marginBottom: theme.spacing.sm, paddingVertical: 4, paddingHorizontal: theme.spacing.md, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.textMuted },
-  doneText: { color: theme.colors.text, fontSize: theme.font.sizes.sm, fontWeight: '600', letterSpacing: 0.5 },
+  // = barre de la liste : 55 % de large, centrée, 1 px blanc
+  indicatorBar: {
+    position: 'absolute', left: '22.5%', width: '55%', height: 1,
+    backgroundColor: '#FFFFFF', borderRadius: 1, zIndex: 20,
+  },
 });

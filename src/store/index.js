@@ -216,6 +216,9 @@ export const useStore = create((set, get) => ({
   // 1.42 : compteurs en réorganisation → la page des stats ne défile plus pendant le glissement
   countersEditing: false,
   setCountersEditing: (v) => set({ countersEditing: !!v }),
+  // 1.43 : demande de sortie (bouton « Terminé » de la barre, changement d'onglet ou de page)
+  countersExitTick: 0,
+  requestCountersExit: () => set((s) => ({ countersExitTick: s.countersExitTick + 1 })),
   setExtraCountersOrder: (scope, list) => {
     const next = { ...get().extraCounters, [scope]: list };
     set({ extraCounters: next });
