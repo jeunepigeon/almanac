@@ -10,7 +10,7 @@
 // téléphone 30 s ne reverrouille donc pas Almanac (version native prévue plus tard si besoin).
 
 import { useEffect, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, AppState } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, AppState, Modal } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from '../theme';
@@ -42,12 +42,17 @@ export default function AppLock() {
   const [locked, setLocked] = useState(() => useStore.getState().appLockEnabled);
   const busyRef = useRef(false);
   const bgSinceRef = useRef(null);
+  // Pendant la demande d'empreinte / code, la fenêtre du verrou se retire : sur les anciens Android
+  // (9 et moins), la demande s'affiche DANS l'app et serait sinon cachée derrière (blocage).
+  const [authing, setAuthing] = useState(false);
 
   const tryUnlock = async () => {
     if (busyRef.current) return;
     busyRef.current = true;
+    setAuthing(true);
     const ok = await authenticate();
     busyRef.current = false;
+    setAuthing(false);
     if (ok) setLocked(false);
   };
 
@@ -77,7 +82,7 @@ export default function AppLock() {
 
   if (!locked || !enabled) return null;
 
-  return (
+  const screen = (
     <View style={styles.overlay}>
       <MaterialCommunityIcons name="lock-outline" size={36} color={theme.colors.textMuted} />
       <Text style={styles.appName}>almanac</Text>
@@ -85,6 +90,17 @@ export default function AppLock() {
         <Text style={styles.btnText}>Déverrouiller</Text>
       </TouchableOpacity>
     </View>
+  );
+  // 1.42 : écran de verrouillage AUSSI dans une fenêtre (Modal) ouverte en dernier → au-dessus des
+  // fenêtres déjà ouvertes (ex. assistant de notifications laissé ouvert avant de quitter l'app).
+  // La vue simple reste dessous pour couvrir l'app sans délai au démarrage.
+  return (
+    <>
+      {screen}
+      <Modal visible={!authing} transparent={false} animationType="none" statusBarTranslucent onRequestClose={() => {}}>
+        {screen}
+      </Modal>
+    </>
   );
 }
 

@@ -16,6 +16,7 @@ import {
 } from '../utils/stats';
 import { BarChart, PieChart, ChartCard, MultiLineChart } from './Charts';
 import LiveCounter from './LiveCounter';
+import { useStore } from '../store';
 import ExtraCounters from './ExtraCounters';
 import { DateLine } from './Banners';
 import { rangeFR } from '../utils/soberPeriods';
@@ -229,6 +230,7 @@ export default function StatsView({
     return max || null;
   }, [mode, consumptionsBySubstance]);
 
+  const countersEditing = useStore((st) => st.countersEditing);
   // 1.40 : toutes les prises (toutes substances) pour les compteurs ajoutés du global
   const globalTimestamps = useMemo(() => {
     if (mode !== 'global' || !consumptionsBySubstance) return [];
@@ -252,7 +254,7 @@ export default function StatsView({
   const bandColor = mode === 'global' ? '#FFFFFF' : color;
 
   return (
-    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent} scrollEnabled={!countersEditing}>
 
       {/* Hero jours sobres — mode global uniquement */}
       {mode === 'global' && lastGlobalTimestamp !== null && (
@@ -492,9 +494,9 @@ function PieCheckbox({ label, value, color, checked, onToggle }) {
 
 const styles = StyleSheet.create({
   scrollContent: { paddingTop: theme.spacing.sm, paddingBottom: 20 },
+  // 1.42 : le dernier séparateur des compteurs (avec la pilule « + ») sert de bordure basse
   globalHero: {
-    alignItems: 'center', paddingVertical: theme.spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border,
+    alignItems: 'center', paddingTop: theme.spacing.lg,
     marginBottom: theme.spacing.md,
   },
   globalHeroLabel: {

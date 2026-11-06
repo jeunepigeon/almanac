@@ -213,6 +213,9 @@ export const useStore = create((set, get) => ({
     set({ extraCounters: next });
     setJSON(EXTRA_COUNTERS_KEY, next);
   },
+  // 1.42 : compteurs en réorganisation → la page des stats ne défile plus pendant le glissement
+  countersEditing: false,
+  setCountersEditing: (v) => set({ countersEditing: !!v }),
   setExtraCountersOrder: (scope, list) => {
     const next = { ...get().extraCounters, [scope]: list };
     set({ extraCounters: next });

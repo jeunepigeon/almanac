@@ -19,6 +19,10 @@ import ExportWizard from '../components/ExportWizard';
 import ImportWizard from '../components/ImportWizard';
 import RestoreWizard from '../components/RestoreWizard';
 import NotifWizard from '../components/NotifWizard';
+import ShareModal from '../components/ShareModal';
+import ToggleListModal from '../components/ToggleListModal';
+import CustomBannerNameModal from '../components/CustomBannerNameModal';
+import DayDetailModal from '../components/DayDetailModal';
 import { deviceHasLock, authenticate } from '../components/AppLock';
 import { scheduleTestNotification } from '../utils/notifications';
 import { KDF_NATIVE_AVAILABLE, getLastKdfEngine } from '../utils/exportImport';
@@ -26,7 +30,7 @@ import { fmtDateTiretHM, fmtSize, parseSnapshot, withNotifCounts } from '../util
 import { useKeepAwake } from '../utils/keepAwake';
 import appJson from '../../app.json';
 
-import { JS_VERSION } from '../version';
+import { JS_VERSION, JS_NOTES } from '../version';
 
 const APP_VERSION = JS_VERSION;                       // version du code (suit les mises à jour sans build)
 const APK_VERSION = appJson?.expo?.version || '?';   // version de l'APK installé
@@ -110,8 +114,8 @@ export default function SettingsScreen() {
   const sendDebugNotif = async (d) => {
     const ok = await scheduleTestNotification(d.target, 10);
     setInfoModal(ok
-      ? { title: 'Notification programmée', message: 'Elle arrive dans 10 secondes. Tu peux fermer l\'app pour tester le tap depuis l\'extérieur.' }
-      : { title: 'Notifications désactivées', message: "Autorise les notifications d'Almanac dans les réglages du téléphone." });
+      ? { title: 'Notification programmée', message: 'Elle arrive dans 10 secondes. L\'app peut être fermée pour tester le tap depuis l\'extérieur.' }
+      : { title: 'Notifications désactivées', message: "Les notifications d'Almanac sont à autoriser dans les réglages du téléphone." });
   };
   const setAppLockEnabled = useStore((s) => s.setAppLockEnabled);
 
@@ -254,18 +258,35 @@ export default function SettingsScreen() {
       {
         kind: 'info',
         title: 'Sauvegarde créée',
-        message: 'Une sauvegarde a été créée.\nVous pouvez la restaurer ou la supprimer définitivement via Paramètres.',
+        message: 'Une sauvegarde a été créée.\nRestaurable ou supprimable définitivement depuis Paramètres.',
       },
       {
         kind: 'info',
         title: 'Erreur création sauvegarde',
-        message: 'Database locked.\nRéessayez dans quelques secondes.',
+        message: 'Database locked.\nNouvel essai possible dans quelques secondes.',
       },
       {
         kind: 'info',
         title: 'Erreur',
         message: 'Snapshot introuvable.',
       },
+      // 1.42 — fenêtres ajoutées depuis, en démonstration (les boutons ne font rien, sauf passer)
+      { kind: 'info', title: `Almanac mis à jour · ${JS_VERSION}`, message: JS_NOTES.map((n) => `· ${n}`).join('\n') },
+      { kind: 'info', title: 'Image enregistrée', message: 'almanac-06-11-2026-1805.png\ndans Pictures/Almanac\n\nAppui long sur Enregistrer pour changer de dossier.' },
+      { kind: 'info', title: "Le partage n'a pas pu aboutir", message: 'Partage indisponible sur ce téléphone.' },
+      { kind: 'share' },
+      { kind: 'toggle-banners' },
+      { kind: 'toggle-banners-confirm' },
+      { kind: 'subs-select' },
+      { kind: 'custom-name' },
+      { kind: 'custom-actions' },
+      { kind: 'confirm', title: 'Désactiver ce bandeau ?', message: 'bandeau' },
+      { kind: 'confirm', title: 'Supprimer ce bandeau ?', message: 'Le bandeau « Sobre de mes soirées » et ses notifications\nseront supprimés définitivement. Pour le retrouver, il faudra le recréer.', confirm: 'Supprimer' },
+      { kind: 'confirm', title: 'Supprimer cette prise ?', message: 'Nicotine · 17:42\nLa prise sera supprimée définitivement.', confirm: 'Supprimer' },
+      { kind: 'toggle-counters' },
+      { kind: 'notif-list' },
+      { kind: 'notif-target' },
+      { kind: 'last24' },
     ];
     setDebugModals(list);
     setDebugIdx(0);
@@ -578,7 +599,7 @@ export default function SettingsScreen() {
       <InfoModal
         visible={wipeToastVisible}
         title="Sauvegarde créée"
-        message={'Une sauvegarde a été créée.\nVous pouvez la restaurer ou la supprimer définitivement via Paramètres.'}
+        message={'Une sauvegarde a été créée.\nRestaurable ou supprimable définitivement depuis Paramètres.'}
         onClose={() => { setWipeToastVisible(false); navigation.goBack(); }}
       />
 
@@ -645,6 +666,114 @@ export default function SettingsScreen() {
           if (next >= debugModals.length) { setDebugModals([]); setDebugIdx(0); }
           else setDebugIdx(next);
         };
+        const subs = useStore.getState().substances;
+        const firstSub = subs[0];
+        const sampleColor = firstSub?.color || theme.colors.text;
+        if (m.kind === 'share') return <ShareModal visible demo onClose={close} />;
+        if (m.kind === 'toggle-banners' || m.kind === 'toggle-banners-confirm') {
+          return (
+            <ToggleListModal
+              key={m.kind}
+              visible
+              title="Bandeaux"
+              options={[
+                { id: '__sobre', color: theme.colors.text, label: 'Sobre de tout', checked: true, removeConfirm: m.kind === 'toggle-banners-confirm' ? 'Le bandeau « Sobre de tout » et ses notifications seront désactivés.' : null },
+                { id: 'record', color: theme.colors.text, label: 'Plus longue sobriété de tout', checked: false },
+                { id: 'last24', color: theme.colors.text, label: 'Dernières 24 h', checked: true },
+                { id: 'c', color: sampleColor, label: subs.slice(0, 2).map((x) => x.name).join(' • ') || 'Catégorie', checked: true },
+              ]}
+              actions={[{ id: 'custom', label: 'Bandeau personnalisé', icon: 'plus', onPress: () => {} }]}
+              footer={m.kind === 'toggle-banners-confirm' ? 'Démo : toucher « Sobre de tout » affiche la confirmation.' : null}
+              onToggle={() => {}}
+              onClose={close}
+            />
+          );
+        }
+        if (m.kind === 'toggle-counters') {
+          return (
+            <ToggleListModal
+              visible
+              title="Compteurs"
+              options={[
+                { id: 'prev', label: 'Période de sobriété précédente', color: sampleColor, checked: true },
+                { id: 'record', label: 'Plus longue période sobre', color: sampleColor, checked: false },
+              ]}
+              onToggle={() => {}}
+              onClose={close}
+            />
+          );
+        }
+        if (m.kind === 'subs-select') {
+          return (
+            <SubstanceSelectModal
+              visible
+              title="Bandeau personnalisé"
+              intro="Substances du bandeau (au moins 2)."
+              substances={subs}
+              initialSelectedIds={[]}
+              confirmLabel="Suivant"
+              onConfirm={close}
+              onCancel={close}
+            />
+          );
+        }
+        if (m.kind === 'custom-name') return <CustomBannerNameModal visible initialName="" onConfirm={close} onCancel={close} />;
+        if (m.kind === 'custom-actions') {
+          return (
+            <ActionSheet
+              visible
+              title="Sobre de mes soirées"
+              items={[
+                { id: 'rename', label: 'Renommer', icon: 'pencil-outline', onPress: () => {} },
+                { id: 'subs', label: 'Substances incluses', icon: 'format-list-checks', onPress: () => {} },
+              ]}
+              onClose={close}
+            />
+          );
+        }
+        if (m.kind === 'confirm') {
+          return (
+            <ConfirmModal
+              visible
+              title={m.title}
+              message={m.message === 'bandeau' ? (
+                <Text>
+                  {'Le bandeau '}
+                  <Text style={{ color: sampleColor, fontSize: 18 }}>●</Text>
+                  {' et ses notifications seront désactivés. Réactivable depuis le '}
+                  <Text style={{ fontWeight: '900', color: theme.colors.text }}>+</Text>
+                  {'. Les substances et leurs prises ne sont pas affectées.'}
+                </Text>
+              ) : m.message}
+              cancelLabel="Annuler"
+              confirmLabel={m.confirm || 'Désactiver'}
+              destructive
+              onCancel={close}
+              onConfirm={close}
+            />
+          );
+        }
+        if (m.kind === 'notif-list') return <NotifWizard visible demo onClose={close} />;
+        if (m.kind === 'notif-target') {
+          return <NotifWizard visible demo initialTarget={firstSub ? { target: 'sub', key: firstSub.id } : { target: 'all', key: null }} onClose={close} />;
+        }
+        if (m.kind === 'last24') {
+          const from = Date.now() - 24 * 3600 * 1000;
+          const byId = Object.fromEntries(subs.map((x) => [x.id, x]));
+          const list = useStore.getState().allConsumptions.filter((c) => c.timestamp > from).sort((a, b) => a.timestamp - b.timestamp);
+          return (
+            <DayDetailModal
+              visible
+              title="Dernières 24 h"
+              consumptions={list}
+              substancesById={byId}
+              onTapConsumption={() => {}}
+              onDeleteConsumption={() => {}}
+              onAddPress={() => {}}
+              onClose={close}
+            />
+          );
+        }
         if (m.kind === 'result-ok' || m.kind === 'result-ko') {
           return (
             <ResultModal

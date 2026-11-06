@@ -1,4 +1,5 @@
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Pressable } from 'react-native';
+import { useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from '../theme';
@@ -7,6 +8,8 @@ import { getIconById } from '../icons';
 import SubstanceIcon from './SubstanceIcon';
 import LiveCounter from './LiveCounter';
 import BottomSheet from './BottomSheet';
+import ConfirmModal from './ConfirmModal';
+import haptics from '../utils/haptics';
 
 export default function DayDetailModal({
   visible,
@@ -14,12 +17,16 @@ export default function DayDetailModal({
   consumptions = [],
   substancesById = {},
   singleSubstance = null,
-  onTapConsumption,
+  onTapConsumption,   // crayon : modifier la prise
+  onDeleteConsumption, // 1.42 : poubelle (après confirmation)
   onAddPress,
   onClose,
+  title: titleOverride = null, // 1.42 : ex. « Dernières 24 h »
+  addLabel = 'Ajouter une consommation',
 }) {
   const showAddBtn = !!onAddPress;
-  const title = dayTimestamp ? formatDateLong(dayTimestamp) : '';
+  const title = titleOverride || (dayTimestamp ? formatDateLong(dayTimestamp) : '');
+  const [pendingDelete, setPendingDelete] = useState(null); // { item, sub }
 
   return (
     <BottomSheet visible={visible} title={title} onClose={onClose}>
@@ -36,12 +43,8 @@ export default function DayDetailModal({
             const sub = singleSubstance ?? substancesById[item.substanceId];
             if (!sub) return null;
             return (
-              <Pressable
-                onPress={() => onTapConsumption?.(item, sub)}
-                // 1.32 : un léger glissement du doigt n'annule plus le tap
-                pressRetentionOffset={{ top: 30, bottom: 30, left: 30, right: 30 }}
-                style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-              >
+              // 1.42 : la ligne ne réagit plus au tap ; crayon (modifier) et poubelle (supprimer) à droite
+              <View style={styles.row}>
                 <View style={[styles.iconWrap, { borderColor: sub.color }]}>
                   <SubstanceIcon iconId={sub.icon} size={16} color={sub.color} />
                 </View>
@@ -62,8 +65,17 @@ export default function DayDetailModal({
                   ) : null}
                 </View>
                 <LiveCounter timestamp={item.timestamp} style={styles.rowTimeAgo} numberOfLines={1} adjustsFontSizeToFit />
-                <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.textFaint} />
-              </Pressable>
+                <View style={styles.tools}>
+                  <TouchableOpacity onPress={() => { haptics.light(); onTapConsumption?.(item, sub); }} hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
+                    <MaterialCommunityIcons name="pencil-outline" size={20} color={theme.colors.textMuted} />
+                  </TouchableOpacity>
+                  {onDeleteConsumption && (
+                    <TouchableOpacity onPress={() => { haptics.light(); setPendingDelete({ item, sub }); }} hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
+                      <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.danger} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
             );
           }}
         />
@@ -72,9 +84,26 @@ export default function DayDetailModal({
       {showAddBtn && (
         <TouchableOpacity onPress={onAddPress} style={styles.addBtn}>
           <Ionicons name="add" size={20} color={theme.colors.text} />
-          <Text style={styles.addBtnText}>Ajouter une consommation</Text>
+          <Text style={styles.addBtnText}>{addLabel}</Text>
         </TouchableOpacity>
       )}
+
+      <ConfirmModal
+        visible={!!pendingDelete}
+        title="Supprimer cette prise ?"
+        message={pendingDelete
+          ? `${pendingDelete.sub.name} · ${formatTime(pendingDelete.item.timestamp)}\nLa prise sera supprimée définitivement.`
+          : ''}
+        cancelLabel="Annuler"
+        confirmLabel="Supprimer"
+        destructive
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={async () => {
+          const p = pendingDelete;
+          setPendingDelete(null);
+          if (p) { haptics.success(); await onDeleteConsumption?.(p.item, p.sub); }
+        }}
+      />
     </BottomSheet>
   );
 }
@@ -110,7 +139,8 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', gap: 4 },
   rowTime: { color: theme.colors.textMuted, fontSize: theme.font.sizes.sm, fontWeight: '300', fontVariant: ['tabular-nums'] },
   // Colonne fixe, texte centré (1.24)
-  rowTimeAgo: { width: 128, color: theme.colors.text, fontSize: theme.font.sizes.sm, fontWeight: '600', fontVariant: ['tabular-nums'], marginRight: theme.spacing.sm, textAlign: 'center' },
+  tools: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.md },
+  rowTimeAgo: { width: 108, color: theme.colors.text, fontSize: theme.font.sizes.sm, fontWeight: '600', fontVariant: ['tabular-nums'], textAlign: 'center' },
   rowDosage: { color: theme.colors.textMuted, fontSize: theme.font.sizes.sm, fontWeight: '300' },
   rowNotes: { color: theme.colors.textFaint, fontSize: theme.font.sizes.sm, fontStyle: 'italic', fontWeight: '300' },
   addBtn: {

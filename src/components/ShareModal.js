@@ -55,17 +55,17 @@ function Choice({ label, color, icon, ts, checked, onToggle }) {
 
 // 1.39 : la Modal est dessinée bord à bord (sous l'heure et la caméra) → marges de sécurité mesurées
 // DANS la Modal (fournisseur propre à sa fenêtre)
-export default function ShareModal({ visible, onClose }) {
+export default function ShareModal({ visible, onClose, demo = false }) {
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <SafeAreaProvider>
-        <ShareScreen visible={visible} onClose={onClose} />
+        <ShareScreen visible={visible} onClose={onClose} demo={demo} />
       </SafeAreaProvider>
     </Modal>
   );
 }
 
-function ShareScreen({ visible, onClose }) {
+function ShareScreen({ visible, onClose, demo }) {
   const insets = useSafeAreaInsets();
   const substances = useStore((s) => s.substances);
   const lastTimestamps = useStore((s) => s.lastTimestamps);
@@ -128,6 +128,7 @@ function ShareScreen({ visible, onClose }) {
   // via le même mécanisme que les exports (aucune autorisation « photos » demandée).
   // Appui long : changer de dossier.
   const save = async (forcePick = false) => {
+    if (demo) return; // Debug : démonstration, ne fait rien
     if (empty || busy) return;
     setBusy(true);
     try {
@@ -147,6 +148,7 @@ function ShareScreen({ visible, onClose }) {
   };
 
   const share = async () => {
+    if (demo) return;
     if (empty || busy) return;
     setBusy(true);
     let uri = null;
@@ -192,7 +194,7 @@ function ShareScreen({ visible, onClose }) {
           <Text style={[styles.section, { marginTop: theme.spacing.lg }]}>Aperçu</Text>
           <View style={[styles.previewArea, { minHeight: Math.max(80, previewMinH + 2) }]} onLayout={(e) => setPreviewW(Math.round(e.nativeEvent.layout.width))}>
             {empty ? (
-              <Text style={styles.emptyText}>Coche au moins un élément</Text>
+              <Text style={styles.emptyText}>Au moins un élément à cocher</Text>
             ) : k > 0 ? (
               // Cadre à la taille réduite ; à l'intérieur, l'image en taille réelle réduite par
               // une transformation du parent (la capture, elle, se fait en taille réelle)

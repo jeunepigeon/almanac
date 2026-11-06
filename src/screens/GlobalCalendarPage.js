@@ -137,6 +137,7 @@ export default function GlobalCalendarPage() {
         dayTimestamp={dayDetail?.dayTimestamp}
         consumptions={consosForDay}
         substancesById={substancesById}
+        onDeleteConsumption={(c) => deleteConsumption(c.id, c.substanceId ?? c.substance_id)}
         onTapConsumption={(c) => {
           // Ouvre la modal d'édition directement, SANS quitter le calendrier global
           const sub = substancesById[c.substanceId ?? c.substance_id];

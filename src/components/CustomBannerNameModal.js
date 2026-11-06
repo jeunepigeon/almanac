@@ -40,8 +40,6 @@ export default function CustomBannerNameModal({ visible, initialName = '', confi
               onChangeText={setName}
               maxLength={MAX}
               style={styles.input}
-              placeholder="mes soirées"
-              placeholderTextColor={theme.colors.textFaint}
               autoCorrect={false}
               returnKeyType="done"
               onSubmitEditing={() => { if (clean) onConfirm(clean); }}
@@ -67,9 +65,10 @@ export default function CustomBannerNameModal({ visible, initialName = '', confi
 }
 
 const styles = StyleSheet.create({
+  // 1.42 : placée dans le haut de l'écran → le clavier ne la cache plus
   overlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.75)',
-    justifyContent: 'center', alignItems: 'center', paddingHorizontal: theme.spacing.lg,
+    justifyContent: 'flex-start', alignItems: 'center', paddingHorizontal: theme.spacing.lg, paddingTop: '18%',
   },
   card: {
     backgroundColor: theme.colors.surface, borderRadius: 10, padding: theme.spacing.lg,

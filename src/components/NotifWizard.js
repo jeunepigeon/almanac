@@ -35,7 +35,7 @@ function Dot({ color, size = 10 }) {
   return <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color }} />;
 }
 
-export default function NotifWizard({ visible, initialTarget = null, onClose }) {
+export default function NotifWizard({ visible, initialTarget = null, onClose, demo = false }) {
   const substances = useStore((s) => s.substances);
   const notifRules = useStore((s) => s.notifRules);
   const customBanners = useStore((s) => s.customBanners);
@@ -114,6 +114,7 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
   // Palier coché ↔ décoché ; à l'activation, message flottant Android
   const togglePalier = async (palier, active) => {
     haptics.light();
+    if (demo) return; // Debug : démonstration, ne change rien
     const rule = { target: target.target, key: target.key, palier };
     if (active) { removeNotifRule(rule); return; }
     const ok = await ensureNotifPermission();
@@ -123,7 +124,7 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
   };
 
   const confirmDelete = () => {
-    if (pendingDelete) {
+    if (pendingDelete && !demo) {
       rulesOf(pendingDelete).forEach((r) => removeNotifRule(r));
       haptics.success();
     }
@@ -165,6 +166,7 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
                   >
                     <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.danger} />
                   </TouchableOpacity>
+                  <MaterialCommunityIcons name="chevron-right" size={18} color={theme.colors.textMuted} />
                 </TouchableOpacity>
               );
             })}

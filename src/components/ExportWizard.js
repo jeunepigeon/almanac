@@ -216,7 +216,7 @@ export default function ExportWizard({ visible, substances = [], statsById = {},
           {step === 'select' && (
             <>
               <Text style={styles.title}>Exporter</Text>
-              <Text style={styles.intro}>Coche les substances à inclure.</Text>
+              <Text style={styles.intro}>Substances à inclure.</Text>
               <View style={styles.header}>
                 <Text style={styles.sectionLabel}>{substances.length} substances</Text>
                 <TouchableOpacity onPress={toggleAll}>
@@ -246,7 +246,7 @@ export default function ExportWizard({ visible, substances = [], statsById = {},
           {step === 'password' && (
             <ScrollView keyboardShouldPersistTaps="always" contentContainerStyle={{ paddingBottom: 4 }}>
               <Text style={styles.title}>Code PIN & nom</Text>
-              <Text style={styles.intro}>Choisis un PIN à 4 chiffres pour chiffrer le fichier.</Text>
+              <Text style={styles.intro}>PIN à 4 chiffres pour chiffrer le fichier.</Text>
 
               <Text style={styles.fieldLabel}>Code PIN</Text>
               <PinField ref={pin1Ref} value={pin} onChangeText={setPin} returnKeyType="next" onSubmitEditing={onSubmitPin1} />
@@ -271,7 +271,7 @@ export default function ExportWizard({ visible, substances = [], statsById = {},
 
               <View style={styles.warningBox}>
                 <MaterialCommunityIcons name="alert-outline" size={14} color={theme.colors.textMuted} />
-                <Text style={styles.warningText}>Si tu oublies ce code, le fichier sera illisible.</Text>
+                <Text style={styles.warningText}>Sans ce code, le fichier sera illisible.</Text>
               </View>
 
               <View style={styles.actions}>

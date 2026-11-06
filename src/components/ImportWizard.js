@@ -203,7 +203,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
           {step === 'pick' && (
             <>
               <Text style={styles.title}>Importer</Text>
-              <Text style={styles.intro}>Sélectionne un fichier .almanac.</Text>
+              <Text style={styles.intro}>Fichier .almanac à sélectionner.</Text>
               <TouchableOpacity onPress={pickFile} style={styles.primaryBtn}>
                 <Text style={styles.primaryBtnText}>Choisir un fichier</Text>
               </TouchableOpacity>
@@ -218,7 +218,7 @@ export default function ImportWizard({ visible, onClose, onComplete }) {
           {step === 'pin' && (
             <ScrollView keyboardShouldPersistTaps="always" contentContainerStyle={{ paddingBottom: 4 }}>
               <Text style={styles.title}>Code PIN</Text>
-              <Text style={styles.intro}>Entre le code PIN du fichier.</Text>
+              <Text style={styles.intro}>Code PIN du fichier.</Text>
               <PinField
                 ref={pinRef}
                 value={pin}

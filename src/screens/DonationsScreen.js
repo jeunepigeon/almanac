@@ -16,7 +16,7 @@ export default function DonationsScreen() {
   return (
     <ScrollView keyboardShouldPersistTaps="handled" style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.intro}>
-        Almanac est gratuit et sans publicité. Si l'app t'est utile, tu peux soutenir son développement.
+        Almanac est gratuit et sans publicité. Son développement peut être soutenu ici.
       </Text>
       <Text style={styles.subIntro}>
         Aucune fonctionnalité n'est débloquée. C'est un don volontaire.
@@ -71,7 +71,7 @@ export default function DonationsScreen() {
       >
         <Pressable style={styles.overlay} onPress={consumeThanks}>
           <View style={styles.thankYouCard}>
-            <Text style={styles.thankYouTitle}>Merci pour ton soutien</Text>
+            <Text style={styles.thankYouTitle}>Merci pour le soutien</Text>
             <Text style={styles.thankYouText}>
               Ça compte vraiment. Bonne continuation.
             </Text>

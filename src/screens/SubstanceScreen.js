@@ -139,7 +139,7 @@ export default function SubstanceScreen() {
           />
         </View>
         <DateLine text={lastTimestamp ? rangeFR(lastTimestamp, null) : null} />
-        <ExtraCounters scope={substance.id} timestamps={consoTimestamps} color={substance.color} />
+        <ExtraCounters scope={substance.id} timestamps={consoTimestamps} color={substance.color} bleed={theme.spacing.lg} />
       </Animated.View>
 
       <View style={styles.tabs}>
@@ -222,6 +222,7 @@ export default function SubstanceScreen() {
         dayTimestamp={dayDetail?.dayTimestamp}
         consumptions={consosForDay}
         singleSubstance={substance}
+        onDeleteConsumption={(c) => deleteConsumption(c.id, substance.id)}
         onTapConsumption={(c) => {
           setDayDetail(null);
           setTimeout(() => setEditing(c), 100);
@@ -271,7 +272,7 @@ function HistoryList({ consumptions, color, onEdit }) {
     return (
       <View style={styles.placeholder}>
         <Text style={styles.placeholderText}>Aucune consommation enregistrée</Text>
-        <Text style={styles.placeholderHint}>Tape sur le bouton + pour en ajouter une</Text>
+        <Text style={styles.placeholderHint}>Ajout avec le bouton +</Text>
       </View>
     );
   }
@@ -322,9 +323,9 @@ function FAB({ color, onPress }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   notFound: { color: theme.colors.textMuted, textAlign: 'center', marginTop: theme.spacing.xl },
+  // 1.42 : le dernier séparateur des compteurs (avec la pilule « + ») sert de bordure basse
   hero: {
-    alignItems: 'center', paddingVertical: theme.spacing.lg, paddingHorizontal: theme.spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border,
+    alignItems: 'center', paddingTop: theme.spacing.lg, paddingHorizontal: theme.spacing.lg,
   },
   heroIcon: {
     width: 56, height: 56, borderRadius: 28, borderWidth: 2,

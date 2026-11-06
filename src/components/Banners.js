@@ -76,7 +76,7 @@ export function SobreBanner({ lastGlobalTimestamp, onPress, onLongPress, flashTi
         ) : (
           <>
             <Text style={styles.counter}>—</Text>
-            <Text style={styles.emptyHint}>renseignez votre première consommation</Text>
+            <Text style={styles.emptyHint}>aucune consommation renseignée</Text>
           </>
         )}
       </Animated.View>
@@ -192,14 +192,17 @@ export function Last24Banner(frame) {
   const cons = useListTimestamps();
   const substances = useStore((s) => s.substances);
   const { width } = useWindowDimensions();
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(t); }, []);
+  // 1.42 : l'heure de référence est relue à CHAQUE changement de prises (avant : une fois par minute,
+  // une prise toute neuve était « dans le futur » et n'apparaissait qu'à la minute suivante)
+  const [tick, setTick] = useState(0);
+  useEffect(() => { const t = setInterval(() => setTick((x) => x + 1), 60000); return () => clearInterval(t); }, []);
+  const now = useMemo(() => Date.now(), [cons, tick]); // eslint-disable-line
   // Groupes par substance, dans l'ordre chronologique de leur 1re prise dans la fenêtre
   const groups = useMemo(() => {
     const from = now - 24 * 3600 * 1000;
     const bySub = new Map();
     for (const c of cons) {
-      if (c.timestamp <= from || c.timestamp > now) continue;
+      if (c.timestamp <= from) continue; // (une prise saisie dans le futur compte aussi)
       const g = bySub.get(c.substanceId) || { id: c.substanceId, n: 0, first: c.timestamp };
       g.n += 1; g.first = Math.min(g.first, c.timestamp);
       bySub.set(c.substanceId, g);
@@ -213,7 +216,7 @@ export function Last24Banner(frame) {
   const asNumbers = groups.some((g) => g.n > 7) || dotsW > width - 2 * 72;
   return (
     <Frame flashColor="#FFFFFF" traceLabel="24 h" {...frame}>
-      <Text style={styles.label}>DERNIÈRES 24 H</Text>
+      <Text style={styles.label}>TOUTES PRISES · DERNIÈRES 24 H</Text>
       <Text style={[styles.counter, styles.last24Count]}>{total === 0 ? '—' : `${total} prise${total > 1 ? 's' : ''}`}</Text>
       {total > 0 && (
         <View style={styles.dotsRow}>
@@ -222,6 +225,7 @@ export function Last24Banner(frame) {
             : <Cluster key={g.id} color={g.color} n={g.n} />))}
         </View>
       )}
+      <DateLine text="clic pour plus de détails" />
     </Frame>
   );
 }
@@ -242,7 +246,7 @@ const styles = StyleSheet.create({
     color: theme.colors.text, fontSize: theme.font.sizes.xl, fontWeight: '300',
     letterSpacing: 0.5, fontVariant: ['tabular-nums'], textAlign: 'center',
   },
-  last24Count: { minHeight: 32 },
+  last24Count: { minHeight: 30 },
   date: { color: theme.colors.textMuted, fontSize: theme.font.sizes.xs, fontWeight: '300', letterSpacing: 0.3, marginTop: 2 },
   emptyHint: {
     color: theme.colors.textFaint, fontSize: theme.font.sizes.xs, fontWeight: '300',
@@ -259,7 +263,7 @@ const styles = StyleSheet.create({
   toolBtn: { padding: theme.spacing.xs },
   dotsRow: {
     flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center',
-    columnGap: CLUSTER_GAP, rowGap: 4, marginTop: 4, minHeight: 26,
+    columnGap: CLUSTER_GAP, rowGap: 2, marginTop: 2, minHeight: 26,
   },
   num: { fontWeight: '700', fontSize: 17, fontVariant: ['tabular-nums'] },
 });

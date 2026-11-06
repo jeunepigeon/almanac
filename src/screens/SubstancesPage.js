@@ -19,6 +19,9 @@ import ReorderList, { WiggleContent } from '../components/ReorderList';
 import ToggleListModal from '../components/ToggleListModal';
 import NotifWizard from '../components/NotifWizard';
 import SubstanceSelectModal from '../components/SubstanceSelectModal';
+import DayDetailModal from '../components/DayDetailModal';
+import SubstancePicker from '../components/SubstancePicker';
+import LogConsumptionModal from '../components/LogConsumptionModal';
 import CustomBannerNameModal from '../components/CustomBannerNameModal';
 import {
   SobreBanner, CounterBanner, RecordBanner, Last24Banner, BANNER_HEIGHT, FADE_MS,
@@ -40,12 +43,18 @@ const traceAnim = (label) => () => useStore.getState().traceNotif('animation lan
 //  - Normal : icône · nom · compteur (plus de bouton ⋯ : place pour un long nom et du vide).
 //  - Réorganisation : icône + nom vibrent ; crayon (menu renommer / couleur / icône) et poubelle fixes.
 function SubstanceRow({
-  substance, lastTimestamp, inReorder, isWiggling, phase, flashTick, onEdit, onDelete,
+  substance, lastTimestamp, inReorder, isWiggling, phase, flashTick, onEdit, onDelete, hasNotif, onBell,
 }) {
   const bgInterp = useFlashBackground(flashTick, substance.color);
 
   return (
     <Animated.View style={[styles.row, { backgroundColor: bgInterp }]}>
+      {/* 1.42 : cloche de la substance (comme les bandeaux) ; visible mais inactive en réorganisation */}
+      <View pointerEvents={inReorder ? 'none' : 'auto'}>
+        <TouchableOpacity onPress={onBell} disabled={inReorder} hitSlop={{ top: 16, bottom: 16, left: 12, right: 6 }}>
+          <MaterialCommunityIcons name={hasNotif ? 'bell' : 'bell-outline'} size={18} color={substance.color} />
+        </TouchableOpacity>
+      </View>
       <WiggleContent isWiggling={!!isWiggling} phase={phase || 0} style={styles.rowWiggle}>
         <View style={[styles.iconWrap, { borderColor: substance.color }]}>
           <SubstanceIcon iconId={substance.icon} size={18} color={substance.color} />
@@ -101,6 +110,7 @@ export default function SubstancesPage() {
   }, [lastTimestamps]);
 
   const createSubstance = useStore((s) => s.createSubstance);
+  const createConsumptionStore = useStore((s) => s.createConsumption);
   const updateSubstance = useStore((s) => s.updateSubstance);
   const deleteSubstance = useStore((s) => s.deleteSubstance);
   const restoreSubstance = useStore((s) => s.restoreSubstance);
@@ -123,6 +133,18 @@ export default function SubstancesPage() {
   const [customFlow, setCustomFlow] = useState(null);
   const [customHint, setCustomHint] = useState(null);
   const [customActions, setCustomActions] = useState(null); // bandeau dont on ouvre le crayon
+  // 1.42 — carte des dernières 24 h (+ modification / ajout de prise depuis la carte)
+  const [last24Open, setLast24Open] = useState(false);
+  const [last24Edit, setLast24Edit] = useState(null);   // { consumption, substance }
+  const [last24Picker, setLast24Picker] = useState(false);
+  const [last24Log, setLast24Log] = useState(null);     // substance choisie pour une nouvelle prise
+  const allConsumptions = useStore((s) => s.allConsumptions);
+  const last24List = useMemo(() => {
+    if (!last24Open) return EMPTY_IDS;
+    const from = Date.now() - 24 * 3600 * 1000;
+    return allConsumptions.filter((c) => c.timestamp > from).sort((a, b) => a.timestamp - b.timestamp);
+  }, [last24Open, allConsumptions]);
+  const substancesById = useMemo(() => Object.fromEntries([...substances, ...archivedSubstances].map((x) => [x.id, x])), [substances, archivedSubstances]);
   const consumptionsBySubstance = useStore((s) => s.consumptionsBySubstance);
   const subStats = useMemo(() => {
     const out = {};
@@ -496,6 +518,8 @@ export default function SubstancesPage() {
         flashTick={flashedSub?.id === item.id ? flashedSub.tick : 0}
         onEdit={() => openActions(item.sub)}
         onDelete={() => setPendingDelete(item.sub)}
+        hasNotif={notifCountOf('sub', item.id) > 0}
+        onBell={() => { haptics.light(); setBannerNotif({ target: 'sub', key: item.id }); }}
       />
     );
   };
@@ -524,7 +548,7 @@ export default function SubstancesPage() {
     <View style={styles.container}>
       {substances.length === 0 ? (
         <View style={styles.emptyWrap}>
-          <Text style={styles.emptyText}>Ajoute au moins 1 substance pour utiliser l'app</Text>
+          <Text style={styles.emptyText}>Au moins 1 substance est nécessaire pour utiliser l'app</Text>
         </View>
       ) : (
         <ReorderList
@@ -536,7 +560,9 @@ export default function SubstancesPage() {
           finishSignal={finishSignal}
           onReorder={handleReorder}
           onItemTap={(item) => {
-            if (item.kind === 'banner') handleBannerPress(item.lastSubId);
+            // 1.42 : « Toutes prises · dernières 24 h » → carte des 24 h (comme un jour du calendrier)
+            if (item.kind === 'banner' && item.type === 'last24') { haptics.light(); setLast24Open(true); }
+            else if (item.kind === 'banner') handleBannerPress(item.lastSubId);
             else if (item.kind === 'sub') navigation.navigate('Substance', { substanceId: item.id });
           }}
           onScrollY={handleScroll}
@@ -561,7 +587,7 @@ export default function SubstancesPage() {
         title="Une sauvegarde existe"
         message={
           pendingArchivedConflict
-            ? `Une substance archivée "${pendingArchivedConflict.archivedSub.name}" existe déjà avec son historique. Veux-tu la restaurer ou créer une nouvelle substance vierge ?`
+            ? `Une substance archivée "${pendingArchivedConflict.archivedSub.name}" existe déjà avec son historique. La restaurer, ou créer une nouvelle substance vierge ?`
             : ''
         }
         cancelLabel="Annuler"
@@ -593,7 +619,8 @@ export default function SubstancesPage() {
           const notifs = n > 0 ? ` et ${n > 1 ? 'ses notifications' : 'sa notification'}` : '';
           if (isCustom) {
             const def = customBanners.find((b) => b.id === e.slice(7));
-            return `Le bandeau « Sobre de ${def?.name || ''} »${notifs} ${n > 0 ? 'seront supprimés' : 'sera supprimé'}. Il faudra le recréer pour le retrouver.`;
+            // 1.42 : nom du bandeau sur sa ligne, la suite à la ligne
+            return `Le bandeau « Sobre de ${def?.name || ''} »${notifs}\n${n > 0 ? 'seront supprimés' : 'sera supprimé'} définitivement. Pour le retrouver, il faudra le recréer.`;
           }
           const name = e === '__sobre' ? 'Le bandeau « Sobre de tout »'
             : e === 'record' ? 'Le bandeau « Plus longue sobriété de tout »'
@@ -603,7 +630,9 @@ export default function SubstancesPage() {
               {name || 'Le bandeau '}
               {!name && <Text style={{ color: e || theme.colors.text, fontSize: 18 }}>●</Text>}
               {notifs}{n > 0 ? ' seront désactivés.' : ' sera désactivé.'}
-              {' Tu peux le réactiver avec le « + ». Les substances et leurs prises ne sont pas affectées.'}
+              {' Réactivable depuis le '}
+              <Text style={{ fontWeight: '900', color: theme.colors.text }}>+</Text>
+              {'. Les substances et leurs prises ne sont pas affectées.'}
             </Text>
           );
         })()}
@@ -671,11 +700,58 @@ export default function SubstancesPage() {
         onClose={() => setAddBannerOpen(false)}
       />
 
+      {/* 1.42 — Carte des dernières 24 h glissantes */}
+      <DayDetailModal
+        visible={last24Open}
+        title="Dernières 24 h"
+        consumptions={last24List}
+        substancesById={substancesById}
+        onTapConsumption={(c) => {
+          const sub = substancesById[c.substanceId];
+          if (sub) setLast24Edit({ consumption: c, substance: sub });
+        }}
+        onDeleteConsumption={(c) => useStore.getState().deleteConsumption(c.id, c.substanceId)}
+        onAddPress={() => { setLast24Open(false); setTimeout(() => setLast24Picker(true), 150); }}
+        onClose={() => setLast24Open(false)}
+      />
+      <LogConsumptionModal
+        visible={!!last24Edit}
+        mode="edit"
+        substance={last24Edit?.substance}
+        initial={last24Edit?.consumption}
+        onSubmit={async (payload) => {
+          if (last24Edit) await useStore.getState().updateConsumption(last24Edit.consumption.id, last24Edit.consumption.substanceId, payload);
+          setLast24Edit(null);
+        }}
+        onDelete={async () => {
+          if (last24Edit) await useStore.getState().deleteConsumption(last24Edit.consumption.id, last24Edit.consumption.substanceId);
+          setLast24Edit(null);
+        }}
+        onClose={() => setLast24Edit(null)}
+      />
+      <SubstancePicker
+        visible={last24Picker}
+        substances={substances}
+        onPick={(sub) => { setLast24Picker(false); setTimeout(() => setLast24Log(sub), 120); }}
+        onClose={() => setLast24Picker(false)}
+      />
+      {/* Nouvelle prise : préremplie à maintenant, modifiable comme partout */}
+      <LogConsumptionModal
+        visible={!!last24Log}
+        mode="create"
+        substance={last24Log}
+        onSubmit={async (payload) => {
+          if (last24Log) await createConsumptionStore({ substanceId: last24Log.id, ...payload });
+          setLast24Log(null);
+        }}
+        onClose={() => setLast24Log(null)}
+      />
+
       {/* 1.41 — Bandeau personnalisé : 1) substances (au moins 2)  2) nom (« Sobre de … depuis ») */}
       <SubstanceSelectModal
         visible={customFlow?.step === 'subs'}
         title="Bandeau personnalisé"
-        intro="Choisis les substances du bandeau (au moins 2)."
+        intro="Substances du bandeau (au moins 2)."
         hint={customHint}
         substances={substances}
         statsById={subStats}
@@ -683,7 +759,7 @@ export default function SubstancesPage() {
         confirmLabel={customFlow?.id ? 'Enregistrer' : 'Suivant'}
         onCancel={() => setCustomFlow(null)}
         onConfirm={(ids) => {
-          if (ids.length < 2) { setCustomHint('Choisis au moins 2 substances.'); return; }
+          if (ids.length < 2) { setCustomHint('Au moins 2 substances nécessaires.'); return; }
           setCustomHint(null);
           if (customFlow?.id) { // modification des substances d'un bandeau existant
             updateCustomBanner(customFlow.id, { subIds: ids });
@@ -738,7 +814,7 @@ export default function SubstancesPage() {
         title="Supprimer cette substance"
         message={
           pendingDelete
-            ? `"${pendingDelete.name}" sera retirée de la liste. Une sauvegarde est créée automatiquement. Vous pourrez la restaurer ou la supprimer définitivement via Paramètres > Gestionnaire de sauvegardes.`
+            ? `"${pendingDelete.name}" sera retirée de la liste. Une sauvegarde est créée automatiquement, restaurable ou supprimable définitivement depuis Paramètres > Gestionnaire de sauvegardes.`
             : ''
         }
         cancelLabel="Annuler"
