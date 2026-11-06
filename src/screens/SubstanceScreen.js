@@ -11,6 +11,7 @@ import { getIconById } from '../icons';
 import SubstanceIcon from '../components/SubstanceIcon';
 import { formatDateLong, formatTime } from '../utils/dates';
 import LiveCounter from '../components/LiveCounter';
+import ExtraCounters from '../components/ExtraCounters';
 import LogConsumptionModal from '../components/LogConsumptionModal';
 import ConfirmModal from '../components/ConfirmModal';
 import ScrollableCalendar from '../components/ScrollableCalendar';
@@ -39,6 +40,8 @@ export default function SubstanceScreen() {
   const consumptions = useStore(
     (s) => (s.consumptionsLoaded ? (s.consumptionsBySubstance[substanceId] || EMPTY_LIST) : null)
   );
+  // 1.40 : horodatages pour les compteurs ajoutés (précédente / plus longue)
+  const consoTimestamps = useMemo(() => (consumptions || []).map((c) => c.timestamp), [consumptions]);
   const createConsumption = useStore((s) => s.createConsumption);
   const updateConsumption = useStore((s) => s.updateConsumption);
   const deleteConsumption = useStore((s) => s.deleteConsumption);
@@ -133,6 +136,7 @@ export default function SubstanceScreen() {
             style={[styles.heroCounter, { color: substance.color }]}
           />
         </View>
+        <ExtraCounters scope={substance.id} timestamps={consoTimestamps} color={substance.color} />
       </Animated.View>
 
       <View style={styles.tabs}>

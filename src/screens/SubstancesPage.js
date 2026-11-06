@@ -16,7 +16,8 @@ import SubstanceFormModal from '../components/SubstanceFormModal';
 import ActionSheet from '../components/ActionSheet';
 import ConfirmModal from '../components/ConfirmModal';
 import ReorderList, { WiggleContent } from '../components/ReorderList';
-import ColorBannerAddModal from '../components/ColorBannerAddModal';
+import ToggleListModal from '../components/ToggleListModal';
+import NotifWizard from '../components/NotifWizard';
 import haptics from '../utils/haptics';
 
 const ROW_HEIGHT = 68; // doit matcher le style de SubstanceRow (padding + content)
@@ -30,12 +31,28 @@ const PILL_HALF = 6;       // demi-hauteur de la pilule (1.25 : plus basse et pl
 // Flash des bandeaux et des lignes : utils/flash.js (1.36 : identique partout, calendrier compris)
 const traceAnim = (label) => () => useStore.getState().traceNotif('animation lancée', label);
 
+// 1.40 — Cloche à gauche d'un bandeau : notifications de paliers de CE bandeau (vide / pleine)
+function BannerBell({ color, active, onPress }) {
+  return (
+    <TouchableOpacity onPress={onPress} style={styles.bannerBell} hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}>
+      <MaterialCommunityIcons name={active ? 'bell' : 'bell-outline'} size={18} color={color} />
+    </TouchableOpacity>
+  );
+}
+
 // Bannière "Sobre de tout depuis". Clic → scroll vers la dernière substance consommée + flash.
-function SobreBanner({ lastGlobalTimestamp, onPress, flashTick }) {
+// 1.40 : activable comme les autres bandeaux, toujours en haut ; cloche à gauche, poubelle en réorganisation.
+function SobreBanner({ lastGlobalTimestamp, onPress, flashTick, inReorder, onDelete, hasNotif, onBell }) {
   const flashBg = useFlashBackground(flashTick, '#FFFFFF', traceAnim('sobre de tout'));
   return (
     <Pressable onPress={onPress} style={styles.bannerPress}>
       <Animated.View style={[styles.banner, { backgroundColor: flashBg }]}>
+        {!inReorder && <BannerBell color={theme.colors.textMuted} active={hasNotif} onPress={onBell} />}
+        {inReorder && (
+          <TouchableOpacity onPress={onDelete} style={styles.bannerTrash} hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}>
+            <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.danger} />
+          </TouchableOpacity>
+        )}
         <Text style={styles.bannerLabel}>SOBRE DE TOUT DEPUIS</Text>
         {lastGlobalTimestamp ? (
           <View style={styles.bannerCounterWrap}>
@@ -54,7 +71,7 @@ function SobreBanner({ lastGlobalTimestamp, onPress, flashTick }) {
 
 // Bandeau « Sobre depuis » d'une couleur : libellé + compteur dans la couleur.
 // En réorganisation : seuls libellé et compteur vibrent ; poubelle fixe à droite.
-function ColorBanner({ color, lastTimestamp, inReorder, isWiggling, phase, onDelete, flashTick, fading }) {
+function ColorBanner({ color, lastTimestamp, inReorder, isWiggling, phase, onDelete, flashTick, fading, hasNotif, onBell }) {
   // Bandeau supprimé (catégorie dissoute ou poubelle) : fondu avant de disparaître
   const fade = useRef(new Animated.Value(1)).current;
   const flashBg = useFlashBackground(flashTick, color, traceAnim(`bandeau ${color}`));
@@ -74,6 +91,7 @@ function ColorBanner({ color, lastTimestamp, inReorder, isWiggling, phase, onDel
           )}
         </View>
       </WiggleContent>
+      {!inReorder && !fading && <BannerBell color={color} active={hasNotif} onPress={onBell} />}
       {inReorder && (
         <TouchableOpacity onPress={onDelete} style={styles.bannerTrash} hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}>
           <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.danger} />
@@ -156,6 +174,11 @@ export default function SubstancesPage() {
   const addColorBanner = useStore((s) => s.addColorBanner);
   const removeColorBanner = useStore((s) => s.removeColorBanner);
   const reorderColorBanners = useStore((s) => s.reorderColorBanners);
+  const sobreBanner = useStore((s) => s.sobreBanner);
+  const setSobreBanner = useStore((s) => s.setSobreBanner);
+  const notifRules = useStore((s) => s.notifRules);
+  const [bannerNotif, setBannerNotif] = useState(null); // { target: 'all' | 'color', key } — cloche d'un bandeau
+  const notifCountOf = (target, key = null) => notifRules.filter((r) => r.target === target && (r.key || null) === key).length;
 
   const [createOpen, setCreateOpen] = useState(false);
   const [pendingArchivedConflict, setPendingArchivedConflict] = useState(null);
@@ -239,11 +262,13 @@ export default function SubstancesPage() {
     const visible = colorBanners
       .filter((c) => byColor[c])
       .map((c) => ({ id: `banner:${c}`, color: c, lastTs: byColor[c].lastTs || null, lastSubId: byColor[c].lastSubId, names: byColor[c].names }));
-    // Couleurs proposables : ≥ 2 substances, pas encore de bandeau (ordre de la palette)
-    const addOptions = theme.substanceColors
-      .filter((c) => byColor[c] && byColor[c].names.length >= 2 && !colorBanners.includes(c))
-      .map((c) => ({ color: c, names: byColor[c].names }));
-    return { visible, addOptions };
+    // 1.40 : toutes les catégories possibles (≥ 2 substances), actives d'abord dans leur ordre,
+    // puis les autres dans l'ordre de la palette — la fenêtre « + » coche / décoche
+    const order = [...colorBanners, ...theme.substanceColors.filter((c) => !colorBanners.includes(c))];
+    const categories = order
+      .filter((c) => byColor[c] && byColor[c].names.length >= 2)
+      .map((c) => ({ color: c, names: byColor[c].names, active: colorBanners.includes(c) }));
+    return { visible, categories };
   }, [substances, lastTimestamps, colorBanners]);
 
   // Bandeaux qui viennent de disparaître : gardés FADE_MS en fondu à leur place (pas de
@@ -284,11 +309,11 @@ export default function SubstancesPage() {
   // Liste unique : « Sobre de tout » (fixe) · bandeaux (groupe) · espace (fixe) · substances (groupe)
   // La pilule « + » est dessinée par-dessus la liste (renderOverlay) : jamais cachée par un bandeau saisi.
   const listData = useMemo(() => [
-    { id: '__sobre', static: true, kind: 'sobre' },
+    ...(sobreBanner ? [{ id: '__sobre', static: true, kind: 'sobre' }] : []),
     ...displayedBanners.map((b) => ({ ...b, kind: 'banner', group: 'banners' })),
     { id: '__spacer', static: true, kind: 'spacer' },
     ...substances.map((sub) => ({ id: sub.id, kind: 'sub', group: 'subs', sub })),
-  ], [displayedBanners, substances]);
+  ], [displayedBanners, substances, sobreBanner]);
 
   const getItemHeight = (item) => (
     item.kind === 'sobre' ? sobreH
@@ -322,7 +347,7 @@ export default function SubstancesPage() {
     if (idx < 0) return;
     const { viewportH, contentH, listTop } = metricsRef.current;
     // Haut des substances = Sobre de tout + bandeaux + espace
-    const listStart = (listTop || 0) + sobreH + displayedBanners.length * BANNER_HEIGHT + SPACER_HEIGHT;
+    const listStart = (listTop || 0) + (sobreBanner ? sobreH : 0) + displayedBanners.length * BANNER_HEIGHT + SPACER_HEIGHT;
     // Centre de la ligne au centre de la zone visible ;
     // trop bas → tout en bas, trop haut → tout en haut.
     const rowCenter = listStart + idx * ROW_HEIGHT + ROW_HEIGHT / 2;
@@ -426,6 +451,10 @@ export default function SubstancesPage() {
             lastGlobalTimestamp={lastGlobalTimestamp}
             onPress={() => handleBannerPress(lastGlobalSubId)}
             flashTick={bannerFlash?.id === '__sobre' ? bannerFlash.tick : 0}
+            inReorder={inReorder}
+            onDelete={() => setPendingBannerDelete('__sobre')}
+            hasNotif={notifCountOf('all') > 0}
+            onBell={() => { haptics.light(); setBannerNotif({ target: 'all', key: null }); }}
           />
         </View>
       );
@@ -442,6 +471,8 @@ export default function SubstancesPage() {
           onDelete={() => setPendingBannerDelete(item.color)}
           flashTick={bannerFlash?.id === item.id ? bannerFlash.tick : 0}
           fading={!!item.fading}
+          hasNotif={notifCountOf('color', item.color) > 0}
+          onBell={() => { haptics.light(); setBannerNotif({ target: 'color', key: item.color }); }}
         />
       );
     }
@@ -541,28 +572,72 @@ export default function SubstancesPage() {
       <ConfirmModal
         visible={!!pendingBannerDelete}
         title="Supprimer ce bandeau ?"
-        message={(
-          <Text>
-            {'Le bandeau '}
-            <Text style={{ color: pendingBannerDelete || theme.colors.text, fontSize: 18 }}>●</Text>
-            {' sera retiré. Les substances et leurs prises ne sont pas affectées.'}
-          </Text>
-        )}
+        message={(() => {
+          const isSobre = pendingBannerDelete === '__sobre';
+          const n = isSobre ? notifCountOf('all') : notifCountOf('color', pendingBannerDelete);
+          return (
+            <Text>
+              {isSobre ? 'Le bandeau « Sobre de tout »' : 'Le bandeau '}
+              {!isSobre && <Text style={{ color: pendingBannerDelete || theme.colors.text, fontSize: 18 }}>●</Text>}
+              {n > 0 ? ` et ${n > 1 ? `ses ${n} notifications seront retirés` : 'sa notification seront retirés'}.` : ' sera retiré.'}
+              {' Les substances et leurs prises ne sont pas affectées.'}
+            </Text>
+          );
+        })()}
         cancelLabel="Annuler"
         confirmLabel="Supprimer"
         destructive
         onCancel={() => setPendingBannerDelete(null)}
         onConfirm={() => {
-          if (pendingBannerDelete) { haptics.success(); removeColorBanner(pendingBannerDelete); }
+          if (pendingBannerDelete === '__sobre') { haptics.success(); setSobreBanner(false); }
+          else if (pendingBannerDelete) { haptics.success(); removeColorBanner(pendingBannerDelete); }
           setPendingBannerDelete(null);
         }}
       />
 
-      <ColorBannerAddModal
+      {/* 1.40 : « + » = bandeaux à cocher / décocher (« Sobre de tout » en premier, puis catégories) */}
+      <ToggleListModal
         visible={addBannerOpen}
-        options={bannerInfo.addOptions}
-        onPick={(color) => { addColorBanner(color); setAddBannerOpen(false); }}
+        title="Bandeaux"
+        message="Temps depuis la dernière prise, pour tout ou par catégorie (couleur partagée par au moins 2 substances)."
+        options={[
+          {
+            id: '__sobre', color: theme.colors.text, label: 'Sobre de tout', checked: sobreBanner,
+            removeConfirm: notifCountOf('all') > 0 ? 'Le bandeau « Sobre de tout » et ses notifications seront retirés.' : null,
+          },
+          ...bannerInfo.categories.map((c) => ({
+            id: c.color,
+            color: c.color,
+            checked: c.active,
+            removeConfirm: c.active && notifCountOf('color', c.color) > 0 ? 'Ce bandeau et ses notifications seront retirés.' : null,
+            label: (
+              <Text style={[styles.catNames, { color: c.active ? c.color : theme.colors.textMuted }]} numberOfLines={2}>
+                {/* Séparateur collé au nom SUIVANT (espace insécable) : une ligne commence par « • » */}
+                {c.names.map((n, i) => (
+                  <Text key={`${n}-${i}`}>
+                    {i > 0 ? ' ' : ''}
+                    {i > 0 && <Text style={styles.catSep}>{'•\u00A0'}</Text>}
+                    {n}
+                  </Text>
+                ))}
+              </Text>
+            ),
+          })),
+        ]}
+        footer={bannerInfo.categories.length === 0 ? 'Les catégories apparaissent quand 2 substances partagent une couleur.' : null}
+        onToggle={(id, on) => {
+          if (id === '__sobre') setSobreBanner(on);
+          else if (on) addColorBanner(id);
+          else removeColorBanner(id);
+        }}
         onClose={() => setAddBannerOpen(false)}
+      />
+
+      {/* 1.40 : cloche d'un bandeau → ses notifications de paliers */}
+      <NotifWizard
+        visible={!!bannerNotif}
+        initialTarget={bannerNotif}
+        onClose={() => setBannerNotif(null)}
       />
 
       <SubstanceFormModal
@@ -624,8 +699,15 @@ const styles = StyleSheet.create({
   rowTools: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
   bannerTrash: {
     position: 'absolute', right: theme.spacing.lg, top: 0, bottom: 0,
-    justifyContent: 'center', padding: theme.spacing.xs,
+    justifyContent: 'center', padding: theme.spacing.xs, zIndex: 2,
   },
+  // 1.40 : cloche à gauche, en miroir de la poubelle
+  bannerBell: {
+    position: 'absolute', left: theme.spacing.lg, top: 0, bottom: 0,
+    justifyContent: 'center', padding: theme.spacing.xs, zIndex: 2,
+  },
+  catNames: { fontSize: theme.font.sizes.md, fontWeight: '300', letterSpacing: 0.3 },
+  catSep: { fontWeight: '900', fontSize: theme.font.sizes.lg },
   bannerLabel: {
     color: theme.colors.textMuted,
     fontSize: theme.font.sizes.xs,

@@ -65,6 +65,8 @@ function indexConsumptions(all) {
 const COLOR_BANNERS_KEY = 'almanac.colorBanners';
 const NOTIF_RULES_KEY = 'almanac.notifRules';
 const APP_LOCK_KEY = 'almanac.appLock';
+const SOBRE_BANNER_KEY = 'almanac.sobreBanner';     // 1.40 : bandeau « Sobre de tout » affiché ?
+const EXTRA_COUNTERS_KEY = 'almanac.extraCounters'; // 1.40 : compteurs ajoutés sous « Sobre depuis »
 
 // Notifications de paliers (1.25). Une règle = { target: 'all' | 'color' | 'sub', key, palier }
 //  - key : null pour 'all', la couleur pour 'color', l'id de substance pour 'sub'
@@ -148,7 +150,47 @@ export const useStore = create((set, get) => ({
   addNotifRule: (rule) => get().setNotifRules([...get().notifRules, rule]),
   removeNotifRule: (rule) => get().setNotifRules(get().notifRules.filter((r) => notifRuleId(r) !== notifRuleId(rule))),
   // Import / restauration : ajoute les règles absentes (les doublons sont ignorés)
-  mergeNotifRules: (list = []) => get().setNotifRules([...get().notifRules, ...list]),
+  mergeNotifRules: (list = []) => {
+    get().setNotifRules([...get().notifRules, ...list]);
+    get().ensureBannersForRules();
+  },
+
+  // 1.40 : une notification « toutes » ou de catégorie vit SUR son bandeau (cloche à gauche).
+  // Règles sans bandeau (anciennes versions, import, restauration) → le bandeau est (ré)activé,
+  // pour ne perdre aucune notification. Les catégories dissoutes sont nettoyées par pruneOrphans.
+  ensureBannersForRules: () => {
+    const { substances, colorBanners, notifRules, sobreBanner } = get();
+    const count = {};
+    for (const sub of substances) count[sub.color] = (count[sub.color] || 0) + 1;
+    if (!sobreBanner && notifRules.some((r) => r.target === 'all')) get().setSobreBanner(true);
+    const missing = [...new Set(notifRules
+      .filter((r) => r.target === 'color' && (count[r.key] || 0) >= 2 && !colorBanners.includes(r.key))
+      .map((r) => r.key))];
+    missing.forEach((c) => get().addColorBanner(c));
+  },
+
+  // 1.40 — Bandeau « Sobre de tout » activable (toujours en haut quand il est là).
+  // Le retirer retire aussi ses notifications.
+  sobreBanner: false,
+  setSobreBanner: (on) => {
+    set({ sobreBanner: !!on });
+    setJSON(SOBRE_BANNER_KEY, !!on);
+    if (!on) {
+      const rules = get().notifRules.filter((r) => r.target !== 'all');
+      if (rules.length !== get().notifRules.length) get().setNotifRules(rules);
+    }
+  },
+
+  // 1.40 — Compteurs ajoutés sous « Sobre depuis » : { [substanceId | '__global']: ['prev', 'record'] }
+  extraCounters: {},
+  toggleExtraCounter: (scope, id) => {
+    const cur = get().extraCounters[scope] || [];
+    const list = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+    const order = ['prev', 'record'];
+    const next = { ...get().extraCounters, [scope]: order.filter((x) => list.includes(x)) };
+    set({ extraCounters: next });
+    setJSON(EXTRA_COUNTERS_KEY, next);
+  },
 
   // Tap sur une notification « Toutes » / catégorie → liste des substances + flash du bandeau
   notifFocus: null, // { kind: 'all' | 'color', color, tick }
@@ -168,14 +210,15 @@ export const useStore = create((set, get) => ({
   // changement de couleur, remise à zéro…), son bandeau et ses notifications sont SUPPRIMÉS.
   // Les notifications de substances qui n'existent plus sont supprimées aussi.
   pruneOrphans: () => {
-    const { substances, colorBanners, notifRules } = get();
+    const { substances, colorBanners, notifRules, sobreBanner } = get();
     const count = {};
     for (const sub of substances) count[sub.color] = (count[sub.color] || 0) + 1;
     const ids = new Set(substances.map((x) => x.id));
     const banners = colorBanners.filter((c) => (count[c] || 0) >= 2);
+    // 1.40 : une notification « toutes » / de catégorie n'existe qu'avec son bandeau
     const rules = notifRules.filter((r) => (
-      r.target === 'all'
-      || (r.target === 'color' && (count[r.key] || 0) >= 2)
+      (r.target === 'all' && sobreBanner)
+      || (r.target === 'color' && (count[r.key] || 0) >= 2 && banners.includes(r.key))
       || (r.target === 'sub' && ids.has(r.key))
     ));
     if (banners.length !== colorBanners.length) { set({ colorBanners: banners }); setJSON(COLOR_BANNERS_KEY, banners); }
@@ -204,6 +247,9 @@ export const useStore = create((set, get) => ({
     const next = get().colorBanners.filter((c) => c !== color);
     set({ colorBanners: next });
     setJSON(COLOR_BANNERS_KEY, next);
+    // 1.40 : ses notifications partent avec lui
+    const rules = get().notifRules.filter((r) => !(r.target === 'color' && r.key === color));
+    if (rules.length !== get().notifRules.length) get().setNotifRules(rules);
   },
   // newOrder : couleurs visibles dans le nouvel ordre ; les couleurs masquées (0 substance) gardent leur place en fin
   reorderColorBanners: (newOrder) => {
@@ -216,14 +262,23 @@ export const useStore = create((set, get) => ({
 
   loadAll: async () => {
     // Lectures en parallèle (avant : l'une après l'autre)
-    const [all, rawCons, snapshots, colorBanners, notifRules, appLockEnabled] = await Promise.all([
+    const [all, rawCons, snapshots, colorBanners, notifRules, appLockEnabled, sobrePref, extraCounters] = await Promise.all([
       dbGetSubstances({ includeArchived: true }),
       dbGetAllConsumptions(),
       dbGetAllSnapshots(),
       getJSON(COLOR_BANNERS_KEY, []),
       getJSON(NOTIF_RULES_KEY, []),
       getJSON(APP_LOCK_KEY, false),
+      getJSON(SOBRE_BANNER_KEY, null),
+      getJSON(EXTRA_COUNTERS_KEY, {}),
     ]);
+    // 1.40 : jamais réglé → affiché si l'app contient déjà des données (il l'était avant), sinon
+    // masqué (nouvelle installation : aucun bandeau au départ)
+    let sobreBanner = sobrePref;
+    if (sobreBanner == null) {
+      sobreBanner = all.length > 0 || snapshots.length > 0;
+      setJSON(SOBRE_BANNER_KEY, sobreBanner);
+    }
     const hasUnconsulted = snapshots.some((s) => !s.consulted);
     const allConsumptions = rawCons.map(withDayKey); // déjà triées du plus récent au plus ancien
     const { bySub, last: lastTimestamps } = indexConsumptions(allConsumptions);
@@ -233,6 +288,8 @@ export const useStore = create((set, get) => ({
       colorBanners: Array.isArray(colorBanners) ? colorBanners : [],
       notifRules: normalizeRules(notifRules),
       appLockEnabled: !!appLockEnabled,
+      sobreBanner: !!sobreBanner,
+      extraCounters: extraCounters && typeof extraCounters === 'object' ? extraCounters : {},
       substances: all.filter((s) => !s.archived),
       archivedSubstances: all.filter((s) => s.archived),
       lastTimestamps,
@@ -241,6 +298,7 @@ export const useStore = create((set, get) => ({
       hasUnconsultedSnapshots: hasUnconsulted,
       ready: true,
     });
+    get().ensureBannersForRules();
     get().pruneOrphans();
   },
 

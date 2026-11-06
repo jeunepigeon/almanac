@@ -21,7 +21,8 @@ export default function MainScreen() {
   const notifFocus = useStore((s) => s.notifFocus);
   const [notifOpen, setNotifOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
-  const hasAnyNotif = useStore((s) => s.notifRules.length > 0);
+  // 1.40 : la cloche principale ne concerne que les substances (les bandeaux ont leur cloche)
+  const hasAnyNotif = useStore((s) => s.notifRules.some((r) => r.target === 'sub'));
 
   // Tap sur une notification « Toutes » / catégorie → page Substances
   useEffect(() => {

@@ -32,8 +32,12 @@ export function hexToRgba(hex, a) {
 // La couleur passe de transparente à FLASH_PEAK dans SA teinte (pas de passage par le noir).
 export function useFlashBackground(tick, color, onStart) {
   const v = useRef(new Animated.Value(0)).current;
+  // 1.40 : on ne rejoue PAS un flash déjà passé quand l'élément est recréé (ex. entrée/sortie du
+  // mode réorganisation : « Sobre de tout » reflashait comme après une notification)
+  const seenRef = useRef(tick);
   useEffect(() => {
-    if (!tick) return;
+    if (!tick || tick === seenRef.current) return;
+    seenRef.current = tick;
     onStart?.();
     runFlash(v);
   }, [tick]); // eslint-disable-line

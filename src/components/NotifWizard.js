@@ -1,4 +1,5 @@
 // Gestion des notifications de paliers (1.25).
+// 1.40 : liste / nouvelle notif = substances uniquement ; bandeaux via leur cloche (initialTarget).
 //
 // Écrans (dans une seule fenêtre, pas de fenêtre sur fenêtre) :
 //  'list'    : cibles ayant au moins 1 notification active (« Toutes » d'abord, puis catégories,
@@ -36,7 +37,6 @@ function Dot({ color, size = 10 }) {
 
 export default function NotifWizard({ visible, initialTarget = null, onClose }) {
   const substances = useStore((s) => s.substances);
-  const colorBanners = useStore((s) => s.colorBanners);
   const notifRules = useStore((s) => s.notifRules);
   const addNotifRule = useStore((s) => s.addNotifRule);
   const removeNotifRule = useStore((s) => s.removeNotifRule);
@@ -55,20 +55,12 @@ export default function NotifWizard({ visible, initialTarget = null, onClose }) 
     else { setTarget(null); setStep('list'); }
   }, [visible]); // eslint-disable-line
 
-  // Catégories = couleurs avec ≥ 2 substances (ordre : bandeaux, puis palette)
-  const categories = useMemo(() => {
-    const count = {};
-    for (const s of substances) count[s.color] = (count[s.color] || 0) + 1;
-    const order = [...colorBanners, ...theme.substanceColors.filter((c) => !colorBanners.includes(c))];
-    return order.filter((c) => (count[c] || 0) >= 2);
-  }, [substances, colorBanners]);
-
-  // Toutes les cibles possibles, dans l'ordre d'affichage
-  const allTargets = useMemo(() => [
-    { target: 'all', key: null },
-    ...categories.map((c) => ({ target: 'color', key: c })),
-    ...substances.map((s) => ({ target: 'sub', key: s.id })),
-  ], [categories, substances]);
+  // 1.40 : la cloche principale ne gère que les SUBSTANCES de la liste. « Toutes » et catégories
+  // se règlent depuis la cloche à gauche de leur bandeau (ouverture directe sur la cible).
+  const allTargets = useMemo(
+    () => substances.map((s) => ({ target: 'sub', key: s.id })),
+    [substances],
+  );
 
   const rulesOf = (t) => notifRules
     .filter((r) => sameTarget(r, t))

@@ -16,6 +16,7 @@ import {
 } from '../utils/stats';
 import { BarChart, PieChart, ChartCard, MultiLineChart } from './Charts';
 import LiveCounter from './LiveCounter';
+import ExtraCounters from './ExtraCounters';
 
 const WEEKDAY_LABELS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 const HOUR_LABELS_24 = ['0','','','','','','6','','','','','','12','','','','','','18','','','','',''];
@@ -226,6 +227,14 @@ export default function StatsView({
     return max || null;
   }, [mode, consumptionsBySubstance]);
 
+  // 1.40 : toutes les prises (toutes substances) pour les compteurs ajoutés du global
+  const globalTimestamps = useMemo(() => {
+    if (mode !== 'global' || !consumptionsBySubstance) return [];
+    const out = [];
+    for (const list of Object.values(consumptionsBySubstance)) for (const c of list) out.push(c.timestamp);
+    return out;
+  }, [mode, consumptionsBySubstance]);
+
   const openPicker = (target) => {
     setPickerTarget(target);
     setPickerVisible(true);
@@ -253,6 +262,7 @@ export default function StatsView({
               style={styles.globalHeroCounter}
             />
           </View>
+          <ExtraCounters scope="__global" timestamps={globalTimestamps} color={theme.colors.text} />
         </View>
       )}
 
