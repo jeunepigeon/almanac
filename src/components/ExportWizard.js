@@ -23,7 +23,7 @@ import PinField from './PinField';
 import SubCard from './SubCard';
 import haptics from '../utils/haptics';
 import { buildExportFile } from '../utils/exportImport';
-import { filterNotifsForSubs } from '../utils/snapshots';
+import { filterNotifsForSubs, filterBannersForSubs } from '../utils/snapshots';
 import {
   getOrPickExportDir, writeFileToDir, readBackLength, makeUniqueFilename, debugLastError,
 } from '../utils/saf';
@@ -37,7 +37,7 @@ function fmtBytes(n) {
   return `${Math.round(n / 1024)} Ko`;
 }
 
-export default function ExportWizard({ visible, substances = [], statsById = {}, consumptions = [], banners = [], notifs = [], onClose }) {
+export default function ExportWizard({ visible, substances = [], statsById = {}, consumptions = [], banners = [], notifs = [], customBanners = [], bannerColumns = null, onClose }) {
   const [step, setStep] = useState('select');
   const [selected, setSelected] = useState({});
   const [pin, setPin] = useState('');
@@ -167,8 +167,9 @@ export default function ExportWizard({ visible, substances = [], statsById = {},
         }));
       consCount = cons.length;
       subsCount = subs.length;
-      const subColors = new Set(subs.map((s) => s.color));
-      fileContent = await buildExportFile(subs, cons, pin, banners.filter((c) => subColors.has(c)), filterNotifsForSubs(notifs, subs));
+      // 1.48 : tous les bandeaux concernés (dont personnalisés) + disposition
+      const kept = filterBannersForSubs(banners, subs, customBanners);
+      fileContent = await buildExportFile(subs, cons, pin, kept.banners, filterNotifsForSubs(notifs, subs, kept.banners), kept.customBanners, bannerColumns);
     } catch (e) {
       fail(`Chiffrement impossible :\n${e.message || e}`);
       return;

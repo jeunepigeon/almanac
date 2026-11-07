@@ -24,17 +24,15 @@ import SubstancePicker from '../components/SubstancePicker';
 import LogConsumptionModal from '../components/LogConsumptionModal';
 import CustomBannerNameModal from '../components/CustomBannerNameModal';
 import {
-  SobreBanner, CounterBanner, RecordBanner, Last24Banner, BANNER_HEIGHT, FADE_MS,
+  SobreBanner, CounterBanner, RecordBanner, Last24Banner,
 } from '../components/Banners';
+import BannerGrid, { gridHeight, effectiveCols, SPACER_HEIGHT } from '../components/BannerGrid';
 import { toastNotifOn, ensureNotifPermission } from '../utils/notifications';
 import haptics from '../utils/haptics';
 
 const ROW_HEIGHT = 68; // doit matcher le style de SubstanceRow (padding + content)
-const SPACER_HEIGHT = 16;  // espace entre bandeaux et substances (pilule « + » posée sur le séparateur)
 let lastHandledNotifTick = 0;
-const COLLAPSE_MS = 260; // puis la place se referme en douceur (le séparateur glisse au lieu de sauter)
 const EMPTY_IDS = [];
-const PILL_HALF = 6;       // demi-hauteur de la pilule (1.25 : plus basse et plus longue)
 
 // Flash des bandeaux et des lignes : utils/flash.js (1.36 : identique partout, calendrier compris)
 const traceAnim = (label) => () => useStore.getState().traceNotif('animation lancée', label);
@@ -115,6 +113,12 @@ export default function SubstancesPage() {
   const reorderColorBanners = useStore((s) => s.reorderColorBanners);
   const sobreBanner = useStore((s) => s.sobreBanner);
   const setSobreBanner = useStore((s) => s.setSobreBanner);
+  // 1.48 : bandeaux sur 1 ou 2 colonnes (grille dessinée par BannerGrid)
+  const bannerColumns = useStore((s) => s.bannerColumns);
+  const setBannerColumns = useStore((s) => s.setBannerColumns);
+  const [gridDragging, setGridDragging] = useState(false);
+  const [bannerDim, setBannerDim] = useState(false);
+  const gridHeightAnim = useRef(new Animated.Value(0)).current;
   const notifRules = useStore((s) => s.notifRules);
   const [bannerNotif, setBannerNotif] = useState(null); // { target: 'all' | 'color', key } — cloche d'un bandeau
   const notifCountOf = (target, key = null) => notifRules.filter((r) => r.target === target && (r.key || null) === key).length;
@@ -214,7 +218,6 @@ export default function SubstancesPage() {
   useEffect(() => { if (reorderMode && substances.length === 0) setReorderMode(false); }, [reorderMode, substances.length]); // eslint-disable-line
   const [pendingBannerDelete, setPendingBannerDelete] = useState(null); // couleur
   const [addBannerOpen, setAddBannerOpen] = useState(false);
-  const [sobreH, setSobreH] = useState(110); // hauteur mesurée du bandeau « Sobre de tout »
   const [bannerFlash, setBannerFlash] = useState(null); // { id, tick } — flash d'un bandeau
 
   // Tap sur une notification « Toutes » / catégorie : liste en haut + flash du bandeau responsable
@@ -232,7 +235,7 @@ export default function SubstancesPage() {
     const entry = notifFocus.kind === 'color' ? notifFocus.color
       : notifFocus.kind === 'custom' ? `custom:${notifFocus.color}`
         : notifFocus.kind === 'record' ? 'record' : null;
-    const id = entry && useStore.getState().colorBanners.includes(entry) ? `banner:${entry}` : '__sobre';
+    const id = entry && useStore.getState().colorBanners.includes(entry) ? `banner:${entry}` : 'banner:__sobre';
     // On attend que l'app soit au premier plan. 1.28 : filet de sécurité de 1,5 s (l'état « active »
     // pouvait déjà être passé avant l'abonnement → plus jamais de flash).
     let t1 = null; let t2 = null; let started = false; let flashed = false;
@@ -242,7 +245,7 @@ export default function SubstancesPage() {
       t1 = setTimeout(() => scrollRef.current?.scrollTo?.({ y: 0, animated: true }), 300);
       t2 = setTimeout(() => {
         flashed = true;
-        trace('flash envoyé', id === '__sobre' ? 'sobre de tout' : id.replace('banner:', 'bandeau '));
+        trace('flash envoyé', id === 'banner:__sobre' ? 'sobre de tout' : id.replace('banner:', 'bandeau '));
         setBannerFlash({ id, tick: Date.now() });
         useStore.getState().setLastBannerFlash?.({ id, at: Date.now() });
       }, 800);
@@ -275,7 +278,9 @@ export default function SubstancesPage() {
     // 1.41 : une entrée de la liste = couleur (#…), custom:<id>, 'record' ou 'last24'
     const visible = [];
     for (const entry of colorBanners) {
-      if (entry.startsWith('#')) {
+      if (entry === '__sobre') {
+        visible.push({ id: 'banner:__sobre', entry, type: 'sobre', color: theme.colors.text, lastSubId: lastGlobalSubId });
+      } else if (entry.startsWith('#')) {
         if (!byColor[entry]) continue;
         visible.push({ id: `banner:${entry}`, entry, type: 'color', color: entry, lastTs: byColor[entry].lastTs || null, lastSubId: byColor[entry].lastSubId, names: byColor[entry].names });
       } else if (entry.startsWith('custom:')) {
@@ -300,56 +305,19 @@ export default function SubstancesPage() {
     return { visible, categories };
   }, [substances, lastTimestamps, colorBanners, customBanners, lastGlobalSubId]);
 
-  // Bandeaux qui viennent de disparaître : gardés FADE_MS en fondu à leur place (pas de
-  // disparition sèche qui ressemblerait à un bug), puis retirés.
-  const prevBannersRef = useRef([]);
-  const ghostsRef = useRef({}); // id → { item, index, until }
-  const [ghostTick, setGhostTick] = useState(0);
-  const displayedBanners = useMemo(() => {
-    const now = Date.now();
-    const cur = bannerInfo.visible;
-    const curIds = new Set(cur.map((b) => b.id));
-    prevBannersRef.current.forEach((b, i) => {
-      if (!curIds.has(b.id) && !b.fading && !ghostsRef.current[b.id]) {
-        // Hauteur animée : reste pleine pendant le fondu, puis se referme
-        const collapse = new Animated.Value(BANNER_HEIGHT);
-        Animated.sequence([
-          Animated.delay(FADE_MS),
-          Animated.timing(collapse, { toValue: 0, duration: COLLAPSE_MS, useNativeDriver: false }),
-        ]).start();
-        ghostsRef.current[b.id] = { item: { ...b, fading: true, collapse }, index: i, until: now + FADE_MS + COLLAPSE_MS };
-      }
-    });
-    for (const id of Object.keys(ghostsRef.current)) {
-      if (curIds.has(id) || ghostsRef.current[id].until <= now) delete ghostsRef.current[id];
-    }
-    const out = [...cur];
-    Object.values(ghostsRef.current).sort((a, b) => a.index - b.index)
-      .forEach((g) => out.splice(Math.min(g.index, out.length), 0, g.item));
-    prevBannersRef.current = out;
-    return out;
-  }, [bannerInfo, ghostTick]);
-  useEffect(() => {
-    if (!displayedBanners.some((b) => b.fading)) return;
-    const t = setTimeout(() => setGhostTick((x) => x + 1), FADE_MS + COLLAPSE_MS + 30);
-    return () => clearTimeout(t);
-  }, [displayedBanners]);
-
-  // Liste unique : « Sobre de tout » (fixe) · bandeaux (groupe) · espace (fixe) · substances (groupe)
-  // La pilule « + » est dessinée par-dessus la liste (renderOverlay) : jamais cachée par un bandeau saisi.
+  // 1.48 — Bandeaux : une seule entrée fixe de la liste (la grille), puis les substances.
+  // La grille gère elle-même fondu, glissements, réorganisation et pilule « + ».
+  const bannerItems = bannerInfo.visible;
+  const bannerCols = effectiveCols(bannerColumns, bannerItems.length);
+  const gridH = gridHeight(bannerItems.length, bannerCols) + SPACER_HEIGHT;
+  // N1b : un seul bandeau (ou aucun) → retour en 1 colonne
+  useEffect(() => { if (ready && bannerColumns === 2 && bannerItems.length <= 1) setBannerColumns(1); }, [ready, bannerColumns, bannerItems.length]); // eslint-disable-line
   const listData = useMemo(() => [
-    ...(sobreBanner ? [{ id: '__sobre', static: true, kind: 'sobre' }] : []),
-    ...displayedBanners.map((b) => ({ ...b, kind: 'banner', group: 'banners' })),
-    { id: '__spacer', static: true, kind: 'spacer' },
+    { id: '__grid', static: true, kind: 'grid', animHeight: gridHeightAnim },
     ...substances.map((sub) => ({ id: sub.id, kind: 'sub', group: 'subs', sub })),
-  ], [displayedBanners, substances, sobreBanner]);
+  ], [substances, gridHeightAnim]);
 
-  const getItemHeight = (item) => (
-    item.kind === 'sobre' ? sobreH
-      : item.kind === 'banner' ? BANNER_HEIGHT
-        : item.kind === 'spacer' ? SPACER_HEIGHT
-          : ROW_HEIGHT
-  );
+  const getItemHeight = (item) => (item.kind === 'grid' ? gridH : ROW_HEIGHT);
 
   const scrollRef = useRef(null);
   const scrollYRef = useRef(0);
@@ -375,8 +343,8 @@ export default function SubstancesPage() {
     const idx = substances.findIndex((s) => s.id === targetSubId);
     if (idx < 0) return;
     const { viewportH, contentH, listTop } = metricsRef.current;
-    // Haut des substances = Sobre de tout + bandeaux + espace
-    const listStart = (listTop || 0) + (sobreBanner ? sobreH : 0) + displayedBanners.length * BANNER_HEIGHT + SPACER_HEIGHT;
+    // Haut des substances = grille des bandeaux + espace
+    const listStart = (listTop || 0) + gridH;
     // Centre de la ligne au centre de la zone visible ;
     // trop bas → tout en bas, trop haut → tout en haut.
     const rowCenter = listStart + idx * ROW_HEIGHT + ROW_HEIGHT / 2;
@@ -458,80 +426,94 @@ export default function SubstancesPage() {
     { id: 'icon', label: "Changer l'icône", icon: 'shape-outline', onPress: () => setEditMode({ sub, mode: 'icon' }) },
   ];
 
-  // « Terminé » : enregistre l'ordre de chaque section séparément (seulement si elle a changé)
+  // « Terminé » : enregistre l'ordre des substances (1.48 : les bandeaux sont enregistrés à chaque
+  // lâcher, par la grille)
   const handleReorder = (newIds) => {
-    const kept = new Set(useStore.getState().colorBanners);
-    const newBanners = newIds.filter((id) => id.startsWith('banner:')).map((id) => id.slice(7)).filter((c) => kept.has(c));
-    const newSubs = newIds.filter((id) => !id.startsWith('banner:') && !id.startsWith('__'));
-    const curBanners = bannerInfo.visible.map((b) => b.entry);
+    const newSubs = newIds.filter((id) => !id.startsWith('__'));
     const curSubs = substances.map((x) => x.id);
-    if (newBanners.join('|') !== curBanners.join('|')) reorderColorBanners(newBanners);
     if (newSubs.join('|') !== curSubs.join('|')) reorderSubstances(newSubs);
+  };
+  const saveBannerOrder = (ids) => {
+    const kept = new Set(useStore.getState().colorBanners);
+    reorderColorBanners(ids.map((id) => id.slice(7)).filter((c) => kept.has(c)));
+  };
+
+  // Un bandeau (pleine largeur ou demi-case réduite)
+  const renderBanner = (item, { compact, layoutWidth, inReorder, isWiggling, phase }) => {
+    const frame = {
+      inReorder, isWiggling, phase, compact,
+      flashTick: bannerFlash?.id === item.id ? bannerFlash.tick : 0,
+      onDelete: () => setPendingBannerDelete(item.entry),
+    };
+    if (item.type === 'sobre') {
+      return (
+        <SobreBanner
+          {...frame}
+          lastGlobalTimestamp={lastGlobalTimestamp}
+          bell={{ color: theme.colors.textMuted, active: notifCountOf('all') > 0, onPress: () => { haptics.light(); setBannerNotif({ target: 'all', key: null }); } }}
+        />
+      );
+    }
+    if (item.type === 'color') {
+      return (
+        <CounterBanner
+          {...frame}
+          label="SOBRE DEPUIS"
+          color={item.color}
+          lastTimestamp={item.lastTs}
+          bell={{ color: item.color, active: notifCountOf('color', item.color) > 0, onPress: () => { haptics.light(); setBannerNotif({ target: 'color', key: item.color }); } }}
+        />
+      );
+    }
+    if (item.type === 'custom') {
+      return (
+        <CounterBanner
+          {...frame}
+          label={`SOBRE DE ${item.def.name.toUpperCase()} DEPUIS`}
+          color={theme.colors.text}
+          labelColor={theme.colors.textMuted}
+          lastTimestamp={item.lastTs}
+          onEdit={() => setCustomActions(item.def)}
+          bell={{ color: theme.colors.textMuted, active: notifCountOf('custom', item.def.id) > 0, onPress: () => { haptics.light(); setBannerNotif({ target: 'custom', key: item.def.id }); } }}
+        />
+      );
+    }
+    if (item.type === 'record') {
+      return (
+        <RecordBanner
+          {...frame}
+          bell={{ color: theme.colors.textMuted, active: notifCountOf('record') > 0, onPress: toggleRecordNotif }}
+        />
+      );
+    }
+    return <Last24Banner {...frame} layoutWidth={layoutWidth} />;
   };
 
   const renderItem = ({ item, inReorder, isWiggling, phase }) => {
-    if (item.kind === 'sobre') {
+    if (item.kind === 'grid') {
       return (
-        <View onLayout={(e) => {
-          const h = Math.round(e.nativeEvent.layout.height);
-          if (h > 0 && Math.abs(h - sobreH) > 1) setSobreH(h);
-        }}>
-          <SobreBanner
-            lastGlobalTimestamp={lastGlobalTimestamp}
-            onPress={() => handleBannerPress(lastGlobalSubId)}
-            flashTick={bannerFlash?.id === '__sobre' ? bannerFlash.tick : 0}
-            inReorder={inReorder}
-            onLongPress={() => setReorderMode(true)}
-            onDelete={() => setPendingBannerDelete('__sobre')}
-            hasNotif={notifCountOf('all') > 0}
-            onBell={() => { haptics.light(); setBannerNotif({ target: 'all', key: null }); }}
-          />
-        </View>
+        <BannerGrid
+          items={bannerItems}
+          columns={bannerColumns}
+          active={!!reorderMode}
+          heightAnim={gridHeightAnim}
+          renderBanner={renderBanner}
+          onTap={(it) => {
+            // 1.42 : « Toutes prises · dernières 24 h » → carte des 24 h (comme un jour du calendrier)
+            if (it.type === 'last24') { haptics.light(); setLast24Open(true); }
+            else handleBannerPress(it.lastSubId);
+          }}
+          onEnterReorder={() => setReorderMode(true)}
+          onReorder={saveBannerOrder}
+          onToggleColumns={(cols, ids) => { saveBannerOrder(ids); setBannerColumns(cols); }}
+          onDragChange={setGridDragging}
+          onDimChange={setBannerDim}
+          onAddPress={() => setAddBannerOpen(true)}
+        />
       );
     }
-    if (item.kind === 'spacer') return <View />;
-    if (item.kind === 'banner') {
-      const frame = {
-        inReorder, isWiggling, phase,
-        fading: !!item.fading,
-        flashTick: bannerFlash?.id === item.id ? bannerFlash.tick : 0,
-        onDelete: () => setPendingBannerDelete(item.entry),
-      };
-      if (item.type === 'color') {
-        return (
-          <CounterBanner
-            {...frame}
-            label="SOBRE DEPUIS"
-            color={item.color}
-            lastTimestamp={item.lastTs}
-            bell={{ color: item.color, active: notifCountOf('color', item.color) > 0, onPress: () => { haptics.light(); setBannerNotif({ target: 'color', key: item.color }); } }}
-          />
-        );
-      }
-      if (item.type === 'custom') {
-        return (
-          <CounterBanner
-            {...frame}
-            label={`SOBRE DE ${item.def.name.toUpperCase()} DEPUIS`}
-            color={theme.colors.text}
-            labelColor={theme.colors.textMuted}
-            lastTimestamp={item.lastTs}
-            onEdit={() => setCustomActions(item.def)}
-            bell={{ color: theme.colors.textMuted, active: notifCountOf('custom', item.def.id) > 0, onPress: () => { haptics.light(); setBannerNotif({ target: 'custom', key: item.def.id }); } }}
-          />
-        );
-      }
-      if (item.type === 'record') {
-        return (
-          <RecordBanner
-            {...frame}
-            bell={{ color: theme.colors.textMuted, active: notifCountOf('record') > 0, onPress: toggleRecordNotif }}
-          />
-        );
-      }
-      return <Last24Banner {...frame} />;
-    }
     return (
+      <View style={bannerDim && styles.dimmed}>
       <SubstanceRow
         substance={item.sub}
         lastTimestamp={lastTimestamps[item.id]}
@@ -542,28 +524,10 @@ export default function SubstancesPage() {
         onEdit={() => openActions(item.sub)}
         onDelete={() => setPendingDelete(item.sub)}
       />
-    );
-  };
-
-
-  // Pilule « + » posée sur le séparateur au-dessus de l'espace bandeaux / substances.
-  // Dessinée par-dessus la liste ET la copie saisie : un bandeau déplacé ne la cache plus.
-  const renderOverlay = ({ items, tops }) => {
-    const idx = items.findIndex((it) => it.kind === 'spacer');
-    if (idx < 0) return null;
-    return (
-      <View pointerEvents="box-none" style={[styles.pillOverlay, { top: tops[idx] - PILL_HALF }]}>
-        <TouchableOpacity
-          style={styles.pill}
-          onPress={() => { haptics.light(); setAddBannerOpen(true); }}
-          hitSlop={{ top: 10, bottom: 10, left: 14, right: 14 }}
-          activeOpacity={0.6}
-        >
-          <MaterialCommunityIcons name="plus" size={10} color={theme.colors.background} />
-        </TouchableOpacity>
       </View>
     );
   };
+
 
   return (
     <View style={styles.container}>
@@ -581,17 +545,14 @@ export default function SubstancesPage() {
           finishSignal={finishSignal}
           onReorder={handleReorder}
           onItemTap={(item) => {
-            // 1.42 : « Toutes prises · dernières 24 h » → carte des 24 h (comme un jour du calendrier)
-            if (item.kind === 'banner' && item.type === 'last24') { haptics.light(); setLast24Open(true); }
-            else if (item.kind === 'banner') handleBannerPress(item.lastSubId);
-            else if (item.kind === 'sub') navigation.navigate('Substance', { substanceId: item.id });
+            if (item.kind === 'sub') navigation.navigate('Substance', { substanceId: item.id });
           }}
+          scrollLocked={gridDragging}
           onScrollY={handleScroll}
           onScrollEnd={handleScrollEnd}
           onMetrics={(m) => { metricsRef.current = m; }}
           scrollRef={scrollRef}
           renderItem={renderItem}
-          renderOverlay={renderOverlay}
         />
       )}
 
@@ -831,6 +792,7 @@ export default function SubstancesPage() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  dimmed: { opacity: 0.25 },
   emptyWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: theme.spacing.lg },
   emptyText: { color: theme.colors.textFaint, fontSize: theme.font.sizes.md, fontWeight: '300', textAlign: 'center', letterSpacing: 0.5 },
 
@@ -840,18 +802,6 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.lg,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.colors.border,
-  },
-  // Bandeau couleur : contenu (séparateur porté par le conteneur, comme les lignes de substances)
-  colorBanner: {
-    height: BANNER_HEIGHT - StyleSheet.hairlineWidth,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  // Pilule « + » (overlay au-dessus de la liste)
-  pillOverlay: { position: 'absolute', left: 0, right: 0, height: PILL_HALF * 2, alignItems: 'center' },
-  pill: {
-    height: PILL_HALF * 2, width: 32, borderRadius: PILL_HALF,
-    backgroundColor: theme.colors.text,
-    alignItems: 'center', justifyContent: 'center',
   },
   colorBannerContent: { alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch' },
   rowWiggle: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },

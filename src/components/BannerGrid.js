@@ -1,0 +1,568 @@
+// Grille des bandeaux de la liste (1.48) : 1 ou 2 colonnes, réorganisation, bascule par languette.
+//
+// Disposition
+//  - 1 colonne : bandeaux pleine largeur (hauteur BANNER_HEIGHT).
+//  - 2 colonnes : demi-cases = bandeau entier réduit à HALF_SCALE (marges réduites). Nombre impair →
+//    la 1re case est un bandeau normal pleine largeur. Ordre lu ligne par ligne.
+//  - Moins de 2 bandeaux : toujours 1 colonne (le parent repasse le réglage à 1).
+//  - Toute variation (ajout, suppression, bascule) : chaque case glisse / change de taille vers sa
+//    nouvelle place PENDANT le fondu (même durée), la grille et la pilule « + » suivent en même temps.
+//
+// Réorganisation (même logique que la liste : 1er appui long = mode, puis appui long = saisie)
+//  - Vertical, dans sa colonne : les autres bandeaux de la colonne sont chassés en direct, trait fin
+//    (55 % de la colonne) à la place visée ; butées haut / bas de la grille : vibration + trait au bord.
+//  - Horizontal : doigt dans l'autre colonne → échange avec le bandeau sous le doigt (il part dans
+//    l'emplacement vide, vibration). Retour dans sa colonne → l'échange est annulé.
+//  - Case large (nombre impair) : y entrer = échange ; la saisir puis la poser ailleurs = échange.
+//    La copie prend la taille de sa future place (large / demi) dès l'échange.
+//  - Côtés : la copie s'arrête au bord de l'écran (sans vibration ni trait).
+//
+// Bascule 1 ↔ 2 colonnes (à partir de 2 bandeaux), façon poubelle des stories :
+//  - saisie → une languette sort du bord, en haut à gauche de la grille (icône seule) ;
+//  - doigt sur la languette → cadre en pointillés à la place de la future 1re case, le reste assombri ;
+//  - doigt dans le cadre → aimant : le bandeau tenu prend la taille de la case et s'y colle (contour
+//    blanc, vibration) ; ressortir annule ;
+//  - lâcher dans le cadre → bascule ; le bandeau tenu devient le 1er ; la réorganisation continue.
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { View, StyleSheet, Animated, Pressable, TouchableOpacity, Easing, useWindowDimensions } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { theme } from '../theme';
+import haptics from '../utils/haptics';
+import { BANNER_HEIGHT, HALF_SCALE, FADE_MS } from './Banners';
+
+const H1 = BANNER_HEIGHT;
+const HH = BANNER_HEIGHT * HALF_SCALE;
+export const SPACER_HEIGHT = 16;   // espace sous les bandeaux (pilule « + » posée sur la dernière ligne)
+const PILL_HALF = 6;
+const LONG_PRESS_MS = 400;
+const SHIFT_MS = 140;              // glissement des autres pendant le drag (= liste)
+const DROP_MS = 180;               // la case lâchée rejoint sa place
+const MORPH_MS = FADE_MS;          // ajout / suppression / bascule : même durée que le fondu
+const PICKUP_SCALE = 1.06;
+const PICKUP_OPACITY = 0.92;
+const BOUND_PX = 6;
+const DIM = 0.25;
+const LANG = 40;                   // languette (cercle), à moitié sortie du bord gauche
+const LANG_TOP = 8;
+const LANG_SHOWN = -18;
+const LANG_ZONE_X = 56;            // zone de survol de la languette (coordonnées de la grille)
+const LANG_ZONE_Y = 64;
+const EASE = Easing.out(Easing.cubic);
+
+export function effectiveCols(columns, n) { return columns === 2 && n >= 2 ? 2 : 1; }
+
+export function gridHeight(n, cols) {
+  if (n <= 0) return 0;
+  if (cols === 1) return n * H1;
+  const odd = n % 2 === 1;
+  return (odd ? H1 : 0) + ((n - (odd ? 1 : 0)) / 2) * HH;
+}
+
+// Géométrie de la case i (ordre lu ligne par ligne)
+function geom(i, n, cols, W) {
+  if (cols === 1) return { x: 0, y: i * H1, w: W, h: H1, s: 1, wide: true, col: -1 };
+  const odd = n % 2 === 1;
+  if (odd && i === 0) return { x: 0, y: 0, w: W, h: H1, s: 1, wide: true, col: -1 };
+  const j = i - (odd ? 1 : 0);
+  const row = Math.floor(j / 2); const col = j % 2;
+  return { x: (col * W) / 2, y: (odd ? H1 : 0) + row * HH, w: W / 2, h: HH, s: HALF_SCALE, wide: false, col };
+}
+const keyOf = (g) => `${g.x}|${g.y}|${g.w}|${g.h}|${g.s}`;
+const sameArr = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+
+// Une case : position / taille animées ; contenu = bandeau entier (largeur L) réduit à s
+const Cell = memo(function Cell({
+  item, anim, L, compact, col2, active, hidden, dimmed, isWiggling, phase,
+  renderBanner, onTap, onLongPress, handlersRef,
+}) {
+  const idRef = useRef(item.id);
+  idRef.current = item.id;
+  const gesture = useMemo(() => Gesture.Pan()
+    .activateAfterLongPress(LONG_PRESS_MS)
+    .runOnJS(true)
+    .onStart((e) => handlersRef.current.start(idRef.current, e))
+    .onUpdate((e) => handlersRef.current.move(e))
+    .onEnd(() => handlersRef.current.end())
+    .onFinalize(() => handlersRef.current.finalize()), [handlersRef]);
+
+  const content = (
+    <Animated.View style={[styles.content, { width: L, transform: [{ scale: anim.s }] }]}>
+      {renderBanner(item, { compact, layoutWidth: L, inReorder: active, isWiggling, phase })}
+    </Animated.View>
+  );
+  const body = (
+    <Animated.View
+      collapsable={false}
+      // Case saisie : entièrement transparente (fond compris) → l'emplacement vide laisse voir la case qui y arrive
+      style={[styles.cell, { left: anim.x, top: anim.y, width: anim.w, height: anim.h, opacity: hidden ? 0 : anim.o }]}
+    >
+      <View style={[StyleSheet.absoluteFill, dimmed && { opacity: DIM }]} pointerEvents="box-none">
+        {active ? content : (
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => onTap?.(item)}
+            onLongPress={() => { haptics.medium(); onLongPress?.(); }}
+            delayLongPress={LONG_PRESS_MS}
+          >
+            {content}
+          </Pressable>
+        )}
+        <View pointerEvents="none" style={styles.lineBottom} />
+        {col2 && <View pointerEvents="none" style={styles.lineRight} />}
+      </View>
+    </Animated.View>
+  );
+  return active ? <GestureDetector gesture={gesture}>{body}</GestureDetector> : body;
+});
+
+export default function BannerGrid({
+  items,                // bandeaux visibles, dans l'ordre : [{ id, entry, ... }]
+  columns = 1,          // réglage (1 | 2)
+  active,               // mode réorganisation
+  heightAnim,           // Animated.Value : hauteur grille + espace (partagée avec la liste)
+  renderBanner,         // (item, { compact, layoutWidth, inReorder, isWiggling, phase }) → bandeau
+  onTap, onEnterReorder,
+  onReorder,            // (ids) → nouvel ordre
+  onToggleColumns,      // (cols, ids) → bascule + nouvel ordre (le bandeau tenu en 1er)
+  onDragChange,         // (bool) → bloque le défilement de la liste
+  onDimChange,          // (bool) → assombrit les substances (cadre de bascule affiché)
+  onAddPress,           // pilule « + »
+}) {
+  const { width: winW } = useWindowDimensions();
+  const [W, setW] = useState(winW); // largeur réelle de la grille (mesurée)
+  const liveIds = items.map((it) => it.id);
+  const liveRef = useRef(liveIds);
+  liveRef.current = liveIds;
+  const byId = useRef({});
+  items.forEach((it) => { byId.current[it.id] = it; });
+
+  // --- Valeurs animées par case ---
+  const anims = useRef({});      // id → { x, y, w, h, s, o }
+  const targets = useRef({});    // id → clé de géométrie visée
+  const lastGeom = useRef({});   // id → dernière géométrie visée (L / compact des fantômes)
+  const mounted = useRef(false);
+  const appearing = useRef([]); // cases créées après le 1er affichage : apparition en fondu
+  const animOf = (id, g, appear) => {
+    if (!anims.current[id]) {
+      if (appear) appearing.current.push(id);
+      anims.current[id] = {
+        x: new Animated.Value(g.x), y: new Animated.Value(g.y), w: new Animated.Value(g.w),
+        h: new Animated.Value(g.h), s: new Animated.Value(g.s), o: new Animated.Value(appear ? 0 : 1),
+      };
+      targets.current[id] = keyOf(g);
+      lastGeom.current[id] = g;
+    }
+    return anims.current[id];
+  };
+  const moveTo = (id, g, dur, force = false) => {
+    const a = anims.current[id];
+    if (!a) return;
+    const k = keyOf(g);
+    if (!force && targets.current[id] === k) return;
+    targets.current[id] = k;
+    lastGeom.current[id] = g;
+    if (!dur) { a.x.setValue(g.x); a.y.setValue(g.y); a.w.setValue(g.w); a.h.setValue(g.h); a.s.setValue(g.s); return; }
+    Animated.parallel(['x', 'y', 'w', 'h', 's'].map((p) => Animated.timing(a[p], {
+      toValue: g[p], duration: dur, easing: EASE, useNativeDriver: false,
+    }))).start();
+  };
+
+  // --- Drag ---
+  const [pickId, setPickId] = useState(null);
+  const [arr, setArr] = useState(null);           // ordre provisoire pendant le drag
+  const [stage, setStage] = useState(0);          // 0 normal · 1 cadre affiché · 2 aimanté
+  const [frameG, setFrameG] = useState(null);     // géométrie du cadre de bascule
+  const [bar, setBar] = useState(null);           // { x, y, w } trait fin
+  const [copyType, setCopyType] = useState({ L: W, compact: false });
+  const [pending, setPending] = useState(null);   // { ids, cols } : ordre lâché, en attente du parent
+  const copy = useRef({
+    x: new Animated.Value(0), y: new Animated.Value(0), w: new Animated.Value(0), h: new Animated.Value(0),
+    s: new Animated.Value(1), k: new Animated.Value(1), line: new Animated.Value(0), op: new Animated.Value(PICKUP_OPACITY),
+  }).current;
+  const langX = useRef(new Animated.Value(-LANG - 4)).current;
+  const drag = useRef({ id: null }).current;
+
+  // Ordre affiché : drag en cours > ordre lâché en attente > ordre du parent
+  let cols = effectiveCols(columns, liveIds.length);
+  let order = liveIds;
+  if (pickId && arr) order = arr;
+  else if (pending && sameArr([...pending.ids].sort(), [...liveIds].sort())) {
+    order = pending.ids;
+    if (pending.cols) cols = effectiveCols(pending.cols, liveIds.length);
+  }
+  useEffect(() => {
+    if (!pending) return;
+    const colsOk = !pending.cols || pending.cols === columns;
+    if (sameArr(pending.ids, liveIds) && colsOk) setPending(null);
+  }, [pending, liveIds.join('|'), columns]); // eslint-disable-line
+  useEffect(() => { // filet : le parent n'a pas suivi
+    if (!pending) return;
+    const t = setTimeout(() => setPending(null), 1200);
+    return () => clearTimeout(t);
+  }, [pending]);
+
+  const n = order.length;
+
+  // Bandeaux retirés : gardés en fondu à leur place pendant que les autres glissent
+  const prevItems = useRef(items);
+  const [ghosts, setGhosts] = useState([]);
+  useLayoutEffect(() => {
+    const cur = new Set(liveIds);
+    const gone = prevItems.current.filter((it) => !cur.has(it.id) && anims.current[it.id]);
+    prevItems.current = items;
+    if (gone.length === 0) return;
+    setGhosts((g) => [...g.filter((x) => !gone.some((y) => y.id === x.id)), ...gone]);
+    gone.forEach((it) => {
+      Animated.timing(anims.current[it.id].o, { toValue: 0, duration: FADE_MS, useNativeDriver: false }).start(() => {
+        setGhosts((g) => g.filter((x) => x.id !== it.id));
+        if (!liveRef.current.includes(it.id)) { delete anims.current[it.id]; delete targets.current[it.id]; }
+        else anims.current[it.id].o.setValue(1); // revenu entre-temps
+      });
+    });
+  }, [liveIds.join('|')]); // eslint-disable-line
+
+  // Placement : chaque case vers sa géométrie (glissement court pendant le drag, sinon durée du fondu)
+  const prevShape = useRef({ n: -1, cols: 0 });
+  useLayoutEffect(() => {
+    const structural = prevShape.current.n !== n || prevShape.current.cols !== cols;
+    const first = !mounted.current;
+    order.forEach((id, i) => {
+      if (id === pickId) return;
+      const g = geom(i, n, cols, W);
+      animOf(id, g, !first);
+      moveTo(id, g, first ? 0 : (pickId ? SHIFT_MS : (structural ? MORPH_MS : SHIFT_MS)));
+    });
+    appearing.current.splice(0).forEach((id) => {
+      const a = anims.current[id];
+      if (a) Animated.timing(a.o, { toValue: 1, duration: FADE_MS, useNativeDriver: false }).start();
+    });
+    const h = gridHeight(n, cols) + SPACER_HEIGHT;
+    if (first) heightAnim.setValue(h);
+    else if (structural) Animated.timing(heightAnim, { toValue: h, duration: MORPH_MS, easing: EASE, useNativeDriver: false }).start();
+    prevShape.current = { n, cols };
+    mounted.current = true;
+  }); // à chaque rendu : moveTo ignore les cases déjà en route vers la bonne place
+  // 1er affichage : la hauteur est reposée après le montage du conteneur parent (sinon une valeur
+  // posée avant son branchement n'est pas prise en compte)
+  useEffect(() => { heightAnim.setValue(gridHeight(prevShape.current.n, prevShape.current.cols) + SPACER_HEIGHT); }, []); // eslint-disable-line
+
+  // --- Gestes ---
+  const setCopyGeom = (g, dur) => {
+    drag.cg = g;
+    if (!dur) { copy.w.setValue(g.w); copy.h.setValue(g.h); copy.s.setValue(g.s); return; }
+    Animated.parallel(['w', 'h', 's'].map((p) => Animated.timing(copy[p], { toValue: g[p], duration: dur, easing: EASE, useNativeDriver: false }))).start();
+  };
+  const showLang = (on) => Animated.timing(langX, { toValue: on ? LANG_SHOWN : -LANG - 4, duration: 180, easing: EASE, useNativeDriver: false }).start();
+
+  const cleanup = () => {
+    drag.id = null;
+    setPickId(null); setArr(null); setStage(0); setFrameG(null); setBar(null);
+    showLang(false);
+    onDragChange?.(false); onDimChange?.(false);
+  };
+
+  // Ordre visé (étape 0), à partir du doigt (f) dans la grille
+  const targetOrder = (f) => {
+    const { base, p, n: N, cols: C } = drag;
+    if (C === 1) {
+      const t = Math.max(0, Math.min(N - 1, Math.floor((drag.cy + H1 / 2) / H1)));
+      const next = [...base]; const [m] = next.splice(p, 1); next.splice(t, 0, m);
+      let b = null;
+      if (t !== p) b = { x: W * 0.225, w: W * 0.55, y: t < p ? t * H1 : (t + 1) * H1 };
+      return { next, bar: b, swap: false };
+    }
+    const odd = N % 2 === 1; const off = odd ? 1 : 0;
+    const rows = (N - off) / 2;
+    const inWide = odd && f.y < H1;
+    const r = Math.max(0, Math.min(rows - 1, Math.floor((f.y - (odd ? H1 : 0)) / HH)));
+    const c = f.x < W / 2 ? 0 : 1;
+    const slotAt = off + r * 2 + c;
+    const swapWith = (q) => { const next = [...base]; [next[p], next[q]] = [next[q], next[p]]; return next; };
+    if (odd && p === 0) return inWide ? { next: base, bar: null, swap: false } : { next: swapWith(slotAt), bar: null, swap: true };
+    if (inWide) return { next: swapWith(0), bar: null, swap: true };
+    const pc = (p - off) % 2;
+    if (c !== pc) return { next: swapWith(slotAt), bar: null, swap: true };
+    // Même colonne : insertion verticale dans la colonne
+    const colSlots = Array.from({ length: rows }, (_, k) => off + k * 2 + pc);
+    const kp = colSlots.indexOf(p);
+    const ids = colSlots.map((s) => base[s]);
+    const [m] = ids.splice(kp, 1); ids.splice(r, 0, m);
+    const next = [...base]; colSlots.forEach((s, k) => { next[s] = ids[k]; });
+    let b = null;
+    if (r !== kp) {
+      const gt = geom(colSlots[r], N, 2, W);
+      b = { x: gt.x + (W / 2) * 0.225, w: (W / 2) * 0.55, y: r < kp ? gt.y : gt.y + HH };
+    }
+    return { next, bar: b, swap: false };
+  };
+
+  const handlersRef = useRef(null);
+  handlersRef.current = {
+    start: (id, e) => {
+      if (drag.id) return;
+      const base = [...order];
+      const p = base.indexOf(id);
+      if (p < 0) return;
+      const N = base.length; const C = effectiveCols(columns, N);
+      const g = geom(p, N, C, W);
+      Object.assign(drag, {
+        id, base, p, n: N, cols: C, g0: g, f0x: g.x + e.x, f0y: g.y + e.y,
+        cx: g.x, cy: g.y, stage: 0, bound: null, key: base.join('|'), committed: false, cg: g,
+      });
+      copy.x.setValue(g.x); copy.y.setValue(g.y); setCopyGeom(g, 0);
+      copy.line.setValue(0); copy.op.setValue(PICKUP_OPACITY);
+      copy.k.setValue(1);
+      Animated.timing(copy.k, { toValue: PICKUP_SCALE, duration: 120, useNativeDriver: false }).start();
+      setCopyType({ L: g.w / g.s, compact: !g.wide });
+      haptics.medium();
+      setPickId(id); setArr(base); setStage(0); setBar(null);
+      onDragChange?.(true);
+      if (N >= 2) showLang(true);
+    },
+    move: (e) => {
+      if (!drag.id) return;
+      const f = { x: drag.f0x + e.translationX, y: drag.f0y + e.translationY };
+      const gH = gridHeight(drag.n, drag.cols);
+      // Étapes de la bascule
+      let st = drag.stage;
+      if (drag.n >= 2) {
+        const inLang = f.x < LANG_ZONE_X && f.y < LANG_ZONE_Y && f.y > -2 * LANG_ZONE_Y;
+        const fr = geom(0, drag.n, drag.cols === 1 ? 2 : 1, W);
+        const inFrame = f.x >= fr.x && f.x <= fr.x + fr.w && f.y >= fr.y && f.y <= fr.y + fr.h;
+        if (st === 0) st = inLang ? 1 : 0;
+        else if (inFrame && !inLang) st = 2;
+        else if (inLang) st = 1;
+        else st = 0;
+        if (st !== drag.stage) {
+          const was = drag.stage;
+          drag.stage = st;
+          setStage(st);
+          if (st >= 1 && was === 0) {
+            setArr(drag.base); drag.key = drag.base.join('|');
+            setBar(null); drag.bound = null;
+            setFrameG(fr); showLang(false); onDimChange?.(true);
+            setCopyType({ L: drag.g0.w / drag.g0.s, compact: !drag.g0.wide }); setCopyGeom(drag.g0, SHIFT_MS);
+          }
+          if (st === 2) {
+            haptics.medium();
+            drag.cx = fr.x; drag.cy = fr.y;
+            setCopyType({ L: fr.w / fr.s, compact: !fr.wide });
+            setCopyGeom(fr, SHIFT_MS);
+            Animated.parallel([
+              Animated.timing(copy.x, { toValue: fr.x, duration: SHIFT_MS, easing: EASE, useNativeDriver: false }),
+              Animated.timing(copy.y, { toValue: fr.y, duration: SHIFT_MS, easing: EASE, useNativeDriver: false }),
+              Animated.timing(copy.k, { toValue: 1, duration: SHIFT_MS, useNativeDriver: false }),
+              Animated.timing(copy.line, { toValue: 1, duration: SHIFT_MS, useNativeDriver: false }),
+              Animated.timing(copy.op, { toValue: 1, duration: SHIFT_MS, useNativeDriver: false }),
+            ]).start();
+            return;
+          }
+          if (was === 2) { // sortie du cadre : la copie reprend sa taille et suit de nouveau le doigt
+            setCopyType({ L: drag.g0.w / drag.g0.s, compact: !drag.g0.wide });
+            setCopyGeom(drag.g0, SHIFT_MS);
+            Animated.parallel([
+              Animated.timing(copy.k, { toValue: PICKUP_SCALE, duration: SHIFT_MS, useNativeDriver: false }),
+              Animated.timing(copy.line, { toValue: 0, duration: SHIFT_MS, useNativeDriver: false }),
+              Animated.timing(copy.op, { toValue: PICKUP_OPACITY, duration: SHIFT_MS, useNativeDriver: false }),
+            ]).start();
+          }
+          if (st === 0) { setFrameG(null); showLang(true); onDimChange?.(false); }
+        }
+        if (st === 2) return;
+      }
+      // La copie suit le doigt ; butées haut / bas (vibration + trait), côtés : bord de l'écran
+      const cg = drag.cg;
+      const rawX = drag.g0.x + e.translationX; const rawY = drag.g0.y + e.translationY;
+      const x = Math.max(0, Math.min(W - cg.w, rawX));
+      const y = Math.max(0, Math.min(Math.max(0, gH - cg.h), rawY));
+      copy.x.setValue(x); copy.y.setValue(y);
+      drag.cx = x; drag.cy = y;
+      if (st !== 0) return;
+      const b = rawY < -BOUND_PX ? 'top' : rawY > gH - cg.h + BOUND_PX ? 'bottom' : null;
+      if (b !== drag.bound) { if (b) haptics.medium(); drag.bound = b; }
+      const { next, bar: tb, swap } = targetOrder(f);
+      const k = next.join('|');
+      if (k !== drag.key) {
+        drag.key = k;
+        if (swap) haptics.medium(); else haptics.light();
+        setArr(next);
+        // La copie prend la taille de sa future place (large / demi)
+        const tg = geom(next.indexOf(drag.id), drag.n, drag.cols, W);
+        if (tg.wide !== drag.cg.wide) { setCopyType({ L: tg.w / tg.s, compact: !tg.wide }); setCopyGeom(tg, SHIFT_MS); }
+      }
+      if (b) {
+        const colX = drag.cols === 1 || drag.cg.wide ? { x: W * 0.225, w: W * 0.55 }
+          : { x: (x + cg.w / 2 < W / 2 ? 0 : W / 2) + (W / 2) * 0.225, w: (W / 2) * 0.55 };
+        setBar({ ...colX, y: b === 'top' ? 0 : gH });
+      } else setBar(tb);
+    },
+    end: () => {
+      if (!drag.id) return;
+      drag.committed = true;
+      const id = drag.id;
+      const a = anims.current[id];
+      if (drag.stage === 2) {
+        const nextCols = drag.cols === 1 ? 2 : 1;
+        const ids = [id, ...drag.base.filter((x) => x !== id)];
+        const fr = geom(0, drag.n, nextCols, W);
+        moveTo(id, fr, 0, true);
+        haptics.success();
+        setPending({ ids, cols: nextCols });
+        cleanup();
+        onToggleColumns?.(nextCols, ids);
+        return;
+      }
+      const next = arr || drag.base;
+      const slot = next.indexOf(id);
+      const tg = geom(slot, drag.n, drag.cols, W);
+      // La case repart de la position de la copie vers sa place
+      if (a) {
+        a.x.setValue(drag.cx); a.y.setValue(drag.cy); a.w.setValue(drag.cg.w); a.h.setValue(drag.cg.h); a.s.setValue(drag.cg.s);
+        moveTo(id, tg, DROP_MS, true);
+      }
+      const changed = !sameArr(next, drag.base);
+      if (changed) { haptics.success(); setPending({ ids: next }); }
+      cleanup();
+      if (changed) onReorder?.(next);
+    },
+    finalize: () => {
+      if (!drag.id || drag.committed) return;
+      const id = drag.id;
+      moveTo(id, drag.g0, DROP_MS, true);
+      cleanup();
+    },
+  };
+
+  // Sortie du mode réorganisation pendant un drag (ex. Terminé) : on range tout
+  useEffect(() => { if (!active && drag.id) { moveTo(drag.id, drag.g0, 0, true); cleanup(); } }, [active]); // eslint-disable-line
+
+  const pickedItem = pickId ? byId.current[pickId] : null;
+  const dimOthers = stage >= 1;
+  const pillTop = useMemo(() => Animated.subtract(heightAnim, SPACER_HEIGHT + PILL_HALF), [heightAnim]);
+
+  return (
+    <View style={styles.wrap} onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); if (w > 0 && w !== W) setW(w); }}>
+      {/* Bandeaux retirés (en fondu), sous les autres cases qui glissent à leur place */}
+      {ghosts.filter((it) => !liveIds.includes(it.id) && anims.current[it.id]).map((it) => {
+        const g = lastGeom.current[it.id] || geom(0, 1, 1, W);
+        return (
+          <Cell
+            key={`ghost-${it.id}`}
+            item={it}
+            anim={anims.current[it.id]}
+            L={g.w / g.s}
+            compact={!g.wide}
+            col2={!g.wide && g.col === 0}
+            active={false}
+            hidden={false}
+            dimmed={false}
+            isWiggling={false}
+            phase={0}
+            renderBanner={renderBanner}
+            handlersRef={handlersRef}
+          />
+        );
+      })}
+
+      {/* Ordre de rendu STABLE (celui du parent) : déplacer un enfant pendant le geste l'annulerait.
+          La place de chaque case vient de `order` (positions absolues). */}
+      {liveIds.map((id) => {
+        const it = byId.current[id];
+        const i = order.indexOf(id);
+        if (!it || i < 0) return null;
+        const g = geom(i, n, cols, W);
+        const a = animOf(id, g, mounted.current);
+        return (
+          <Cell
+            key={id}
+            item={it}
+            anim={a}
+            L={g.w / g.s}
+            compact={!g.wide}
+            col2={!g.wide && g.col === 0}
+            active={active}
+            hidden={id === pickId}
+            dimmed={dimOthers && id !== pickId}
+            isWiggling={active && !pickId}
+            phase={i % 3}
+            renderBanner={renderBanner}
+            onTap={onTap}
+            onLongPress={onEnterReorder}
+            handlersRef={handlersRef}
+          />
+        );
+      })}
+      {/* Cadre en pointillés : future 1re case après la bascule */}
+      {frameG && (
+        <View pointerEvents="none" style={[styles.frame, { left: frameG.x, top: frameG.y, width: frameG.w, height: frameG.h }, stage === 2 ? styles.frameHot : styles.frameTop]}>
+          {stage === 1 && <MaterialCommunityIcons name={drag.cols === 1 ? 'view-grid-outline' : 'view-agenda-outline'} size={20} color={theme.colors.text} />}
+        </View>
+      )}
+
+      {/* Copie qui suit le doigt */}
+      {pickedItem && (
+        <Animated.View
+          pointerEvents="none"
+          style={[styles.copy, {
+            left: copy.x, top: copy.y, width: copy.w, height: copy.h,
+            opacity: copy.op, transform: [{ scale: copy.k }],
+          }]}
+        >
+          <Animated.View style={[styles.content, { width: copyType.L, transform: [{ scale: copy.s }] }]}>
+            {renderBanner(pickedItem, { compact: copyType.compact, layoutWidth: copyType.L, inReorder: true, isWiggling: true, phase: 0 })}
+          </Animated.View>
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.copyLine, { opacity: copy.line }]} />
+        </Animated.View>
+      )}
+
+      {/* Trait fin : place visée ou butée */}
+      {bar && <View pointerEvents="none" style={[styles.bar, { left: bar.x, width: bar.w, top: bar.y - 0.5 }]} />}
+
+      {/* Languette de bascule (sort du bord gauche à la saisie) */}
+      <Animated.View pointerEvents="none" style={[styles.lang, { left: langX }]}>
+        <MaterialCommunityIcons name={cols === 1 ? 'view-grid-outline' : 'view-agenda-outline'} size={18} color={theme.colors.text} />
+      </Animated.View>
+
+      {/* Pilule « + » sur la dernière ligne : suit la grille pendant ses animations */}
+      <Animated.View pointerEvents="box-none" style={[styles.pillWrap, { top: pillTop }]}>
+        <TouchableOpacity
+          style={styles.pill}
+          onPress={() => { haptics.light(); onAddPress?.(); }}
+          hitSlop={{ top: 10, bottom: 10, left: 14, right: 14 }}
+          activeOpacity={0.6}
+        >
+          <MaterialCommunityIcons name="plus" size={10} color={theme.colors.background} />
+        </TouchableOpacity>
+      </Animated.View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: { flex: 1, position: 'relative' },
+  cell: { position: 'absolute', overflow: 'hidden', backgroundColor: theme.colors.background },
+  content: { height: H1, transformOrigin: 'top left' },
+  lineBottom: { position: 'absolute', left: 0, right: 0, bottom: 0, height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border },
+  lineRight: { position: 'absolute', top: 0, bottom: 0, right: 0, width: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border },
+  copy: { position: 'absolute', overflow: 'hidden', backgroundColor: theme.colors.background, zIndex: 10, elevation: 10 },
+  copyLine: { borderWidth: 1, borderColor: '#FFFFFF' },
+  frame: {
+    position: 'absolute', zIndex: 5, elevation: 5,
+    borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#9A9A9A', borderRadius: 8,
+    backgroundColor: 'rgba(14,14,14,0.85)', alignItems: 'center', justifyContent: 'center',
+  },
+  frameTop: { zIndex: 11, elevation: 11 },  // étape 1 : par-dessus la copie (on voit où la lâcher)
+  frameHot: { borderColor: theme.colors.text, backgroundColor: 'transparent' },
+  bar: { position: 'absolute', height: 1, backgroundColor: '#FFFFFF', borderRadius: 1, zIndex: 15, elevation: 15 },
+  lang: {
+    position: 'absolute', top: LANG_TOP, width: LANG, height: LANG, borderRadius: LANG / 2,
+    backgroundColor: theme.colors.surfaceAlt, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.textFaint,
+    alignItems: 'flex-end', justifyContent: 'center', paddingRight: 5, zIndex: 20, elevation: 20,
+  },
+  pillWrap: { position: 'absolute', left: 0, right: 0, height: PILL_HALF * 2, alignItems: 'center', zIndex: 12, elevation: 12 },
+  pill: {
+    height: PILL_HALF * 2, width: 32, borderRadius: PILL_HALF,
+    backgroundColor: theme.colors.text, alignItems: 'center', justifyContent: 'center',
+  },
+});

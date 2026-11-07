@@ -19,6 +19,7 @@
 // Aucune priorité d'affichage (zIndex/elevation) dans la liste.
 //
 // 1.27 — item.collapse (Animated.Value, optionnel) : hauteur animée de la ligne.
+// 1.48 — item.animHeight (élément fixe) : hauteur animée (grille des bandeaux qui grandit / rétrécit).
 //
 // 1.23 — plusieurs GROUPES dans une seule liste et un seul mode (ex. bandeaux puis substances) :
 //  - chaque élément peut avoir `group` (même groupe = peuvent s'échanger) et `static: true`
@@ -96,7 +97,7 @@ const ActiveRow = memo(function ActiveRow({
   const translateY = dragging && !isPicked ? offAnim : 0;
 
   if (item.static) {
-    return <View style={[{ height: itemHeight }, item.containerStyle]}>{renderItem({ item, index, isWiggling: false, isPickup: false, inReorder: true })}</View>;
+    return <Animated.View style={[{ height: item.animHeight || itemHeight }, item.containerStyle]}>{renderItem({ item, index, isWiggling: false, isPickup: false, inReorder: true })}</Animated.View>;
   }
 
   return (
@@ -138,6 +139,7 @@ export default function ReorderList({
   footerComponent = null,  // affiché sous la liste (ex. substances grisées pendant la réorg des bandeaux)
   scrollRef = null,
   finishSignal = 0,        // 1.33 : change → termine la réorganisation (ordre en cours enregistré)
+  scrollLocked = false,    // 1.48 : un élément fixe gère son propre glisser (grille des bandeaux)
 }) {
   const [localIds, setLocalIds] = useState(data.map((d) => d.id));
   const [pickupIdx, setPickupIdx] = useState(null);
@@ -382,7 +384,7 @@ export default function ReorderList({
       <ScrollView keyboardShouldPersistTaps="handled"
         ref={effectiveScrollRef}
         contentContainerStyle={{ paddingBottom: 120 }}
-        scrollEnabled={pickupIdx == null}
+        scrollEnabled={pickupIdx == null && !scrollLocked}
         onScroll={(e) => {
           scrollYRef.current = e.nativeEvent.contentOffset.y;
           onScrollY?.(scrollYRef.current);
@@ -417,9 +419,9 @@ export default function ReorderList({
             }
             if (item.static) {
               return (
-                <View key={item.id} style={[{ height: heights[idx] }, item.containerStyle]}>
+                <Animated.View key={item.id} style={[{ height: item.animHeight || heights[idx] }, item.containerStyle]}>
                   {renderItem({ item, index: idx, isWiggling: false, isPickup: false, inReorder: false })}
-                </View>
+                </Animated.View>
               );
             }
             return (

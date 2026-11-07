@@ -1,10 +1,11 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, Pressable, ScrollView, Animated,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import PagerView from 'react-native-pager-view';
 import { theme } from '../theme';
 import { useStore, EMPTY_LIST } from '../store';
 import { getIconById } from '../icons';
@@ -23,6 +24,9 @@ import StatsView from '../components/StatsView';
 import NotifWizard from '../components/NotifWizard';
 import { useFlashBackground } from '../utils/flash';
 import { waitForAppReady, appStateInfo } from '../utils/appReady';
+
+// 1.48 : onglets en pages glissables (la page suit le doigt, comme les pages principales)
+const TABS = ['calendar', 'history', 'stats'];
 
 function pad2(n) { return n < 10 ? `0${n}` : `${n}`; }
 function dayKeyOf(ts) {
@@ -53,6 +57,19 @@ export default function SubstanceScreen() {
   const deleteConsumption = useStore((s) => s.deleteConsumption);
 
   const [activeTab, setActiveTab] = useState('calendar');
+  const pagerRef = useRef(null);
+  // Une page n'est construite qu'à sa 1re visite (ouverture de la page aussi rapide qu'avant)
+  const [visited, setVisited] = useState({ calendar: true });
+  const goTab = (t) => {
+    setActiveTab(t);
+    setVisited((v) => (v[t] ? v : { ...v, [t]: true }));
+    pagerRef.current?.setPage(TABS.indexOf(t));
+  };
+  // … puis les deux autres juste après l'ouverture : prêtes quand on glisse vers elles
+  useEffect(() => {
+    const t = setTimeout(() => setVisited({ calendar: true, history: true, stats: true }), 400);
+    return () => clearTimeout(t);
+  }, []);
   const [logOpen, setLogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
@@ -151,9 +168,9 @@ export default function SubstanceScreen() {
       {/* 1.46 : même disposition que le global — onglets en haut, petit compteur dessous, puis l'onglet.
           Pendant la réorganisation des compteurs (onglet Stats), onglets et petit compteur assombris. */}
       <View style={[styles.tabs, countersEditing && styles.dimmed]} pointerEvents={countersEditing ? 'none' : 'auto'}>
-        <Tab label="Calendrier" active={activeTab === 'calendar'} onPress={() => setActiveTab('calendar')} />
-        <Tab label="Recherche" active={activeTab === 'history'} onPress={() => setActiveTab('history')} />
-        <Tab label="Stats" active={activeTab === 'stats'} onPress={() => setActiveTab('stats')} />
+        <Tab label="Calendrier" active={activeTab === 'calendar'} onPress={() => goTab('calendar')} />
+        <Tab label="Recherche" active={activeTab === 'history'} onPress={() => goTab('history')} />
+        <Tab label="Stats" active={activeTab === 'stats'} onPress={() => goTab('stats')} />
       </View>
       <TopCounter
         label="Sobre depuis"
@@ -165,27 +182,45 @@ export default function SubstanceScreen() {
         noBorder={activeTab === 'stats'}
       />
 
-      {activeTab === 'calendar' && (
-        <ScrollableCalendar
-          markersByDay={markersByDay}
-          showSoberFill={true}
-          showJumpButtons={true}
-          substanceColor={substance.color}
-          onDayPress={(dayKey, dayTimestamp) => setDayDetail({ dayKey, dayTimestamp })}
-        />
-      )}
-      {activeTab === 'history' && (
-        <HistoryList consumptions={consumptions} color={substance.color} onOpenDay={(c) => setDayDetail({ dayTimestamp: c.timestamp, dayKey: dayKeyOf(c.timestamp) })} />
-      )}
-      {activeTab === 'stats' && (
-        <StatsView
-          mode="substance"
-          consumptions={consumptions || []}
-          color={substance.color}
-          navigation={navigation}
-          substanceId={substanceId}
-        />
-      )}
+      {/* 1.48 : glisser à gauche / droite change d'onglet ; bloqué pendant la réorganisation des compteurs */}
+      <PagerView
+        ref={pagerRef}
+        style={styles.pager}
+        initialPage={0}
+        scrollEnabled={!countersEditing}
+        onPageSelected={(e) => {
+          const t = TABS[e.nativeEvent.position];
+          if (!t) return;
+          setActiveTab(t);
+          setVisited((v) => (v[t] ? v : { ...v, [t]: true }));
+        }}
+      >
+        <View key="calendar" style={styles.page}>
+          <ScrollableCalendar
+            markersByDay={markersByDay}
+            showSoberFill={true}
+            showJumpButtons={true}
+            substanceColor={substance.color}
+            onDayPress={(dayKey, dayTimestamp) => setDayDetail({ dayKey, dayTimestamp })}
+          />
+        </View>
+        <View key="history" style={styles.page}>
+          {visited.history && (
+            <HistoryList consumptions={consumptions} color={substance.color} onOpenDay={(c) => setDayDetail({ dayTimestamp: c.timestamp, dayKey: dayKeyOf(c.timestamp) })} />
+          )}
+        </View>
+        <View key="stats" style={styles.page}>
+          {visited.stats && (
+            <StatsView
+              mode="substance"
+              consumptions={consumptions || []}
+              color={substance.color}
+              navigation={navigation}
+              substanceId={substanceId}
+            />
+          )}
+        </View>
+      </PagerView>
 
       <NotifWizard
         visible={notifOpen}
@@ -342,6 +377,8 @@ function FAB({ color, onPress }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
+  pager: { flex: 1 },
+  page: { flex: 1 },
   notFound: { color: theme.colors.textMuted, textAlign: 'center', marginTop: theme.spacing.xl },
   // 1.42 : le dernier séparateur des compteurs (avec la pilule « + ») sert de bordure basse
   hero: {

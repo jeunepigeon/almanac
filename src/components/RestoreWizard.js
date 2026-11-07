@@ -108,8 +108,7 @@ export default function RestoreWizard({ visible, snapshotId, onClose, onComplete
         substanceIds: new Set(selectedIds),
         onProgress: (cur, tot) => setProgress({ current: cur, total: tot }),
       });
-      useStore.getState().mergeColorBanners(fused.banners);
-      useStore.getState().mergeNotifRules(fused.notifs);
+      useStore.getState().mergeBannerSetup(fused); // 1.48 : bandeaux (dont personnalisés), notifications, disposition
       await useStore.getState().loadAll();
       haptics.success();
       setResult({

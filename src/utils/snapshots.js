@@ -26,15 +26,39 @@ export function fmtDateTiretHM(ts = Date.now()) {
 
 // Règles de notification à garder pour un ensemble de substances sauvegardées :
 // substance → si elle est sauvegardée ; catégorie → si ≥ 2 substances de sa couleur sont sauvegardées ; « Toutes » → toujours.
-export function filterNotifsForSubs(notifs = [], subs = []) {
+// 1.48 : `banners` (entrées gardées, cf. filterBannersForSubs) → garde aussi les notifications du
+// record et des bandeaux personnalisés sauvegardés
+export function filterNotifsForSubs(notifs = [], subs = [], banners = null) {
   const ids = new Set(subs.map((s) => s.id));
   const count = {};
   for (const s of subs) count[s.color] = (count[s.color] || 0) + 1;
+  const kept = new Set(banners || []);
   return (notifs || [])
     .filter((r) => r.target === 'all'
       || (r.target === 'sub' && ids.has(r.key))
-      || (r.target === 'color' && (count[r.key] || 0) >= 2))
+      || (r.target === 'color' && (count[r.key] || 0) >= 2)
+      || (r.target === 'record' && kept.has('record'))
+      || (r.target === 'custom' && kept.has(`custom:${r.key}`)))
     .map((r) => ({ target: r.target, key: r.key ?? null, palier: r.palier }));
+}
+
+// 1.48 — Bandeaux sauvegardés / exportés avec les substances choisies : catégories dont la couleur a
+// une substance sauvegardée, « Sobre de tout », record, 24 h, et bandeaux personnalisés qui gardent
+// au moins 2 de leurs substances (réduits à celles-ci). Renvoie { banners, customBanners }.
+export function filterBannersForSubs(banners = [], subs = [], customBanners = []) {
+  const ids = new Set(subs.map((s) => s.id));
+  const colors = new Set(subs.map((s) => s.color));
+  const customs = (customBanners || [])
+    .map((b) => ({ id: b.id, name: b.name, subIds: (b.subIds || []).filter((id) => ids.has(id)) }))
+    .filter((b) => b.subIds.length >= 2);
+  const customIds = new Set(customs.map((b) => b.id));
+  const kept = (banners || []).filter((c) => (
+    c.startsWith('#') ? colors.has(c)
+      : c.startsWith('custom:') ? customIds.has(c.slice(7))
+        : c === '__sobre' || c === 'record' || c === 'last24'
+  ));
+  const used = new Set(kept.filter((c) => c.startsWith('custom:')).map((c) => c.slice(7)));
+  return { banners: kept, customBanners: customs.filter((b) => used.has(b.id)) };
 }
 
 // Ajoute notifCount (règles de notification de chaque substance) aux stats des cartes de sélection
@@ -59,12 +83,13 @@ export function serializeSnapshotWithCounts(args, substanceIds = null) {
   return data;
 }
 
-export function serializeSnapshot({ substances, archivedSubstances, consumptions, banners = [], notifs = [] }, substanceIds = null, withCounts = false) {
+export function serializeSnapshot({ substances, archivedSubstances, consumptions, banners = [], notifs = [], customBanners = [], bannerColumns = null }, substanceIds = null, withCounts = false) {
   const allSubs = [...(substances || []), ...(archivedSubstances || [])];
   const filteredSubs = substanceIds
     ? allSubs.filter((s) => substanceIds.includes(s.id))
     : allSubs;
   const filteredIds = new Set(filteredSubs.map((s) => s.id));
+  const kept = filterBannersForSubs(banners, filteredSubs, customBanners);
   const filteredCons = (consumptions || []).filter((c) => {
     const sid = c.substanceId ?? c.substance_id;
     return filteredIds.has(sid);
@@ -91,11 +116,12 @@ export function serializeSnapshot({ substances, archivedSubstances, consumptions
       notes: c.notes ?? null,
       createdAt: c.createdAt ?? c.created_at ?? Date.now(),
     })),
-    banners: (() => {
-      const colors = new Set(filteredSubs.map((s) => s.color));
-      return (banners || []).filter((c) => colors.has(c)).map((color, position) => ({ color, position }));
-    })(),
-    notifs: filterNotifsForSubs(notifs, filteredSubs),
+    // 1.48 : toutes les entrées (couleurs, __sobre, record, last24, custom:<id>) + définitions des
+    // bandeaux personnalisés + disposition (1 ou 2 colonnes)
+    banners: kept.banners.map((color, position) => ({ color, position })),
+    customBanners: kept.customBanners,
+    bannerColumns: bannerColumns === 2 ? 2 : bannerColumns === 1 ? 1 : null,
+    notifs: filterNotifsForSubs(notifs, filteredSubs, kept.banners),
   };
   const json = JSON.stringify(payload);
   if (withCounts) return { json, subsCount: payload.substances.length, consCount: payload.consumptions.length };
@@ -114,14 +140,16 @@ export function parseSnapshot(jsonStr) {
     // Bandeaux (1.23+) → liste de couleurs dans l'ordre ; absent des anciennes sauvegardes
     notifs: Array.isArray(obj.notifs) ? obj.notifs : [],
     banners: (obj.banners || []).slice().sort((a, b) => (a.position ?? 0) - (b.position ?? 0)).map((b) => b.color).filter(Boolean),
+    customBanners: Array.isArray(obj.customBanners) ? obj.customBanners : [],
+    bannerColumns: obj.bannerColumns ?? null,
   };
 }
 
 // Crée un snapshot en DB depuis l'état actuel du store.
 // name = nom déjà finalisé avec date (ex "remise-a-zero-27-07-2026").
 // substanceIds = optionnel pour filtrer.
-export async function createSnapshot({ substances, archivedSubstances, consumptions, banners = [], notifs = [] }, name, substanceIds = null) {
-  const { json: data, subsCount, consCount } = serializeSnapshotWithCounts({ substances, archivedSubstances, consumptions, banners, notifs }, substanceIds);
+export async function createSnapshot({ substances, archivedSubstances, consumptions, banners = [], notifs = [], customBanners = [], bannerColumns = null }, name, substanceIds = null) {
+  const { json: data, subsCount, consCount } = serializeSnapshotWithCounts({ substances, archivedSubstances, consumptions, banners, notifs, customBanners, bannerColumns }, substanceIds);
   const id = await Crypto.randomUUID();
   const snap = {
     id,

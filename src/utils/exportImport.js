@@ -98,7 +98,8 @@ function csvParseLine(line) {
 
 // banners : couleurs des bandeaux « Sobre depuis » dans l'ordre (1.23) — section # BANNERS en fin de fichier
 // notifs (1.25) : section # NOTIFS (target,key,palier) — key = id de substance, couleur, ou vide pour « Toutes »
-function buildCsvPayload(substances, consumptions, banners = [], notifs = []) {
+// 1.48 : # CUSTOM (bandeaux personnalisés : id,name,sub_ids séparés par |) et # SETTINGS (banner_columns)
+function buildCsvPayload(substances, consumptions, banners = [], notifs = [], customBanners = [], bannerColumns = null) {
   const subHeader = 'id,name,color,icon,created_at,archived,position';
   const subRows = substances.map((s) => [
     csvEscape(s.id), csvEscape(s.name), csvEscape(s.color), csvEscape(s.icon),
@@ -128,6 +129,12 @@ function buildCsvPayload(substances, consumptions, banners = [], notifs = []) {
     '',
     '# NOTIFS', 'target,key,palier',
     ...notifs.map((r) => [csvEscape(r.target), csvEscape(r.key ?? ''), csvEscape(r.palier)].join(',')),
+    '',
+    '# CUSTOM', 'id,name,sub_ids',
+    ...customBanners.map((b) => [csvEscape(b.id), csvEscape(b.name), csvEscape((b.subIds || []).join('|'))].join(',')),
+    '',
+    '# SETTINGS', 'key,value',
+    ...(bannerColumns ? [['banner_columns', bannerColumns].join(',')] : []),
   ].join('\n');
 }
 
@@ -139,6 +146,8 @@ function parseCsvPayload(text) {
   const consumptions = [];
   const bannerRows = [];
   const notifs = [];
+  const customBanners = [];
+  let bannerColumns = null;
 
   for (const raw of lines) {
     const line = raw;
@@ -147,6 +156,8 @@ function parseCsvPayload(text) {
     if (line.startsWith('# CONSUMPTIONS')) { mode = 'cons'; header = null; continue; }
     if (line.startsWith('# BANNERS')) { mode = 'banners'; header = null; continue; }
     if (line.startsWith('# NOTIFS')) { mode = 'notifs'; header = null; continue; }
+    if (line.startsWith('# CUSTOM')) { mode = 'custom'; header = null; continue; }
+    if (line.startsWith('# SETTINGS')) { mode = 'settings'; header = null; continue; }
     if (header === null) { header = csvParseLine(line); continue; }
     const fields = csvParseLine(line);
     const obj = {};
@@ -169,11 +180,16 @@ function parseCsvPayload(text) {
       bannerRows.push({ color: obj.color, position: parseInt(obj.position, 10) || 0 });
     } else if (mode === 'notifs' && obj.target && obj.palier) {
       notifs.push({ target: obj.target, key: obj.key || null, palier: obj.palier });
+    } else if (mode === 'custom' && obj.id && obj.name) {
+      customBanners.push({ id: obj.id, name: obj.name, subIds: (obj.sub_ids || '').split('|').filter(Boolean) });
+    } else if (mode === 'settings' && obj.key === 'banner_columns') {
+      const v = parseInt(obj.value, 10);
+      bannerColumns = v === 2 ? 2 : v === 1 ? 1 : null;
     }
   }
   // Fichiers d'avant la 1.23 : pas de section → aucun bandeau
   const banners = bannerRows.sort((a, b) => a.position - b.position).map((b) => b.color);
-  return { substances, consumptions, banners, notifs };
+  return { substances, consumptions, banners, notifs, customBanners, bannerColumns };
 }
 
 // Convertit un Uint8Array en CryptoJS WordArray
@@ -197,8 +213,8 @@ async function randomWordArrayAsync(bytes) {
 }
 
 // Crée le contenu complet du fichier export chiffré.
-export async function buildExportFile(substances, consumptions, password, banners = [], notifs = []) {
-  const payload = buildCsvPayload(substances, consumptions, banners, notifs);
+export async function buildExportFile(substances, consumptions, password, banners = [], notifs = [], customBanners = [], bannerColumns = null) {
+  const payload = buildCsvPayload(substances, consumptions, banners, notifs, customBanners, bannerColumns);
 
   const salt = await randomWordArrayAsync(SALT_BYTES);
   const iv = await randomWordArrayAsync(IV_BYTES);
@@ -215,7 +231,7 @@ export async function buildExportFile(substances, consumptions, password, banner
   const saltB64 = CryptoJS.enc.Base64.stringify(salt);
   const ivB64 = CryptoJS.enc.Base64.stringify(iv);
 
-  const note = "Ce fichier contient des donnees personnelles chiffrees. Pour les lire, demande a l'utilisateur le mot de passe defini lors de l'export, puis applique le dechiffrement AES-256-CBC avec les parametres ci-dessus (cle derivee via PBKDF2-SHA256). Le contenu dechiffre est un texte tabulaire lisible (tables CSV : substances, consumptions, banners et notifs).";
+  const note = "Ce fichier contient des donnees personnelles chiffrees. Pour les lire, demande a l'utilisateur le mot de passe defini lors de l'export, puis applique le dechiffrement AES-256-CBC avec les parametres ci-dessus (cle derivee via PBKDF2-SHA256). Le contenu dechiffre est un texte tabulaire lisible (tables CSV : substances, consumptions, banners, notifs, custom et settings).";
 
   const header = [
     HEADER_VERSION,

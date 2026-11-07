@@ -1,48 +1,54 @@
 // Bandeaux de la liste des substances (1.41 : sortis de SubstancesPage, + nouveaux types).
-//  - SobreBanner      : « Sobre de tout depuis » (fixe en haut quand il est activé)
+//  - SobreBanner      : « Sobre de tout depuis » (1.48 : un bandeau comme les autres, déplaçable)
 //  - CounterBanner    : catégorie de couleur (« Sobre depuis », en couleur) et bandeau
 //                       personnalisé (« Sobre de <nom> depuis », en blanc)
 //  - RecordBanner     : plus longue sobriété de tout (en direct si le record est en cours)
 //  - Last24Banner     : prises des dernières 24 h glissantes, points de couleur par substance
 // Tous : date sous le compteur, cloche à gauche (visible mais inactive en réorganisation),
 // poubelle à droite en réorganisation.
+// 1.48 : hauteur 104 (moins de vide, même contenu). `compact` = demi-case de la grille 2 colonnes :
+// le bandeau est dessiné en entier puis réduit (HALF_SCALE) ; marges réduites (cloche et poubelle
+// collées aux bords), icônes à ~13 px une fois réduites, crayon et poubelle empilés.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Pressable, Animated, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, useWindowDimensions } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from '../theme';
 import { useStore } from '../store';
 import { useFlashBackground } from '../utils/flash';
 import { soberPeriods, rangeFR } from '../utils/soberPeriods';
 import { formatDurationSince } from '../utils/duration';
-import haptics from '../utils/haptics';
 import LiveCounter from './LiveCounter';
 import { WiggleContent } from './ReorderList';
 
-export const BANNER_HEIGHT = 118; // 1.41 : + ligne de dates (avant 102)
+export const BANNER_HEIGHT = 104; // 1.48 : moins de vide en haut et en bas (avant 118)
+export const HALF_SCALE = 0.6;    // 1.48 : échelle des demi-cases (2 colonnes)
+export const COMPACT_PAD = 28;    // marge latérale du contenu en demi-case (avant réduction)
+const COMPACT_ICON = Math.round(13 / HALF_SCALE); // ~13 px une fois réduit
 export const FADE_MS = 450;
 const traceAnim = (label) => () => useStore.getState().traceNotif('animation lancée', label);
 
 // Cloche : vide / pleine. En réorganisation, toujours affichée mais inactive.
-export function BannerBell({ color, active, onPress, disabled }) {
+export function BannerBell({ color, active, onPress, disabled, compact }) {
   return (
-    <View style={styles.bell} pointerEvents={disabled ? 'none' : 'auto'}>
+    <View style={[styles.bell, compact && styles.bellCompact]} pointerEvents={disabled ? 'none' : 'auto'}>
       <TouchableOpacity onPress={onPress} disabled={disabled} hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}>
-        <MaterialCommunityIcons name={active ? 'bell' : 'bell-outline'} size={18} color={color} />
+        <MaterialCommunityIcons name={active ? 'bell' : 'bell-outline'} size={compact ? COMPACT_ICON : 18} color={color} />
       </TouchableOpacity>
     </View>
   );
 }
 
-function Tools({ onEdit, onDelete }) {
+function Tools({ onEdit, onDelete, compact }) {
+  const size = compact ? COMPACT_ICON : 20;
   return (
-    <View style={styles.tools}>
+    <View style={[styles.tools, compact && styles.toolsCompact]}>
       {onEdit && (
-        <TouchableOpacity onPress={onEdit} style={styles.toolBtn} hitSlop={{ top: 14, bottom: 14, left: 10, right: 10 }}>
-          <MaterialCommunityIcons name="pencil-outline" size={20} color={theme.colors.textMuted} />
+        <TouchableOpacity onPress={onEdit} style={styles.toolBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <MaterialCommunityIcons name="pencil-outline" size={size} color={theme.colors.textMuted} />
         </TouchableOpacity>
       )}
-      <TouchableOpacity onPress={onDelete} style={styles.toolBtn} hitSlop={{ top: 14, bottom: 14, left: 10, right: 10 }}>
-        <MaterialCommunityIcons name="trash-can-outline" size={20} color={theme.colors.danger} />
+      <TouchableOpacity onPress={onDelete} style={styles.toolBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <MaterialCommunityIcons name="trash-can-outline" size={size} color={theme.colors.danger} />
       </TouchableOpacity>
     </View>
   );
@@ -51,37 +57,6 @@ function Tools({ onEdit, onDelete }) {
 export function DateLine({ text, style }) {
   if (!text) return null;
   return <Text style={[styles.date, style]} numberOfLines={1}>{text}</Text>;
-}
-
-// « Sobre de tout » : fixe en haut. 1.41 : appui long → réorganisation (poubelle), date.
-export function SobreBanner({ lastGlobalTimestamp, onPress, onLongPress, flashTick, inReorder, onDelete, hasNotif, onBell }) {
-  const flashBg = useFlashBackground(flashTick, '#FFFFFF', traceAnim('sobre de tout'));
-  return (
-    <Pressable
-      onPress={onPress}
-      onLongPress={() => { if (!inReorder) { haptics.medium(); onLongPress?.(); } }}
-      delayLongPress={400}
-    >
-      <Animated.View style={[styles.sobre, { backgroundColor: flashBg }]}>
-        <BannerBell color={theme.colors.textMuted} active={hasNotif} onPress={onBell} disabled={inReorder} />
-        {inReorder && <Tools onDelete={onDelete} />}
-        <Text style={styles.label}>SOBRE DE TOUT DEPUIS</Text>
-        {lastGlobalTimestamp ? (
-          <>
-            <View style={styles.counterWrap}>
-              <LiveCounter timestamp={lastGlobalTimestamp} style={styles.counter} />
-            </View>
-            <DateLine text={rangeFR(lastGlobalTimestamp, null)} />
-          </>
-        ) : (
-          <>
-            <Text style={styles.counter}>—</Text>
-            <Text style={styles.emptyHint}>aucune consommation renseignée</Text>
-          </>
-        )}
-      </Animated.View>
-    </Pressable>
-  );
 }
 
 // Fondu d'un bandeau qui disparaît (catégorie dissoute, poubelle…)
@@ -95,17 +70,39 @@ function useFade(fading) {
 }
 
 // Cadre commun des bandeaux du groupe (hauteur fixe, flash, fondu, vibration, outils)
-function Frame({ flashColor, flashTick, traceLabel, fading, inReorder, isWiggling, phase, bell, onEdit, onDelete, children }) {
+function Frame({ flashColor, flashTick, traceLabel, fading, inReorder, isWiggling, phase, bell, onEdit, onDelete, compact, children }) {
   const fade = useFade(fading);
   const flashBg = useFlashBackground(flashTick, flashColor, traceAnim(traceLabel));
   return (
     <Animated.View style={[styles.frame, { opacity: fade, backgroundColor: flashBg }]} pointerEvents={fading ? 'none' : 'auto'}>
-      <WiggleContent isWiggling={!!isWiggling} phase={phase || 0} style={styles.content}>
+      <WiggleContent isWiggling={!!isWiggling} phase={phase || 0} style={[styles.content, compact && styles.contentCompact]}>
         {children}
       </WiggleContent>
-      {bell && !fading ? <BannerBell {...bell} disabled={inReorder} /> : null}
-      {inReorder && <Tools onEdit={onEdit} onDelete={onDelete} />}
+      {bell && !fading ? <BannerBell {...bell} compact={compact} disabled={inReorder} /> : null}
+      {inReorder && <Tools onEdit={onEdit} onDelete={onDelete} compact={compact} />}
     </Animated.View>
+  );
+}
+
+// « Sobre de tout » (1.48 : même cadre que les autres bandeaux, déplaçable, hauteur fixe)
+export function SobreBanner({ lastGlobalTimestamp, ...frame }) {
+  return (
+    <Frame flashColor="#FFFFFF" traceLabel="sobre de tout" {...frame}>
+      <Text style={styles.label} numberOfLines={1}>SOBRE DE TOUT DEPUIS</Text>
+      {lastGlobalTimestamp ? (
+        <>
+          <View style={styles.counterWrap}>
+            <LiveCounter timestamp={lastGlobalTimestamp} style={styles.counter} numberOfLines={1} />
+          </View>
+          <DateLine text={rangeFR(lastGlobalTimestamp, null)} />
+        </>
+      ) : (
+        <>
+          <Text style={styles.counter}>—</Text>
+          <Text style={styles.emptyHint}>aucune consommation renseignée</Text>
+        </>
+      )}
+    </Frame>
   );
 }
 
@@ -188,10 +185,11 @@ function Cluster({ color, n }) {
 }
 const CLUSTER_GAP = 12;
 
-export function Last24Banner(frame) {
+export function Last24Banner({ layoutWidth, ...frame }) {
   const cons = useListTimestamps();
   const substances = useStore((s) => s.substances);
-  const { width } = useWindowDimensions();
+  const { width: winW } = useWindowDimensions();
+  const width = layoutWidth || winW; // 1.48 : largeur du bandeau (demi-case : avant réduction)
   // 1.42 : l'heure de référence est relue à CHAQUE changement de prises (avant : une fois par minute,
   // une prise toute neuve était « dans le futur » et n'apparaissait qu'à la minute suivante)
   const [tick, setTick] = useState(0);
@@ -213,7 +211,7 @@ export function Last24Banner(frame) {
   const total = groups.reduce((a, g) => a + g.n, 0);
   // Chiffres dès qu'un groupe dépasse 7 ou que les points ne tiennent pas en largeur
   const dotsW = groups.reduce((a, g) => a + clusterBox(Math.min(g.n, 7)).w, 0) + CLUSTER_GAP * Math.max(0, groups.length - 1);
-  const asNumbers = groups.some((g) => g.n > 7) || dotsW > width - 2 * 72;
+  const asNumbers = groups.some((g) => g.n > 7) || dotsW > width - 2 * (frame.compact ? COMPACT_PAD + 12 : 72);
   return (
     <Frame flashColor="#FFFFFF" traceLabel="24 h" {...frame}>
       <Text style={styles.label}>TOUTES PRISES · DERNIÈRES 24 H</Text>
@@ -231,12 +229,9 @@ export function Last24Banner(frame) {
 }
 
 const styles = StyleSheet.create({
-  sobre: {
-    alignItems: 'center', paddingVertical: theme.spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border,
-  },
   frame: { height: BANNER_HEIGHT - StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
   content: { alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch', paddingHorizontal: 56 },
+  contentCompact: { paddingHorizontal: COMPACT_PAD },
   label: {
     color: theme.colors.textMuted, fontSize: theme.font.sizes.xs, fontWeight: '300',
     letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: theme.spacing.xs,
@@ -260,6 +255,9 @@ const styles = StyleSheet.create({
     position: 'absolute', right: theme.spacing.md, top: 0, bottom: 0,
     flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, zIndex: 2,
   },
+  // 1.48 : demi-case → collés au bord, empilés et centrés (bandeau personnalisé : crayon + poubelle)
+  toolsCompact: { right: 2, flexDirection: 'column', justifyContent: 'center', gap: 4 },
+  bellCompact: { left: 4 },
   toolBtn: { padding: theme.spacing.xs },
   // 1.43 : points centrés, même écart au-dessus (chiffre) et en dessous (« clic pour plus de détails »)
   dotsRow: {

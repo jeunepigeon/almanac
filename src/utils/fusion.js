@@ -120,7 +120,19 @@ export async function performFusion({ parsed, activeSubs, substanceIds, onProgre
   const importedColors = new Set(
     parsed.substances.filter((s) => !substanceIds || substanceIds.has(s.id)).map((s) => s.color)
   );
-  const banners = (parsed.banners || []).filter((c) => importedColors.has(c));
+  // 1.48 : + « Sobre de tout », record, 24 h et bandeaux personnalisés (substances → nouveaux ids,
+  // au moins 2 importées) ; leurs ids sont attribués par le store (mergeBannerSetup)
+  const customBanners = [];
+  for (const d of parsed.customBanners || []) {
+    const subIds = (d.subIds || []).filter((id) => (!substanceIds || substanceIds.has(id)) && idMap[id]).map((id) => idMap[id]);
+    if (d.id && subIds.length >= 2) customBanners.push({ id: d.id, name: d.name, subIds });
+  }
+  const customKept = new Set(customBanners.map((d) => d.id));
+  const banners = (parsed.banners || []).filter((c) => (
+    c.startsWith('#') ? importedColors.has(c)
+      : c.startsWith('custom:') ? customKept.has(c.slice(7))
+        : c === '__sobre' || c === 'record' || c === 'last24'
+  ));
 
   // Notifications (1.25) : celles d'une substance suivent son nouvel id ; « Toutes » et catégories
   // telles quelles (une catégorie sans 2 substances après l'import est retirée par pruneOrphans).
@@ -133,8 +145,12 @@ export async function performFusion({ parsed, activeSubs, substanceIds, onProgre
       if (importedColors.has(r.key)) notifs.push({ target: 'color', key: r.key, palier: r.palier });
     } else if (r.target === 'all') {
       notifs.push({ target: 'all', key: null, palier: r.palier });
+    } else if (r.target === 'record') {
+      if (banners.includes('record')) notifs.push({ target: 'record', key: null, palier: r.palier });
+    } else if (r.target === 'custom') {
+      if (customKept.has(r.key)) notifs.push({ target: 'custom', key: r.key, palier: r.palier });
     }
   }
 
-  return { added, merged, alreadyPresent, consosAdded, consosSkipped, banners, notifs };
+  return { added, merged, alreadyPresent, consosAdded, consosSkipped, banners, notifs, customBanners, bannerColumns: parsed.bannerColumns ?? null };
 }

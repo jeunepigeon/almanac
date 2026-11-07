@@ -190,7 +190,7 @@ export default function SettingsScreen() {
     // Substances COMPLÈTES (icône, position, date de création…) — bug 1.16 → 1.19 : seuls id/nom/couleur
     // étaient transmis, d'où des exports sans icônes ni ordre.
     const subs = [...substances, ...archivedSubstances].map((s) => ({ ...s }));
-    setExportSource({ subs, consos, statsById: withNotifCounts(statsFromConsos(consos), useStore.getState().notifRules), banners: useStore.getState().colorBanners, notifs: useStore.getState().notifRules });
+    setExportSource({ subs, consos, statsById: withNotifCounts(statsFromConsos(consos), useStore.getState().notifRules), banners: useStore.getState().colorBanners, notifs: useStore.getState().notifRules, customBanners: useStore.getState().customBanners, bannerColumns: useStore.getState().bannerColumns });
   };
 
   const openExportSnapshot = async (snapId) => {
@@ -205,7 +205,7 @@ export default function SettingsScreen() {
       id: c.id, substance_id: c.substanceId, timestamp: c.timestamp,
       dosage: c.dosage, notes: c.notes, created_at: c.createdAt,
     }));
-    setExportSource({ subs, consos, statsById: withNotifCounts(statsFromConsos(consos), parsed.notifs), banners: parsed.banners || [], notifs: parsed.notifs || [] });
+    setExportSource({ subs, consos, statsById: withNotifCounts(statsFromConsos(consos), parsed.notifs), banners: parsed.banners || [], notifs: parsed.notifs || [], customBanners: parsed.customBanners || [], bannerColumns: parsed.bannerColumns ?? null });
   };
 
   const openImportWizard = () => setImportWizardVisible(true);
@@ -460,7 +460,7 @@ export default function SettingsScreen() {
           if (!id) return;
           useStore.getState().traceNotif('rejeu depuis Debug', id, true);
           navigation.navigate('Main', undefined, { pop: true }); // 1.35 : pas de 2e écran principal empilé
-          if (id === '__sobre') useStore.getState().requestNotifFocus('all');
+          if (id === '__sobre' || id === 'banner:__sobre') useStore.getState().requestNotifFocus('all');
           else {
             const e = id.replace('banner:', ''); // 1.41 : couleur, custom:<id> ou record
             if (e.startsWith('custom:')) useStore.getState().requestNotifFocus('custom', e.slice(7));
@@ -472,7 +472,7 @@ export default function SettingsScreen() {
         <Text style={styles.rowLabel}>Dernier flash bandeau</Text>
         <Text style={styles.rowValue}>
           {lastBannerFlash
-            ? `${lastBannerFlash.id === '__sobre' ? 'sobre de tout' : lastBannerFlash.id.replace('banner:', 'bandeau ')} · ${new Date(lastBannerFlash.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+            ? `${(lastBannerFlash.id === '__sobre' || lastBannerFlash.id === 'banner:__sobre') ? 'sobre de tout' : lastBannerFlash.id.replace('banner:', 'bandeau ')} · ${new Date(lastBannerFlash.at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
             : 'aucun'}
         </Text>
       </TouchableOpacity>
@@ -611,6 +611,8 @@ export default function SettingsScreen() {
         consumptions={exportSource?.consos || []}
         banners={exportSource?.banners || []}
         notifs={exportSource?.notifs || []}
+        customBanners={exportSource?.customBanners || []}
+        bannerColumns={exportSource?.bannerColumns ?? null}
         onClose={() => setExportSource(null)}
       />
 
