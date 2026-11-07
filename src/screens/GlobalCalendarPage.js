@@ -16,7 +16,13 @@ import ReorgBar from '../components/ReorgBar';
 import TopCounter from '../components/TopCounter';
 
 
-export default function GlobalCalendarPage() {
+// 1.49 — Global en 3 pages du défilement principal (Liste · Calendrier · Recherche · Stats), comme les
+// onglets d'une substance. Ce module fournit les morceaux, placés par MainScreen :
+//  - header : onglets + petit compteur (fixes entre les 3 onglets, glissent seulement vers la liste) ;
+//  - calendar / history / stats : contenu de chaque page ;
+//  - modals (une seule fois) et reorgBar (réorganisation des compteurs, par-dessus les onglets).
+// activeTab : onglet affiché ; goTab(t) : aller à un onglet ; visited : pages déjà construites.
+export function useGlobalPages({ activeTab, goTab, visited = {} }) {
   const navigation = useNavigation();
   const substances = useStore((s) => s.substances);
   const archivedSubstances = useStore((s) => s.archivedSubstances);
@@ -42,13 +48,6 @@ export default function GlobalCalendarPage() {
   }, [countersEditing]); // eslint-disable-line
   const requestCountersExit = useStore((s) => s.requestCountersExit);
 
-  const [activeTab, setActiveTab] = useState('calendar');
-  const gotoGlobalStatsTick = useStore((s) => s.gotoGlobalStatsTick);
-
-  // Switcher sur Stats quand bannière cliquée
-  useEffect(() => {
-    if (gotoGlobalStatsTick > 0) setActiveTab('stats');
-  }, [gotoGlobalStatsTick]);
   const [dayDetail, setDayDetail] = useState(null);
 
   // Flow ajout : 1) picker substance 2) modal log
@@ -93,64 +92,70 @@ export default function GlobalCalendarPage() {
 
   const consosForDay = dayDetail ? (byDay[dayDetail.dayKey] || EMPTY_LIST) : EMPTY_LIST;
 
-  return (
-    <View style={styles.container}>
+  const header = (
+    <View style={styles.headerBox}>
       <View style={[styles.tabs, countersEditing && { opacity: 0.25 }]} pointerEvents={countersEditing ? 'none' : 'auto'}>
-        <Tab label="Calendrier" active={activeTab === 'calendar'} onPress={() => { requestCountersExit(); setActiveTab('calendar'); }} />
-        <Tab label="Recherche" active={activeTab === 'history'} onPress={() => { requestCountersExit(); setActiveTab('history'); }} />
-        <Tab label="Stats" active={activeTab === 'stats'} onPress={() => { requestCountersExit(); setActiveTab('stats'); }} />
+        <Tab label="Calendrier" active={activeTab === 'calendar'} onPress={() => { requestCountersExit(); goTab('calendar'); }} />
+        <Tab label="Recherche" active={activeTab === 'history'} onPress={() => { requestCountersExit(); goTab('history'); }} />
+        <Tab label="Stats" active={activeTab === 'stats'} onPress={() => { requestCountersExit(); goTab('stats'); }} />
       </View>
       {/* 1.46 : petit compteur sous les onglets (même disposition que la page d'une substance) */}
       <TopCounter label="Sobre de tout depuis" timestamp={lastGlobalTs} dimmed={countersEditing} noBorder={activeTab === 'stats'} />
+    </View>
+  );
 
-      {activeTab === 'calendar' && (
-        <View style={{ flex: 1 }}>
-          <ScrollableCalendar
-            markersByDay={markersByDay}
-            showSoberFill={true}
-            showJumpButtons={true}
-            onDayPress={(dayKey, dayTimestamp) => {
-              if (!byDay[dayKey]) {
-                setPickerForDay(dayTimestamp);
-                setPickerOpen(true);
-              } else {
-                setDayDetail({ dayKey, dayTimestamp });
-              }
-            }}
-          />
-          <TouchableOpacity
-            style={styles.fab}
-            activeOpacity={0.85}
-            onPress={() => {
-              setPickerForDay(Date.now());
-              setPickerOpen(true);
-            }}
-          >
-            <Ionicons name="add" size={26} color={theme.colors.background} />
-          </TouchableOpacity>
-        </View>
-      )}
-      {activeTab === 'history' && (
-        <GlobalHistoryView
-          consumptions={allConsumptions}
-          substancesById={substancesById}
-          onTapConsumption={(c) => {
-            const sid = c.substanceId ?? c.substance_id;
-            navigation.navigate('Substance', { substanceId: sid, focusDate: c.timestamp });
-          }}
-        />
-      )}
-      {activeTab === 'stats' && (
-        <View style={{ flex: 1 }}>
-          <StatsView
-            mode="global"
-            consumptionsBySubstance={consumptionsBySubstance}
-            substancesById={substancesById}
-            navigation={navigation}
-          />
-        </View>
-      )}
+  const calendar = (
+    <View style={{ flex: 1 }}>
+      <ScrollableCalendar
+        markersByDay={markersByDay}
+        showSoberFill={true}
+        showJumpButtons={true}
+        onDayPress={(dayKey, dayTimestamp) => {
+          if (!byDay[dayKey]) {
+            setPickerForDay(dayTimestamp);
+            setPickerOpen(true);
+          } else {
+            setDayDetail({ dayKey, dayTimestamp });
+          }
+        }}
+      />
+      <TouchableOpacity
+        style={styles.fab}
+        activeOpacity={0.85}
+        onPress={() => {
+          setPickerForDay(Date.now());
+          setPickerOpen(true);
+        }}
+      >
+        <Ionicons name="add" size={26} color={theme.colors.background} />
+      </TouchableOpacity>
+    </View>
+  );
 
+  const history = visited.history ? (
+    <GlobalHistoryView
+      consumptions={allConsumptions}
+      substancesById={substancesById}
+      onTapConsumption={(c) => {
+        const sid = c.substanceId ?? c.substance_id;
+        navigation.navigate('Substance', { substanceId: sid, focusDate: c.timestamp });
+      }}
+    />
+  ) : null;
+
+  const stats = visited.stats ? (
+    <View style={{ flex: 1 }}>
+      <StatsView
+        mode="global"
+        consumptionsBySubstance={consumptionsBySubstance}
+        substancesById={substancesById}
+        navigation={navigation}
+      />
+    </View>
+  ) : null;
+
+  const modals = (
+    <>
       {/* Détail d'un jour */}
       <DayDetailModal
         visible={!!dayDetail}
@@ -233,10 +238,13 @@ export default function GlobalCalendarPage() {
           setPickerForDay(null);
         }}
       />
-      {/* 1.46 : barre de réorganisation par-dessus les onglets (comme la page d'une substance) */}
-      {countersEditing && <ReorgBar onDone={requestCountersExit} />}
-    </View>
+    </>
   );
+
+  // 1.46 : barre de réorganisation par-dessus les onglets (comme la page d'une substance)
+  const reorgBar = countersEditing ? <ReorgBar onDone={requestCountersExit} /> : null;
+
+  return { header, calendar, history, stats, modals, reorgBar };
 }
 
 function Tab({ label, active, onPress }) {
@@ -250,6 +258,7 @@ function Tab({ label, active, onPress }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
+  headerBox: { backgroundColor: theme.colors.background },
   tabs: { flexDirection: 'row', paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, gap: theme.spacing.lg, justifyContent: 'center' },
   tab: { paddingBottom: theme.spacing.sm },
   tabText: { color: theme.colors.textFaint, fontSize: theme.font.sizes.md, fontWeight: '300', letterSpacing: 1 },

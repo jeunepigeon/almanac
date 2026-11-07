@@ -18,11 +18,15 @@
 //  - Côtés : la copie s'arrête au bord de l'écran (sans vibration ni trait).
 //
 // Bascule 1 ↔ 2 colonnes (à partir de 2 bandeaux), façon poubelle des stories :
-//  - saisie → une languette sort du bord, en haut à gauche de la grille (icône seule) ;
-//  - doigt sur la languette → cadre en pointillés à la place de la future 1re case, le reste assombri ;
+//  - saisie → une languette sort du bord DROIT, juste sous la barre « Réorganisation » (1.49) ;
+//    pas de languette quand on tient la case large (en 2 colonnes, elle se déplace seulement) ;
+//  - doigt sur la languette → cadre en pointillés à la future place du bandeau tenu, reste assombri :
+//    1 → 2 colonnes : toujours une petite case (la 1re ; nombre impair → sous la case large, que prend
+//    le 1er des autres) ; 2 → 1 colonne : pleine largeur en haut (le bandeau tenu devient le 1er) ;
 //  - doigt dans le cadre → aimant : le bandeau tenu prend la taille de la case et s'y colle (contour
 //    blanc, vibration) ; ressortir annule ;
-//  - lâcher dans le cadre → bascule ; le bandeau tenu devient le 1er ; la réorganisation continue.
+//  - lâcher dans le cadre → bascule ; la réorganisation continue.
+// 1.49 : le centre de la copie reste sous le doigt (saisie, changement de taille).
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, Animated, Pressable, TouchableOpacity, Easing, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -43,12 +47,14 @@ const PICKUP_SCALE = 1.06;
 const PICKUP_OPACITY = 0.92;
 const BOUND_PX = 6;
 const DIM = 0.25;
-const LANG = 40;                   // languette (cercle), à moitié sortie du bord gauche
-const LANG_TOP = 8;
-const LANG_SHOWN = -18;
-const LANG_ZONE_X = 56;            // zone de survol de la languette (coordonnées de la grille)
-const LANG_ZONE_Y = 64;
+const LANG = 40;                   // languette (cercle), à moitié sortie du bord droit
+const LANG_TOP = 44;               // sous la barre « Réorganisation » (posée par-dessus le haut de la liste)
+const LANG_VISIBLE = 22;
+const LANG_ZONE_X = 56;            // zone de survol de la languette (depuis le bord droit)
+const LANG_ZONE_PAD = 14;
 const EASE = Easing.out(Easing.cubic);
+const EASE_SOFT = Easing.inOut(Easing.cubic); // 1.49 : glissements pendant le fondu (pilule comprise)
+const CENTER_MS = 150;             // la copie vient se centrer sous le doigt à la saisie
 
 export function effectiveCols(columns, n) { return columns === 2 && n >= 2 ? 2 : 1; }
 
@@ -164,7 +170,7 @@ export default function BannerGrid({
     lastGeom.current[id] = g;
     if (!dur) { a.x.setValue(g.x); a.y.setValue(g.y); a.w.setValue(g.w); a.h.setValue(g.h); a.s.setValue(g.s); return; }
     Animated.parallel(['x', 'y', 'w', 'h', 's'].map((p) => Animated.timing(a[p], {
-      toValue: g[p], duration: dur, easing: EASE, useNativeDriver: false,
+      toValue: g[p], duration: dur, easing: dur >= MORPH_MS ? EASE_SOFT : EASE, useNativeDriver: false,
     }))).start();
   };
 
@@ -176,11 +182,19 @@ export default function BannerGrid({
   const [bar, setBar] = useState(null);           // { x, y, w } trait fin
   const [copyType, setCopyType] = useState({ L: W, compact: false });
   const [pending, setPending] = useState(null);   // { ids, cols } : ordre lâché, en attente du parent
+  // Copie : centre = doigt (fx, fy), décalage de saisie (ox, oy → 0), aimant m (0 → 1) vers le cadre (frx, fry)
   const copy = useRef({
-    x: new Animated.Value(0), y: new Animated.Value(0), w: new Animated.Value(0), h: new Animated.Value(0),
+    fx: new Animated.Value(0), fy: new Animated.Value(0), ox: new Animated.Value(0), oy: new Animated.Value(0),
+    m: new Animated.Value(0), frx: new Animated.Value(0), fry: new Animated.Value(0),
+    w: new Animated.Value(0), h: new Animated.Value(0),
     s: new Animated.Value(1), k: new Animated.Value(1), line: new Animated.Value(0), op: new Animated.Value(PICKUP_OPACITY),
   }).current;
-  const langX = useRef(new Animated.Value(-LANG - 4)).current;
+  const copyPos = useMemo(() => {
+    const free = (f, size, off) => Animated.add(Animated.subtract(f, Animated.multiply(size, 0.5)), off);
+    const mix = (a, b) => Animated.add(Animated.multiply(a, Animated.subtract(1, copy.m)), Animated.multiply(b, copy.m));
+    return { left: mix(free(copy.fx, copy.w, copy.ox), copy.frx), top: mix(free(copy.fy, copy.h, copy.oy), copy.fry) };
+  }, [copy]);
+  const langX = useRef(new Animated.Value(4000)).current;
   const drag = useRef({ id: null }).current;
 
   // Ordre affiché : drag en cours > ordre lâché en attente > ordre du parent
@@ -239,7 +253,7 @@ export default function BannerGrid({
     });
     const h = gridHeight(n, cols) + SPACER_HEIGHT;
     if (first) heightAnim.setValue(h);
-    else if (structural) Animated.timing(heightAnim, { toValue: h, duration: MORPH_MS, easing: EASE, useNativeDriver: false }).start();
+    else if (structural) Animated.timing(heightAnim, { toValue: h, duration: MORPH_MS, easing: EASE_SOFT, useNativeDriver: false }).start();
     prevShape.current = { n, cols };
     mounted.current = true;
   }); // à chaque rendu : moveTo ignore les cases déjà en route vers la bonne place
@@ -253,7 +267,29 @@ export default function BannerGrid({
     if (!dur) { copy.w.setValue(g.w); copy.h.setValue(g.h); copy.s.setValue(g.s); return; }
     Animated.parallel(['w', 'h', 's'].map((p) => Animated.timing(copy[p], { toValue: g[p], duration: dur, easing: EASE, useNativeDriver: false }))).start();
   };
-  const showLang = (on) => Animated.timing(langX, { toValue: on ? LANG_SHOWN : -LANG - 4, duration: 180, easing: EASE, useNativeDriver: false }).start();
+  const showLang = (on) => {
+    if (on) langX.setValue(W + 4);
+    Animated.timing(langX, { toValue: on ? W - LANG_VISIBLE : W + 4, duration: 180, easing: EASE, useNativeDriver: false }).start();
+  };
+  // Bascule possible ? (au moins 2 bandeaux ; jamais en tenant la case large en 2 colonnes)
+  const canToggle = () => drag.n >= 2 && !(drag.cols === 2 && drag.g0.wide);
+  // Cadre de bascule (future place du bandeau tenu) et nouvel ordre au lâcher
+  const toggleTarget = () => {
+    const others = drag.base.filter((x) => x !== drag.id);
+    if (drag.cols === 1) {
+      const odd = drag.n % 2 === 1;
+      return { cols: 2, fr: geom(odd ? 1 : 0, drag.n, 2, W), ids: odd ? [others[0], drag.id, ...others.slice(1)] : [drag.id, ...others] };
+    }
+    return { cols: 1, fr: geom(0, drag.n, 1, W), ids: [drag.id, ...others] };
+  };
+  // Position du doigt → centre de la copie (bloqué aux bords), coin haut-gauche logique
+  const placeCopy = (f, gH) => {
+    const cg = drag.cg;
+    const cx = Math.max(cg.w / 2, Math.min(W - cg.w / 2, f.x));
+    const cy = Math.max(cg.h / 2, Math.min(Math.max(cg.h / 2, gH - cg.h / 2), f.y));
+    copy.fx.setValue(cx); copy.fy.setValue(cy);
+    drag.cx = cx - cg.w / 2; drag.cy = cy - cg.h / 2;
+  };
 
   const cleanup = () => {
     drag.id = null;
@@ -266,7 +302,7 @@ export default function BannerGrid({
   const targetOrder = (f) => {
     const { base, p, n: N, cols: C } = drag;
     if (C === 1) {
-      const t = Math.max(0, Math.min(N - 1, Math.floor((drag.cy + H1 / 2) / H1)));
+      const t = Math.max(0, Math.min(N - 1, Math.floor((drag.cy + drag.cg.h / 2) / H1)));
       const next = [...base]; const [m] = next.splice(p, 1); next.splice(t, 0, m);
       let b = null;
       if (t !== p) b = { x: W * 0.225, w: W * 0.55, y: t < p ? t * H1 : (t + 1) * H1 };
@@ -310,7 +346,15 @@ export default function BannerGrid({
         id, base, p, n: N, cols: C, g0: g, f0x: g.x + e.x, f0y: g.y + e.y,
         cx: g.x, cy: g.y, stage: 0, bound: null, key: base.join('|'), committed: false, cg: g,
       });
-      copy.x.setValue(g.x); copy.y.setValue(g.y); setCopyGeom(g, 0);
+      setCopyGeom(g, 0);
+      // Centre sous le doigt : la copie part de la case et glisse sous le doigt
+      placeCopy({ x: drag.f0x, y: drag.f0y }, gridHeight(N, C));
+      copy.ox.setValue(g.x - drag.cx); copy.oy.setValue(g.y - drag.cy);
+      Animated.parallel([
+        Animated.timing(copy.ox, { toValue: 0, duration: CENTER_MS, easing: EASE, useNativeDriver: false }),
+        Animated.timing(copy.oy, { toValue: 0, duration: CENTER_MS, easing: EASE, useNativeDriver: false }),
+      ]).start();
+      copy.m.setValue(0);
       copy.line.setValue(0); copy.op.setValue(PICKUP_OPACITY);
       copy.k.setValue(1);
       Animated.timing(copy.k, { toValue: PICKUP_SCALE, duration: 120, useNativeDriver: false }).start();
@@ -318,7 +362,7 @@ export default function BannerGrid({
       haptics.medium();
       setPickId(id); setArr(base); setStage(0); setBar(null);
       onDragChange?.(true);
-      if (N >= 2) showLang(true);
+      if (canToggle()) showLang(true);
     },
     move: (e) => {
       if (!drag.id) return;
@@ -326,13 +370,16 @@ export default function BannerGrid({
       const gH = gridHeight(drag.n, drag.cols);
       // Étapes de la bascule
       let st = drag.stage;
-      if (drag.n >= 2) {
-        const inLang = f.x < LANG_ZONE_X && f.y < LANG_ZONE_Y && f.y > -2 * LANG_ZONE_Y;
-        const fr = geom(0, drag.n, drag.cols === 1 ? 2 : 1, W);
+      if (canToggle()) {
+        const inLang = f.x > W - LANG_ZONE_X && f.y > LANG_TOP - LANG_ZONE_PAD && f.y < LANG_TOP + LANG + LANG_ZONE_PAD;
+        const { fr } = toggleTarget();
         const inFrame = f.x >= fr.x && f.x <= fr.x + fr.w && f.y >= fr.y && f.y <= fr.y + fr.h;
+        // Étape 1 gardée pendant le trajet languette → cadre (ils sont aux deux bords) ; on en sort en
+        // redescendant sous le cadre et la languette. Lâcher en étape 1 hors du cadre = rien ne change.
+        const zoneBottom = Math.max(fr.y + fr.h, LANG_TOP + LANG) + LANG_ZONE_PAD * 2;
         if (st === 0) st = inLang ? 1 : 0;
         else if (inFrame && !inLang) st = 2;
-        else if (inLang) st = 1;
+        else if (f.y < zoneBottom) st = 1;
         else st = 0;
         if (st !== drag.stage) {
           const was = drag.stage;
@@ -347,11 +394,11 @@ export default function BannerGrid({
           if (st === 2) {
             haptics.medium();
             drag.cx = fr.x; drag.cy = fr.y;
+            copy.frx.setValue(fr.x); copy.fry.setValue(fr.y);
             setCopyType({ L: fr.w / fr.s, compact: !fr.wide });
             setCopyGeom(fr, SHIFT_MS);
             Animated.parallel([
-              Animated.timing(copy.x, { toValue: fr.x, duration: SHIFT_MS, easing: EASE, useNativeDriver: false }),
-              Animated.timing(copy.y, { toValue: fr.y, duration: SHIFT_MS, easing: EASE, useNativeDriver: false }),
+              Animated.timing(copy.m, { toValue: 1, duration: SHIFT_MS, easing: EASE, useNativeDriver: false }),
               Animated.timing(copy.k, { toValue: 1, duration: SHIFT_MS, useNativeDriver: false }),
               Animated.timing(copy.line, { toValue: 1, duration: SHIFT_MS, useNativeDriver: false }),
               Animated.timing(copy.op, { toValue: 1, duration: SHIFT_MS, useNativeDriver: false }),
@@ -362,6 +409,7 @@ export default function BannerGrid({
             setCopyType({ L: drag.g0.w / drag.g0.s, compact: !drag.g0.wide });
             setCopyGeom(drag.g0, SHIFT_MS);
             Animated.parallel([
+              Animated.timing(copy.m, { toValue: 0, duration: SHIFT_MS, easing: EASE, useNativeDriver: false }),
               Animated.timing(copy.k, { toValue: PICKUP_SCALE, duration: SHIFT_MS, useNativeDriver: false }),
               Animated.timing(copy.line, { toValue: 0, duration: SHIFT_MS, useNativeDriver: false }),
               Animated.timing(copy.op, { toValue: PICKUP_OPACITY, duration: SHIFT_MS, useNativeDriver: false }),
@@ -371,13 +419,12 @@ export default function BannerGrid({
         }
         if (st === 2) return;
       }
-      // La copie suit le doigt ; butées haut / bas (vibration + trait), côtés : bord de l'écran
+      // La copie suit le doigt (centre sous le doigt) ; butées haut / bas (vibration + trait),
+      // côtés : bord de l'écran
       const cg = drag.cg;
-      const rawX = drag.g0.x + e.translationX; const rawY = drag.g0.y + e.translationY;
-      const x = Math.max(0, Math.min(W - cg.w, rawX));
-      const y = Math.max(0, Math.min(Math.max(0, gH - cg.h), rawY));
-      copy.x.setValue(x); copy.y.setValue(y);
-      drag.cx = x; drag.cy = y;
+      placeCopy(f, gH);
+      const x = drag.cx;
+      const rawY = f.y - cg.h / 2;
       if (st !== 0) return;
       const b = rawY < -BOUND_PX ? 'top' : rawY > gH - cg.h + BOUND_PX ? 'bottom' : null;
       if (b !== drag.bound) { if (b) haptics.medium(); drag.bound = b; }
@@ -403,9 +450,7 @@ export default function BannerGrid({
       const id = drag.id;
       const a = anims.current[id];
       if (drag.stage === 2) {
-        const nextCols = drag.cols === 1 ? 2 : 1;
-        const ids = [id, ...drag.base.filter((x) => x !== id)];
-        const fr = geom(0, drag.n, nextCols, W);
+        const { cols: nextCols, ids, fr } = toggleTarget();
         moveTo(id, fr, 0, true);
         haptics.success();
         setPending({ ids, cols: nextCols });
@@ -505,7 +550,7 @@ export default function BannerGrid({
         <Animated.View
           pointerEvents="none"
           style={[styles.copy, {
-            left: copy.x, top: copy.y, width: copy.w, height: copy.h,
+            left: copyPos.left, top: copyPos.top, width: copy.w, height: copy.h,
             opacity: copy.op, transform: [{ scale: copy.k }],
           }]}
         >
@@ -558,7 +603,7 @@ const styles = StyleSheet.create({
   lang: {
     position: 'absolute', top: LANG_TOP, width: LANG, height: LANG, borderRadius: LANG / 2,
     backgroundColor: theme.colors.surfaceAlt, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.textFaint,
-    alignItems: 'flex-end', justifyContent: 'center', paddingRight: 5, zIndex: 20, elevation: 20,
+    alignItems: 'flex-start', justifyContent: 'center', paddingLeft: 3, zIndex: 20, elevation: 20,
   },
   pillWrap: { position: 'absolute', left: 0, right: 0, height: PILL_HALF * 2, alignItems: 'center', zIndex: 12, elevation: 12 },
   pill: {

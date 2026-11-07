@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { View, ActivityIndicator, AppState } from 'react-native';
+import { View, ActivityIndicator, AppState, StatusBar as RNStatusBar } from 'react-native';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+// 1.49 : navigation en JavaScript (au lieu de native) → écrans qui glissent depuis la droite et vrai
+// geste de retour (l'écran précédent se dévoile dessous en suivant le doigt)
+import { createStackNavigator, TransitionPresets } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import MainScreen from './src/screens/MainScreen';
@@ -18,7 +20,7 @@ import { configureNotifications, startNotificationSync, readNotificationTarget }
 
 const navRef = createNavigationContainerRef();
 
-const Stack = createNativeStackNavigator();
+const Stack = createStackNavigator();
 
 export default function App() {
   const [booted, setBooted] = useState(false);
@@ -114,16 +116,20 @@ export default function App() {
       <StatusBar style="light" />
       <Stack.Navigator
         screenOptions={{
-          headerStyle: { backgroundColor: theme.colors.background },
+          // même hauteur d'en-tête qu'avant (56 + barre d'état ; la navigation JS en met 64 sur Android)
+          headerStyle: { backgroundColor: theme.colors.background, height: 56 + (RNStatusBar.currentHeight || 0) },
           headerTintColor: theme.colors.text,
           headerTitleStyle: { fontWeight: '300', letterSpacing: 1 },
           headerShadowVisible: false,
-          contentStyle: { backgroundColor: theme.colors.background },
+          cardStyle: { backgroundColor: theme.colors.background },
+          ...TransitionPresets.SlideFromRightIOS, // glissement depuis la droite, partout (aussi au retour)
+          gestureEnabled: true,                   // retour : glisser depuis le bord gauche (de gauche à droite)
+          gestureDirection: 'horizontal',
         }}
       >
         <Stack.Screen name="Main" component={MainScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Substance" component={SubstanceScreen} options={{ title: '' }} />
-        <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Paramètres', animation: 'slide_from_right' }} />
+        <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Paramètres' }} />
         <Stack.Screen name="Donations" component={DonationsScreen} options={{ title: 'Soutenir le projet' }} />
       </Stack.Navigator>
     </NavigationContainer>

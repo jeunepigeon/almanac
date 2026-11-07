@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity, Pressable, ScrollView, Animated,
+  View, Text, StyleSheet, FlatList, TouchableOpacity, Pressable, ScrollView, Animated, useWindowDimensions,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
@@ -57,6 +57,7 @@ export default function SubstanceScreen() {
   const deleteConsumption = useStore((s) => s.deleteConsumption);
 
   const [activeTab, setActiveTab] = useState('calendar');
+  const { width: winW } = useWindowDimensions();
   const pagerRef = useRef(null);
   // Une page n'est construite qu'à sa 1re visite (ouverture de la page aussi rapide qu'avant)
   const [visited, setVisited] = useState({ calendar: true });
@@ -83,7 +84,10 @@ export default function SubstanceScreen() {
       title: substance?.name ?? 'Substance',
       // 1.44 : compteurs en réorganisation → flèche retour et cloche assombries et inactives
       headerTintColor: countersEditing ? theme.colors.textFaint : theme.colors.text,
-      gestureEnabled: !countersEditing,
+      // 1.49 : retour à la liste en glissant vers la droite, depuis l'onglet Calendrier uniquement
+      // (la liste se dévoile dessous) ; jamais pendant la réorganisation des compteurs
+      gestureEnabled: !countersEditing && activeTab === 'calendar',
+      gestureResponseDistance: winW,
       // Cloche à la couleur de la substance : notifications de CETTE substance (sélection sautée)
       headerRight: () => (substance ? (
         <TouchableOpacity
@@ -96,7 +100,7 @@ export default function SubstanceScreen() {
         </TouchableOpacity>
       ) : null),
     });
-  }, [navigation, substance, hasSubNotif, countersEditing]);
+  }, [navigation, substance, hasSubNotif, countersEditing, activeTab, winW]);
 
   // 1.44 : impossible de quitter la page pendant la réorganisation des compteurs (flèche retour de
   // l'en-tête bloquée ; le retour Android, lui, fait sortir de la réorganisation)

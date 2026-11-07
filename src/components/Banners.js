@@ -22,8 +22,9 @@ import { WiggleContent } from './ReorderList';
 
 export const BANNER_HEIGHT = 104; // 1.48 : moins de vide en haut et en bas (avant 118)
 export const HALF_SCALE = 0.6;    // 1.48 : échelle des demi-cases (2 colonnes)
-export const COMPACT_PAD = 28;    // marge latérale du contenu en demi-case (avant réduction)
-const COMPACT_ICON = Math.round(13 / HALF_SCALE); // ~13 px une fois réduit
+export const COMPACT_PAD = 40;    // marge latérale du contenu en demi-case (avant réduction)
+const COMPACT_TOOL = Math.round(18 / HALF_SCALE); // 1.49 : crayon / poubelle ~18 px une fois réduits
+const COMPACT_BELL = Math.round(16 / HALF_SCALE); // 1.49 : cloche ~16 px une fois réduite
 export const FADE_MS = 450;
 const traceAnim = (label) => () => useStore.getState().traceNotif('animation lancée', label);
 
@@ -32,14 +33,14 @@ export function BannerBell({ color, active, onPress, disabled, compact }) {
   return (
     <View style={[styles.bell, compact && styles.bellCompact]} pointerEvents={disabled ? 'none' : 'auto'}>
       <TouchableOpacity onPress={onPress} disabled={disabled} hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}>
-        <MaterialCommunityIcons name={active ? 'bell' : 'bell-outline'} size={compact ? COMPACT_ICON : 18} color={color} />
+        <MaterialCommunityIcons name={active ? 'bell' : 'bell-outline'} size={compact ? COMPACT_BELL : 18} color={color} />
       </TouchableOpacity>
     </View>
   );
 }
 
 function Tools({ onEdit, onDelete, compact }) {
-  const size = compact ? COMPACT_ICON : 20;
+  const size = compact ? COMPACT_TOOL : 20;
   return (
     <View style={[styles.tools, compact && styles.toolsCompact]}>
       {onEdit && (
@@ -91,7 +92,7 @@ export function SobreBanner({ lastGlobalTimestamp, ...frame }) {
       <Text style={styles.label} numberOfLines={1}>SOBRE DE TOUT DEPUIS</Text>
       {lastGlobalTimestamp ? (
         <>
-          <View style={styles.counterWrap}>
+          <View style={[styles.counterWrap, frame.compact && styles.counterWrapCompact]}>
             <LiveCounter timestamp={lastGlobalTimestamp} style={styles.counter} numberOfLines={1} />
           </View>
           <DateLine text={rangeFR(lastGlobalTimestamp, null)} />
@@ -111,7 +112,7 @@ export function CounterBanner({ label, color, labelColor, lastTimestamp, ...fram
   return (
     <Frame flashColor={color} traceLabel={label} {...frame}>
       <Text style={[styles.label, { color: labelColor || color }]} numberOfLines={1}>{label}</Text>
-      <View style={styles.counterWrap}>
+      <View style={[styles.counterWrap, frame.compact && styles.counterWrapCompact]}>
         {lastTimestamp
           ? <LiveCounter timestamp={lastTimestamp} style={[styles.counter, { color }]} numberOfLines={1} />
           : <Text style={[styles.counter, { color }]}>—</Text>}
@@ -142,7 +143,7 @@ export function RecordBanner(frame) {
   return (
     <Frame flashColor="#FFFFFF" traceLabel="record" {...frame}>
       <Text style={styles.label} numberOfLines={1}>{current ? 'PLUS LONGUE SOBRIÉTÉ DE TOUT · EN COURS' : 'PLUS LONGUE SOBRIÉTÉ DE TOUT'}</Text>
-      <View style={styles.counterWrap}>
+      <View style={[styles.counterWrap, frame.compact && styles.counterWrapCompact]}>
         {p.last == null ? <Text style={[styles.counter, { color: c }]}>—</Text>
           : current ? <LiveCounter timestamp={p.last} style={[styles.counter, { color: c }]} numberOfLines={1} />
             : <Text style={[styles.counter, { color: c }]} numberOfLines={1}>{formatDurationSince(p.pastRecord.start, p.pastRecord.end)}</Text>}
@@ -237,6 +238,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: theme.spacing.xs,
   },
   counterWrap: { minHeight: 36, justifyContent: 'center', alignItems: 'center', paddingHorizontal: theme.spacing.md, width: '100%' },
+  counterWrapCompact: { paddingHorizontal: 0 }, // 1.49 : demi-case → toute la largeur pour le compteur
   counter: {
     color: theme.colors.text, fontSize: theme.font.sizes.xl, fontWeight: '300',
     letterSpacing: 0.5, fontVariant: ['tabular-nums'], textAlign: 'center',
@@ -256,8 +258,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm, zIndex: 2,
   },
   // 1.48 : demi-case → collés au bord, empilés et centrés (bandeau personnalisé : crayon + poubelle)
-  toolsCompact: { right: 2, flexDirection: 'column', justifyContent: 'center', gap: 4 },
-  bellCompact: { left: 4 },
+  // cloche et outils à la même distance de leur bord (icône à ~6 du bord, avant réduction)
+  toolsCompact: { right: 2, flexDirection: 'column', justifyContent: 'center', gap: 2 },
+  bellCompact: { left: 2 },
   toolBtn: { padding: theme.spacing.xs },
   // 1.43 : points centrés, même écart au-dessus (chiffre) et en dessous (« clic pour plus de détails »)
   dotsRow: {

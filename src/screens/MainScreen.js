@@ -1,5 +1,5 @@
-import { useRef, useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, BackHandler } from 'react-native';
+import { useRef, useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, BackHandler, Animated, useWindowDimensions } from 'react-native';
 import PagerView from 'react-native-pager-view';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import NotifWizard from '../components/NotifWizard';
@@ -9,12 +9,37 @@ import { useCallback } from 'react';
 import { theme } from '../theme';
 import { useStore } from '../store';
 import SubstancesPage from './SubstancesPage';
-import GlobalCalendarPage from './GlobalCalendarPage';
+import { useGlobalPages } from './GlobalCalendarPage';
+
+// 1.49 : un seul défilement Liste · Calendrier · Recherche · Stats (onglets de Global = pages)
+const AnimatedPager = Animated.createAnimatedComponent(PagerView);
+const GTABS = ['calendar', 'history', 'stats'];
 
 export default function MainScreen() {
   const navigation = useNavigation();
   const pagerRef = useRef(null);
   const [page, setPage] = useState(0);
+  const [lastGlobal, setLastGlobal] = useState(1); // dernier onglet de Global affiché (page 1 à 3)
+  // Pages de Global construites à la 1re visite, puis toutes peu après l'ouverture (prêtes au glisser)
+  const [visited, setVisited] = useState({ calendar: true });
+  useEffect(() => {
+    const t = setTimeout(() => setVisited({ calendar: true, history: true, stats: true }), 600);
+    return () => clearTimeout(t);
+  }, []);
+  const { width: winW } = useWindowDimensions();
+  const scrollPos = useRef(new Animated.Value(0)).current;
+  const scrollOff = useRef(new Animated.Value(0)).current;
+  const onPageScroll = useMemo(() => Animated.event(
+    [{ nativeEvent: { position: scrollPos, offset: scrollOff } }], { useNativeDriver: true },
+  ), [scrollPos, scrollOff]);
+  // Onglets + petit compteur de Global : fixes entre ses 3 pages, glissent avec la page vers la liste
+  const headerX = useMemo(() => Animated.add(scrollPos, scrollOff).interpolate({
+    inputRange: [0, 1], outputRange: [winW, 0], extrapolate: 'clamp',
+  }), [scrollPos, scrollOff, winW]);
+  const [gHeaderH, setGHeaderH] = useState(96);
+  const globalTab = GTABS[(page >= 1 ? page : lastGlobal) - 1];
+  const goGlobalTab = (t) => pagerRef.current?.setPage(1 + GTABS.indexOf(t));
+  const g = useGlobalPages({ activeTab: globalTab, goTab: goGlobalTab, visited });
   const hasUnconsulted = useStore((s) => s.hasUnconsultedSnapshots);
   const gotoGlobalStatsTick = useStore((s) => s.gotoGlobalStatsTick);
   const pagerLocked = useStore((s) => s.pagerLocked);
@@ -32,7 +57,7 @@ export default function MainScreen() {
   // Switcher vers la page Global quand le store signale un gotoGlobalStats
   useEffect(() => {
     if (gotoGlobalStatsTick > 0) {
-      pagerRef.current?.setPage(1);
+      pagerRef.current?.setPage(3); // onglet Stats de Global
     }
   }, [gotoGlobalStatsTick]);
 
@@ -41,7 +66,7 @@ export default function MainScreen() {
   useFocusEffect(
     useCallback(() => {
       const onBack = () => {
-        if (page === 1) {
+        if (page >= 1) {
           pagerRef.current?.setPage(0);
           return true;
         }
@@ -62,18 +87,19 @@ export default function MainScreen() {
         <View style={styles.headerCenter}>
           {titles.map((t, i) => {
             // Réorganisation en cours : la page affichée reste normale, l'autre est assombrie (1.44)
-            const dim = pagerLocked && i !== page;
+            const cur = page === 0 ? 0 : 1;
+            const dim = pagerLocked && i !== cur;
             return (
               <TouchableOpacity
                 key={t}
-                onPress={() => !pagerLocked && pagerRef.current?.setPage(i)}
+                onPress={() => !pagerLocked && pagerRef.current?.setPage(i === 0 ? 0 : lastGlobal)}
                 style={styles.titleTab}
                 disabled={pagerLocked}
               >
                 <Text
                   style={[
                     styles.titleText,
-                    page === i && styles.titleTextActive,
+                    cur === i && styles.titleTextActive,
                     dim && { opacity: 0.3 },
                   ]}
                 >
@@ -101,7 +127,7 @@ export default function MainScreen() {
 
       <View style={styles.indicator}>
         {[0, 1].map((i) => (
-          <View key={i} style={[styles.dot, page === i && styles.dotActive]} />
+          <View key={i} style={[styles.dot, (page === 0 ? 0 : 1) === i && styles.dotActive]} />
         ))}
         {/* 1.38 — Partage, en miroir de la cloche : page Substances uniquement */}
         {page === 0 && (
@@ -125,20 +151,40 @@ export default function MainScreen() {
         </TouchableOpacity>
       </View>
 
-      <PagerView
-        ref={pagerRef}
-        style={styles.pager}
-        initialPage={0}
-        scrollEnabled={!pagerLocked}
-        onPageSelected={(e) => { setPage(e.nativeEvent.position); useStore.getState().requestCountersExit(); }}
-      >
-        <View key="1" style={styles.page}>
-          <SubstancesPage />
-        </View>
-        <View key="2" style={styles.page}>
-          <GlobalCalendarPage />
-        </View>
-      </PagerView>
+      <View style={styles.pagerWrap}>
+        <AnimatedPager
+          ref={pagerRef}
+          style={styles.pager}
+          initialPage={0}
+          scrollEnabled={!pagerLocked}
+          onPageScroll={onPageScroll}
+          onPageSelected={(e) => {
+            const pos = e.nativeEvent.position;
+            setPage(pos);
+            if (pos >= 1) {
+              setLastGlobal(pos);
+              const t = GTABS[pos - 1];
+              setVisited((v) => (v[t] ? v : { ...v, [t]: true }));
+            }
+            useStore.getState().requestCountersExit();
+          }}
+        >
+          <View key="list" style={styles.page}>
+            <SubstancesPage />
+          </View>
+          <View key="g-calendar" style={[styles.page, { paddingTop: gHeaderH }]}>{g.calendar}</View>
+          <View key="g-history" style={[styles.page, { paddingTop: gHeaderH }]}>{g.history}</View>
+          <View key="g-stats" style={[styles.page, { paddingTop: gHeaderH }]}>{g.stats}</View>
+        </AnimatedPager>
+        <Animated.View
+          style={[styles.gHeader, { transform: [{ translateX: headerX }] }]}
+          onLayout={(e) => { const h = Math.round(e.nativeEvent.layout.height); if (h > 0 && h !== gHeaderH) setGHeaderH(h); }}
+        >
+          {g.header}
+        </Animated.View>
+        {g.reorgBar}
+      </View>
+      {g.modals}
 
       <ShareModal visible={shareOpen} onClose={() => setShareOpen(false)} />
       <NotifWizard visible={notifOpen} onClose={() => setNotifOpen(false)} />
@@ -178,6 +224,8 @@ const styles = StyleSheet.create({
   shareBtn: { position: 'absolute', left: theme.spacing.md + theme.spacing.xs, top: 0, bottom: 0, justifyContent: 'center' },
   dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: theme.colors.textFaint },
   dotActive: { backgroundColor: theme.colors.text },
+  pagerWrap: { flex: 1, overflow: 'hidden' },
   pager: { flex: 1 },
   page: { flex: 1 },
+  gHeader: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: theme.colors.background },
 });
