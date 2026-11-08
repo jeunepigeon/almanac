@@ -11,11 +11,11 @@ import LiveCounter from './LiveCounter';
 import SubstanceIcon from './SubstanceIcon';
 
 export default function TopCounter({
-  label, timestamp, color = theme.colors.text, iconId = null, flashBg = null, dimmed = false, noBorder = false,
+  label, timestamp, color = theme.colors.text, iconId = null, withIcon = false, flashBg = null, dimmed = false, noBorder = false,
 }) {
   return (
     <Animated.View
-      style={[styles.wrap, noBorder && { borderBottomWidth: 0 }, flashBg && { backgroundColor: flashBg }, dimmed && { opacity: 0.25 }]}
+      style={[styles.wrap, noBorder && { borderBottomWidth: 0 }, flashBg && { backgroundColor: flashBg }, dimmed && { opacity: theme.dim }]}
       pointerEvents={dimmed ? 'none' : 'auto'}
     >
       <View style={styles.labelRow}>
@@ -28,7 +28,8 @@ export default function TopCounter({
       </View>
       {timestamp ? <Text style={styles.date} numberOfLines={1}>{rangeFR(timestamp, null)}</Text> : null}
       {/* 1.52 : un seul logo, à GAUCHE, rond et à la même place que dans la liste (Global : aucun) */}
-      {iconId ? (
+      {/* 1.53 : affiché aussi avec le logo par défaut (comme dans la liste) */}
+      {withIcon ? (
         <View style={styles.iconSide} pointerEvents="none">
           <View style={[styles.icon, { borderColor: color }]}>
             <SubstanceIcon iconId={iconId} size={18} color={color} />

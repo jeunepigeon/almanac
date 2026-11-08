@@ -27,6 +27,8 @@ export const theme = {
     '#795547', // brun
     '#607D8B', // gris bleu
   ],
+  // 1.53 : assombrissement unique (réorganisation, aperçu) — même « filtre » partout
+  dim: 0.3,
   spacing: {
     xs: 4,
     sm: 8,

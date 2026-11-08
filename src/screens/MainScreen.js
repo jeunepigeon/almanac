@@ -1,9 +1,8 @@
 import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, BackHandler, Animated, Easing, Image, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, BackHandler, useWindowDimensions } from 'react-native';
 import PagerView from 'react-native-pager-view';
 import Reanimated, { useSharedValue, useAnimatedStyle, useEvent, interpolate, interpolateColor, Extrapolation } from 'react-native-reanimated';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { captureRef, releaseCapture } from 'react-native-view-shot';
 import NotifWizard from '../components/NotifWizard';
 import ShareModal from '../components/ShareModal';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -25,9 +24,8 @@ import { useSubstancePages } from './SubstanceScreen';
 //  - partager visible aussi sur Global ; barre de réorganisation plus épaisse, sans délai.
 //  1.52 : tout ce qui suit le doigt (en-têtes, onglets, titres, points, bouton +) est calculé sur le fil
 //  d'affichage (Reanimated) depuis la position du défilement → accroché aux pages à chaque image ;
-//  fermeture = UNE seule animation : l'image de l'écran part à droite, la liste est déjà en place dessous.
+//  1.53 : retour = le glisser depuis Calendrier (plus d'image qui glisse : plus de flash noir).
 const TABS = ['calendar', 'history', 'stats'];
-const SLIDE_MS = 280;
 const AnimatedPager = Reanimated.createAnimatedComponent(PagerView);
 const C_FAINT = theme.colors.textFaint; // couleurs lues sur le fil d'affichage
 const C_TEXT = theme.colors.text;
@@ -38,7 +36,7 @@ function HeaderTitle({ pos, i, label, dim }) {
     const t = Math.max(0, Math.min(1, pos.value));
     return { color: interpolateColor(i === 0 ? 1 - t : t, [0, 1], [C_FAINT, C_TEXT]) };
   }, [i]);
-  return <Reanimated.Text style={[styles.titleText, style, dim && { opacity: 0.3 }]}>{label}</Reanimated.Text>;
+  return <Reanimated.Text style={[styles.titleText, style, dim && styles.dim]}>{label}</Reanimated.Text>;
 }
 function HeaderDot({ pos, i }) {
   const style = useAnimatedStyle(() => {
@@ -51,8 +49,6 @@ function HeaderDot({ pos, i }) {
 export default function MainScreen() {
   const navigation = useNavigation();
   const pagerRef = useRef(null);
-  const rootRef = useRef(null);
-  const areaRef = useRef(null);
   const { width: winW } = useWindowDimensions();
   const [page, setPage] = useState(0);
   const pageRef = useRef(0);
@@ -84,53 +80,19 @@ export default function MainScreen() {
   subRef.current = sub;
   const subRequest = useStore((s) => s.subRequest);
 
-  // --- Fermeture directe vers la liste (image figée qui part à droite) ---
-  const closingRef = useRef(false);  // fermeture en cours
-  const [shot, setShot] = useState(null); // { uri } — image de tout l'écran pendant la fermeture
-  const shotX = useRef(new Animated.Value(0)).current;
-  const shotStarted = useRef(false);
-
-  const closeToList = useCallback(async () => {
-    if (closingRef.current) return;
-    if (pageRef.current === 0 && !subRef.current) return;
-    closingRef.current = true;
-    try {
-      const uri = await captureRef(rootRef, { format: 'jpg', quality: 0.85, result: 'tmpfile' });
-      shotStarted.current = false;
-      shotX.setValue(0);
-      setShot({ uri });
-    } catch (e) {
-      closingRef.current = false;
-      pagerRef.current?.setPage(0); // filet : défilement normal
+  // --- Retour à la liste (flèche, retour Android, tap sur « Substances ») ---
+  // 1.53 : EXACTEMENT le glisser gauche → droite depuis Calendrier (vrai défilement des pages).
+  // Depuis Recherche / Stats : passage instantané sur Calendrier, puis le même glisser.
+  const closeToList = useCallback(() => {
+    const p = pageRef.current;
+    if (p === 0) return;
+    if (p > 1) {
+      pagerRef.current?.setPageWithoutAnimation(1);
+      requestAnimationFrame(() => pagerRef.current?.setPage(0));
+    } else {
+      pagerRef.current?.setPage(0);
     }
-  }, [shotX]);
-
-  // L'image couvre tout l'écran : sous elle, la liste est mise en place D'UN COUP (page 0, substance
-  // fermée, en-têtes à leur place finale) ; puis seule l'image glisse à droite.
-  const startShotSlide = () => {
-    if (shotStarted.current) return;
-    shotStarted.current = true;
-    pagerRef.current?.setPageWithoutAnimation(0); // la page 0 sélectionnée ferme la substance
-    pos.value = 0;
-    if (subRef.current) { subRef.current = null; setSub(null); }
-    pageRef.current = 0; setPage(0);
-    // 2 images d'attente : la liste est affichée dessous avant le départ
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      Animated.timing(shotX, { toValue: winW, duration: SLIDE_MS, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(() => {
-        closingRef.current = false;
-        const uri = shotUriRef.current;
-        setShot(null);
-        if (uri) { try { releaseCapture(uri); } catch (e) { /* rien */ } }
-      });
-    }));
-  };
-  const shotUriRef = useRef(null);
-  shotUriRef.current = shot?.uri || null;
-  useEffect(() => { // filet : image jamais chargée
-    if (!shot) return undefined;
-    const t = setTimeout(startShotSlide, 250);
-    return () => clearTimeout(t);
-  }, [shot]); // eslint-disable-line
+  }, []);
 
   const tab = page >= 1 ? TABS[page - 1] : 'calendar';
   const goTab = useCallback((t) => pagerRef.current?.setPage(1 + TABS.indexOf(t)), []);
@@ -205,7 +167,7 @@ export default function MainScreen() {
   );
 
   return (
-    <View ref={rootRef} collapsable={false} style={styles.container}>
+    <View style={styles.container}>
       <View onLayout={(e) => { const h = Math.round(e.nativeEvent.layout.height); if (h > 0 && h !== mainHeaderH) setMainHeaderH(h); }}>
         <View style={styles.header}>
           <View style={styles.headerLeft}>
@@ -237,24 +199,24 @@ export default function MainScreen() {
           <View style={styles.headerRight}>
             <TouchableOpacity
               onPress={() => !pagerLocked && navigation.navigate('Settings')}
-              style={[styles.settingBtn, pagerLocked && { opacity: 0.3 }]}
+              style={[styles.settingBtn, pagerLocked && styles.dim]}
               disabled={pagerLocked}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Text style={styles.settingText}>settings</Text>
-                {hasUnconsulted && !pagerLocked && <View style={styles.redDot} />}
+                {hasUnconsulted && <View style={styles.redDot} />}
               </View>
             </TouchableOpacity>
           </View>
         </View>
 
-        <View style={styles.indicator}>
+        {/* 1.53 : en réorganisation, tout est assombri sauf « almanac » (même filtre partout) */}
+        <View style={[styles.indicator, pagerLocked && styles.dim]}>
           {[0, 1].map((i) => (
             <HeaderDot key={i} pos={pos} i={i} />
           ))}
-          {/* Partage (liste et Global), en miroir de la cloche. Inactifs pendant une réorganisation,
-              sans changer d'aspect (1.51 : plus de clignotement) */}
+          {/* Partage (liste et Global), en miroir de la cloche. Inactifs pendant une réorganisation */}
           <TouchableOpacity
             style={styles.shareBtn}
             onPress={() => setShareOpen(true)}
@@ -285,7 +247,7 @@ export default function MainScreen() {
         )}
       </View>
 
-      <View ref={areaRef} collapsable={false} style={styles.pagerArea}>
+      <View style={styles.pagerArea}>
         <View style={styles.pagerWrap}>
           <AnimatedPager
             ref={pagerRef}
@@ -338,12 +300,6 @@ export default function MainScreen() {
         </Reanimated.View>
       )}
 
-      {shot && (
-        <Animated.View pointerEvents="none" style={[styles.shot, { transform: [{ translateX: shotX }] }]}>
-          <Image source={{ uri: shot.uri }} style={styles.shotImg} fadeDuration={0} onLoad={startShotSlide} />
-        </Animated.View>
-      )}
-
       {g.modals}
       {subOpen && s.modals}
       <ShareModal visible={shareOpen} onClose={() => setShareOpen(false)} />
@@ -382,6 +338,7 @@ const styles = StyleSheet.create({
   bellBtn: { position: 'absolute', right: theme.spacing.md + theme.spacing.xs, top: 0, bottom: 0, justifyContent: 'center' },
   shareBtn: { position: 'absolute', left: theme.spacing.md + theme.spacing.xs, top: 0, bottom: 0, justifyContent: 'center' },
   dot: { width: 4, height: 4, borderRadius: 2 },
+  dim: { opacity: theme.dim },
   pagerArea: { flex: 1, overflow: 'hidden' },
   pagerWrap: { flex: 1, backgroundColor: theme.colors.background },
   pager: { flex: 1 },
@@ -391,8 +348,6 @@ const styles = StyleSheet.create({
   gHeader: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: theme.colors.background },
   fabWrap: { ...StyleSheet.absoluteFillObject },
   subTop: { position: 'absolute', top: 0, left: 0, right: 0, paddingTop: 34, backgroundColor: theme.colors.background, zIndex: 50, elevation: 50 },
-  shot: { ...StyleSheet.absoluteFillObject, zIndex: 100, elevation: 100, backgroundColor: theme.colors.background },
-  shotImg: { width: '100%', height: '100%' },
   // Barre de réorganisation de la liste (même aspect que celle des compteurs) : bas aligné sur la
   // ligne partager · points · cloche, déborde vers le haut
   reorgBar: {

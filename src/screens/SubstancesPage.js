@@ -523,6 +523,12 @@ export default function SubstancesPage() {
           getScrollY={() => scrollYRef.current}
           onLangCols={setLangCols}
           onSlots={setGridSlots}
+          beforeToggle={() => {
+            // 1.53 : plus de la moitié des bandeaux cachée → la liste remonte d'abord en haut
+            if (scrollYRef.current <= gridH / 2) return 0;
+            scrollRef.current?.scrollTo?.({ y: 0, animated: true });
+            return 450;
+          }}
         />
       );
     }
@@ -815,7 +821,7 @@ export default function SubstancesPage() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  dimmed: { opacity: 0.25 },
+  dimmed: { opacity: theme.dim },
   slot: {
     position: 'absolute', zIndex: 15, elevation: 15,
     borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#9A9A9A', borderRadius: 8,

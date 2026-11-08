@@ -187,6 +187,7 @@ export function useSubstancePages({ sub, activeTab, goTab, visited = {}, onBack,
         timestamp={lastTimestamp}
         color={substance.color}
         iconId={substance.icon}
+        withIcon
         flashBg={heroFlashBg}
         dimmed={countersEditing}
         noBorder={activeTab === 'stats'}
@@ -355,7 +356,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', paddingTop: theme.spacing.sm, paddingHorizontal: theme.spacing.lg,
   },
   // 1.43 : compteurs en réorganisation → le reste de la page est assombri et figé
-  dimmed: { opacity: 0.25 },
+  dimmed: { opacity: theme.dim },
   // 1.43 : logo 40 (avant 56), marges réduites → plus de place pour le calendrier
   heroIcon: {
     width: 40, height: 40, borderRadius: 20, borderWidth: 1.5,

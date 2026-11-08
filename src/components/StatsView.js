@@ -274,7 +274,7 @@ export default function StatsView({
       )}
 
       {/* 1.43 : compteurs en réorganisation → tout le reste assombri et figé */}
-      <View style={countersEditing && { opacity: 0.25 }} pointerEvents={countersEditing ? 'none' : 'auto'}>
+      <View style={countersEditing && { opacity: theme.dim }} pointerEvents={countersEditing ? 'none' : 'auto'}>
       {/* Sélecteur fenêtre */}
       <View style={styles.windowSelector}>
         {ALL_WINDOWS.map((w) => (

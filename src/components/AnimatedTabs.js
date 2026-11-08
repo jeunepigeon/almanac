@@ -57,7 +57,7 @@ export default function AnimatedTabs({ pos, onPress, dimmed = false }) {
 
 const styles = StyleSheet.create({
   tabs: { flexDirection: 'row', paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, gap: theme.spacing.lg, justifyContent: 'center' },
-  dimmed: { opacity: 0.25 },
+  dimmed: { opacity: theme.dim },
   tab: { paddingBottom: theme.spacing.sm },
   tabText: { fontSize: theme.font.sizes.md, fontWeight: '300', letterSpacing: 1 },
   // Place du trait (mêmes dimensions qu'avant : le texte ne bouge pas)

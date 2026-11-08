@@ -47,7 +47,7 @@ const MORPH_MS = FADE_MS;          // ajout / suppression / bascule : même dur�
 const PICKUP_SCALE = 1.06;
 const PICKUP_OPACITY = 0.92;
 const BOUND_PX = 6;
-const DIM = 0.25;
+const DIM = theme.dim;
 const LANG = 40;                   // languette (cercle), à moitié sortie du bord droit
 const LANG_TOP = 44;               // sous la barre « Réorganisation » (posée par-dessus le haut de la liste)
 const LANG_VISIBLE = 22;
@@ -145,6 +145,7 @@ export default function BannerGrid({
   getScrollY = () => 0, // défilement de la liste (la languette est fixe à l'écran, pas dans la grille)
   onLangCols = null,    // (cols) → icône de la languette
   onSlots = null,       // 1.52 : cases en pointillés dessinées par le parent, en haut de l'écran
+  beforeToggle = null,  // 1.53 : () → ms d'attente (la liste remonte d'abord en haut), ou 0
 }) {
   const { width: winW } = useWindowDimensions();
   const [W, setW] = useState(winW); // largeur réelle de la grille (mesurée)
@@ -336,6 +337,23 @@ export default function BannerGrid({
     return { next, bar: b, swap: false };
   };
 
+  // Bascule de colonnes après un lâcher sur la languette : la case repart de la languette vers sa
+  // nouvelle place (languette fixe à l'écran → position lue au moment de la bascule)
+  const runToggle = (id, nextCols, ids) => {
+    const a = anims.current[id];
+    if (a) {
+      const k = LANG_COPY_SCALE; const cg = drag.cg;
+      const lx = W - LANG_VISIBLE / 2; const ly = LANG_TOP + getScrollY() + LANG / 2;
+      a.x.setValue(lx - (cg.w * k) / 2); a.y.setValue(ly - (cg.h * k) / 2);
+      a.w.setValue(cg.w * k); a.h.setValue(cg.h * k); a.s.setValue(cg.s * k);
+      targets.current[id] = null;
+    }
+    haptics.success();
+    setPending({ ids, cols: nextCols });
+    cleanup();
+    onToggleColumns?.(nextCols, ids);
+  };
+
   const handlersRef = useRef(null);
   handlersRef.current = {
     start: (id, e) => {
@@ -439,17 +457,15 @@ export default function BannerGrid({
         // Lâché sur la languette : bascule ; l'ordre ne change pas (le bandeau tenu garde sa place)
         const nextCols = drag.cols === 1 ? 2 : 1;
         const ids = drag.base;
-        if (a) { // la case repart de la languette vers sa nouvelle place
-          const k = LANG_COPY_SCALE; const cg = drag.cg;
-          const lx = W - LANG_VISIBLE / 2; const ly = LANG_TOP + getScrollY() + LANG / 2;
-          a.x.setValue(lx - (cg.w * k) / 2); a.y.setValue(ly - (cg.h * k) / 2);
-          a.w.setValue(cg.w * k); a.h.setValue(cg.h * k); a.s.setValue(cg.s * k);
-          targets.current[id] = null;
+        // 1.53 : lâché trop bas dans la liste → elle remonte d'abord en haut (la copie s'efface sur la
+        // languette, l'aperçu en pointillés reste), puis la bascule se joue sous les yeux
+        const wait = beforeToggle ? beforeToggle() : 0;
+        if (wait > 0) {
+          Animated.timing(copy.op, { toValue: 0, duration: 150, useNativeDriver: false }).start();
+          setTimeout(() => runToggle(id, nextCols, ids), wait);
+          return;
         }
-        haptics.success();
-        setPending({ ids, cols: nextCols });
-        cleanup();
-        onToggleColumns?.(nextCols, ids);
+        runToggle(id, nextCols, ids);
         return;
       }
       const next = arr || drag.base;
