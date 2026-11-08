@@ -29,9 +29,9 @@ export const FADE_MS = 450;
 const traceAnim = (label) => () => useStore.getState().traceNotif('animation lancée', label);
 
 // Cloche : vide / pleine. En réorganisation, toujours affichée mais inactive.
-export function BannerBell({ color, active, onPress, disabled, compact }) {
+export function BannerBell({ color, active, onPress, disabled, compact, left = null }) {
   return (
-    <View style={[styles.bell, compact && styles.bellCompact]} pointerEvents={disabled ? 'none' : 'auto'}>
+    <View style={[styles.bell, compact && styles.bellCompact, left != null && { left }]} pointerEvents={disabled ? 'none' : 'auto'}>
       <TouchableOpacity onPress={onPress} disabled={disabled} hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}>
         <MaterialCommunityIcons name={active ? 'bell' : 'bell-outline'} size={compact ? COMPACT_BELL : 18} color={color} />
       </TouchableOpacity>
@@ -39,10 +39,10 @@ export function BannerBell({ color, active, onPress, disabled, compact }) {
   );
 }
 
-function Tools({ onEdit, onDelete, compact }) {
+function Tools({ onEdit, onDelete, compact, right = null }) {
   const size = compact ? COMPACT_TOOL : 20;
   return (
-    <View style={[styles.tools, compact && styles.toolsCompact]}>
+    <View style={[styles.tools, compact && styles.toolsCompact, right != null && { right }]}>
       {onEdit && (
         <TouchableOpacity onPress={onEdit} style={styles.toolBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <MaterialCommunityIcons name="pencil-outline" size={size} color={theme.colors.textMuted} />
@@ -74,13 +74,28 @@ function useFade(fading) {
 function Frame({ flashColor, flashTick, traceLabel, fading, inReorder, isWiggling, phase, bell, onEdit, onDelete, compact, children }) {
   const fade = useFade(fading);
   const flashBg = useFlashBackground(flashTick, flashColor, traceAnim(traceLabel));
+  // 1.50 : en demi-case, cloche et outils centrés dans la marge entre le bord et le texte (symétriques)
+  const [fw, setFw] = useState(0);
+  const [tw, setTw] = useState(0);
+  const margin = compact && fw > 0 && tw > 0 ? Math.max(0, (fw - tw) / 2) : null;
+  const bellLeft = margin != null ? Math.max(0, margin / 2 - (COMPACT_BELL + 8) / 2) : null;
+  const toolsRight = margin != null ? Math.max(0, margin / 2 - (COMPACT_TOOL + 8) / 2) : null;
   return (
-    <Animated.View style={[styles.frame, { opacity: fade, backgroundColor: flashBg }]} pointerEvents={fading ? 'none' : 'auto'}>
+    <Animated.View
+      style={[styles.frame, { opacity: fade, backgroundColor: flashBg }]}
+      pointerEvents={fading ? 'none' : 'auto'}
+      onLayout={compact ? (e) => setFw(Math.round(e.nativeEvent.layout.width)) : undefined}
+    >
       <WiggleContent isWiggling={!!isWiggling} phase={phase || 0} style={[styles.content, compact && styles.contentCompact]}>
-        {children}
+        {compact ? (
+          // largeur du texte (arrondie par pas de 8 : la cloche ne bouge pas à chaque seconde du compteur)
+          <View style={styles.textBlock} onLayout={(e) => setTw(Math.ceil(e.nativeEvent.layout.width / 8) * 8)}>
+            {children}
+          </View>
+        ) : children}
       </WiggleContent>
-      {bell && !fading ? <BannerBell {...bell} compact={compact} disabled={inReorder} /> : null}
-      {inReorder && <Tools onEdit={onEdit} onDelete={onDelete} compact={compact} />}
+      {bell && !fading ? <BannerBell {...bell} compact={compact} disabled={inReorder} left={bellLeft} /> : null}
+      {inReorder && <Tools onEdit={onEdit} onDelete={onDelete} compact={compact} right={toolsRight} />}
     </Animated.View>
   );
 }
@@ -233,12 +248,13 @@ const styles = StyleSheet.create({
   frame: { height: BANNER_HEIGHT - StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
   content: { alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch', paddingHorizontal: 56 },
   contentCompact: { paddingHorizontal: COMPACT_PAD },
+  textBlock: { alignItems: 'center', maxWidth: '100%' },
   label: {
     color: theme.colors.textMuted, fontSize: theme.font.sizes.xs, fontWeight: '300',
     letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: theme.spacing.xs,
   },
   counterWrap: { minHeight: 36, justifyContent: 'center', alignItems: 'center', paddingHorizontal: theme.spacing.md, width: '100%' },
-  counterWrapCompact: { paddingHorizontal: 0 }, // 1.49 : demi-case → toute la largeur pour le compteur
+  counterWrapCompact: { paddingHorizontal: 0, width: 'auto' }, // 1.49 : demi-case → toute la largeur ; 1.50 : largeur du texte (centrage cloche / outils)
   counter: {
     color: theme.colors.text, fontSize: theme.font.sizes.xl, fontWeight: '300',
     letterSpacing: 0.5, fontVariant: ['tabular-nums'], textAlign: 'center',

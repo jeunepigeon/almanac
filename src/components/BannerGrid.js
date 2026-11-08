@@ -55,6 +55,7 @@ const LANG_ZONE_PAD = 14;
 const EASE = Easing.out(Easing.cubic);
 const EASE_SOFT = Easing.inOut(Easing.cubic); // 1.49 : glissements pendant le fondu (pilule comprise)
 const CENTER_MS = 150;             // la copie vient se centrer sous le doigt à la saisie
+const LANG_COPY_SCALE = 0.7;       // 1.50 : la copie rétrécit un peu au-dessus de la languette
 
 export function effectiveCols(columns, n) { return columns === 2 && n >= 2 ? 2 : 1; }
 
@@ -178,7 +179,6 @@ export default function BannerGrid({
   const [pickId, setPickId] = useState(null);
   const [arr, setArr] = useState(null);           // ordre provisoire pendant le drag
   const [stage, setStage] = useState(0);          // 0 normal · 1 cadre affiché · 2 aimanté
-  const [frameG, setFrameG] = useState(null);     // géométrie du cadre de bascule
   const [bar, setBar] = useState(null);           // { x, y, w } trait fin
   const [copyType, setCopyType] = useState({ L: W, compact: false });
   const [pending, setPending] = useState(null);   // { ids, cols } : ordre lâché, en attente du parent
@@ -273,15 +273,6 @@ export default function BannerGrid({
   };
   // Bascule possible ? (au moins 2 bandeaux ; jamais en tenant la case large en 2 colonnes)
   const canToggle = () => drag.n >= 2 && !(drag.cols === 2 && drag.g0.wide);
-  // Cadre de bascule (future place du bandeau tenu) et nouvel ordre au lâcher
-  const toggleTarget = () => {
-    const others = drag.base.filter((x) => x !== drag.id);
-    if (drag.cols === 1) {
-      const odd = drag.n % 2 === 1;
-      return { cols: 2, fr: geom(odd ? 1 : 0, drag.n, 2, W), ids: odd ? [others[0], drag.id, ...others.slice(1)] : [drag.id, ...others] };
-    }
-    return { cols: 1, fr: geom(0, drag.n, 1, W), ids: [drag.id, ...others] };
-  };
   // Position du doigt → centre de la copie (bloqué aux bords), coin haut-gauche logique
   const placeCopy = (f, gH) => {
     const cg = drag.cg;
@@ -293,7 +284,7 @@ export default function BannerGrid({
 
   const cleanup = () => {
     drag.id = null;
-    setPickId(null); setArr(null); setStage(0); setFrameG(null); setBar(null);
+    setPickId(null); setArr(null); setStage(0); setBar(null);
     showLang(false);
     onDragChange?.(false); onDimChange?.(false);
   };
@@ -371,53 +362,35 @@ export default function BannerGrid({
       // Étapes de la bascule
       let st = drag.stage;
       if (canToggle()) {
+        // 1.50 — Bascule en une action : la languette est la zone de dépôt (façon poubelle des stories).
+        // Survol → léger aimant (la copie rétrécit et se colle), vibration, aperçu de la future
+        // disposition en pointillés, le reste assombri ; quitter la languette → tout revient.
         const inLang = f.x > W - LANG_ZONE_X && f.y > LANG_TOP - LANG_ZONE_PAD && f.y < LANG_TOP + LANG + LANG_ZONE_PAD;
-        const { fr } = toggleTarget();
-        const inFrame = f.x >= fr.x && f.x <= fr.x + fr.w && f.y >= fr.y && f.y <= fr.y + fr.h;
-        // Étape 1 gardée pendant le trajet languette → cadre (ils sont aux deux bords) ; on en sort en
-        // redescendant sous le cadre et la languette. Lâcher en étape 1 hors du cadre = rien ne change.
-        const zoneBottom = Math.max(fr.y + fr.h, LANG_TOP + LANG) + LANG_ZONE_PAD * 2;
-        if (st === 0) st = inLang ? 1 : 0;
-        else if (inFrame && !inLang) st = 2;
-        else if (f.y < zoneBottom) st = 1;
-        else st = 0;
+        st = inLang ? 1 : 0;
         if (st !== drag.stage) {
-          const was = drag.stage;
           drag.stage = st;
           setStage(st);
-          if (st >= 1 && was === 0) {
+          if (st === 1) {
+            haptics.medium();
             setArr(drag.base); drag.key = drag.base.join('|');
             setBar(null); drag.bound = null;
-            setFrameG(fr); showLang(false); onDimChange?.(true);
-            setCopyType({ L: drag.g0.w / drag.g0.s, compact: !drag.g0.wide }); setCopyGeom(drag.g0, SHIFT_MS);
-          }
-          if (st === 2) {
-            haptics.medium();
-            drag.cx = fr.x; drag.cy = fr.y;
-            copy.frx.setValue(fr.x); copy.fry.setValue(fr.y);
-            setCopyType({ L: fr.w / fr.s, compact: !fr.wide });
-            setCopyGeom(fr, SHIFT_MS);
+            onDimChange?.(true);
+            const cg = drag.cg;
+            copy.frx.setValue(W - LANG_VISIBLE / 2 - cg.w / 2);
+            copy.fry.setValue(LANG_TOP + LANG / 2 - cg.h / 2);
             Animated.parallel([
               Animated.timing(copy.m, { toValue: 1, duration: SHIFT_MS, easing: EASE, useNativeDriver: false }),
-              Animated.timing(copy.k, { toValue: 1, duration: SHIFT_MS, useNativeDriver: false }),
-              Animated.timing(copy.line, { toValue: 1, duration: SHIFT_MS, useNativeDriver: false }),
-              Animated.timing(copy.op, { toValue: 1, duration: SHIFT_MS, useNativeDriver: false }),
+              Animated.timing(copy.k, { toValue: LANG_COPY_SCALE, duration: SHIFT_MS, useNativeDriver: false }),
             ]).start();
-            return;
-          }
-          if (was === 2) { // sortie du cadre : la copie reprend sa taille et suit de nouveau le doigt
-            setCopyType({ L: drag.g0.w / drag.g0.s, compact: !drag.g0.wide });
-            setCopyGeom(drag.g0, SHIFT_MS);
+          } else {
+            onDimChange?.(false);
             Animated.parallel([
               Animated.timing(copy.m, { toValue: 0, duration: SHIFT_MS, easing: EASE, useNativeDriver: false }),
               Animated.timing(copy.k, { toValue: PICKUP_SCALE, duration: SHIFT_MS, useNativeDriver: false }),
-              Animated.timing(copy.line, { toValue: 0, duration: SHIFT_MS, useNativeDriver: false }),
-              Animated.timing(copy.op, { toValue: PICKUP_OPACITY, duration: SHIFT_MS, useNativeDriver: false }),
             ]).start();
           }
-          if (st === 0) { setFrameG(null); showLang(true); onDimChange?.(false); }
         }
-        if (st === 2) return;
+        if (st === 1) { placeCopy(f, gH); return; }
       }
       // La copie suit le doigt (centre sous le doigt) ; butées haut / bas (vibration + trait),
       // côtés : bord de l'écran
@@ -449,9 +422,17 @@ export default function BannerGrid({
       drag.committed = true;
       const id = drag.id;
       const a = anims.current[id];
-      if (drag.stage === 2) {
-        const { cols: nextCols, ids, fr } = toggleTarget();
-        moveTo(id, fr, 0, true);
+      if (drag.stage === 1) {
+        // Lâché sur la languette : bascule ; l'ordre ne change pas (le bandeau tenu garde sa place)
+        const nextCols = drag.cols === 1 ? 2 : 1;
+        const ids = drag.base;
+        if (a) { // la case repart de la languette vers sa nouvelle place
+          const k = LANG_COPY_SCALE; const cg = drag.cg;
+          const lx = W - LANG_VISIBLE / 2; const ly = LANG_TOP + LANG / 2;
+          a.x.setValue(lx - (cg.w * k) / 2); a.y.setValue(ly - (cg.h * k) / 2);
+          a.w.setValue(cg.w * k); a.h.setValue(cg.h * k); a.s.setValue(cg.s * k);
+          targets.current[id] = null;
+        }
         haptics.success();
         setPending({ ids, cols: nextCols });
         cleanup();
@@ -538,12 +519,10 @@ export default function BannerGrid({
           />
         );
       })}
-      {/* Cadre en pointillés : future 1re case après la bascule */}
-      {frameG && (
-        <View pointerEvents="none" style={[styles.frame, { left: frameG.x, top: frameG.y, width: frameG.w, height: frameG.h }, stage === 2 ? styles.frameHot : styles.frameTop]}>
-          {stage === 1 && <MaterialCommunityIcons name={drag.cols === 1 ? 'view-grid-outline' : 'view-agenda-outline'} size={20} color={theme.colors.text} />}
-        </View>
-      )}
+      {/* Aperçu de la future disposition (survol de la languette) : cases en pointillés */}
+      {stage === 1 && drag.id && Array.from({ length: drag.n }, (_, i) => geom(i, drag.n, drag.cols === 1 ? 2 : 1, W)).map((gq, i) => (
+        <View key={`slot-${i}`} pointerEvents="none" style={[styles.slot, { left: gq.x + 3, top: gq.y + 3, width: gq.w - 6, height: gq.h - 6 }]} />
+      ))}
 
       {/* Copie qui suit le doigt */}
       {pickedItem && (
@@ -597,8 +576,10 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#9A9A9A', borderRadius: 8,
     backgroundColor: 'rgba(14,14,14,0.85)', alignItems: 'center', justifyContent: 'center',
   },
-  frameTop: { zIndex: 11, elevation: 11 },  // étape 1 : par-dessus la copie (on voit où la lâcher)
-  frameHot: { borderColor: theme.colors.text, backgroundColor: 'transparent' },
+  slot: {
+    position: 'absolute', zIndex: 5, elevation: 5,
+    borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#9A9A9A', borderRadius: 8,
+  },
   bar: { position: 'absolute', height: 1, backgroundColor: '#FFFFFF', borderRadius: 1, zIndex: 15, elevation: 15 },
   lang: {
     position: 'absolute', top: LANG_TOP, width: LANG, height: LANG, borderRadius: LANG / 2,

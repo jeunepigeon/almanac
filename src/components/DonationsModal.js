@@ -1,12 +1,14 @@
-import { useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Modal, Pressable, ActivityIndicator,
 } from 'react-native';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from '../theme';
 import { useBilling, DONATION_PRODUCTS } from '../utils/useBilling';
 
-export default function DonationsScreen() {
+// 1.50 — Soutenir le développement : fenêtre flottante (avant : une page), même contenu,
+// ouverte depuis la même ligne de Paramètres.
+export default function DonationsModal({ visible, onClose }) {
   const {
     connected, loading, purchasing, error,
     purchase, getLocalPrice,
@@ -14,7 +16,16 @@ export default function DonationsScreen() {
   } = useBilling();
 
   return (
-    <ScrollView keyboardShouldPersistTaps="handled" style={styles.container} contentContainerStyle={styles.content}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <Pressable style={styles.overlay} onPress={onClose}>
+    <Pressable style={styles.card} onPress={() => {}}>
+      <View style={styles.cardHeader}>
+        <Text style={styles.cardTitle}>Soutenir le développement</Text>
+        <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <MaterialCommunityIcons name="close" size={20} color={theme.colors.textMuted} />
+        </TouchableOpacity>
+      </View>
+    <ScrollView keyboardShouldPersistTaps="handled" style={styles.scroll} contentContainerStyle={styles.content}>
       <Text style={styles.intro}>
         Almanac est gratuit et sans publicité. Son développement peut être soutenu ici.
       </Text>
@@ -82,14 +93,27 @@ export default function DonationsScreen() {
         </Pressable>
       </Modal>
     </ScrollView>
+    </Pressable>
+    </Pressable>
+    </Modal>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
+  card: {
+    backgroundColor: theme.colors.background, borderRadius: 8, maxHeight: '85%',
+    borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border, overflow: 'hidden',
+  },
+  cardHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.lg, paddingBottom: theme.spacing.sm,
+  },
+  cardTitle: { color: theme.colors.text, fontSize: theme.font.sizes.md, fontWeight: '300', letterSpacing: 1 },
+  scroll: { flexGrow: 0 },
   content: {
-    paddingVertical: theme.spacing.lg,
-    paddingBottom: 60,
+    paddingTop: theme.spacing.sm,
+    paddingBottom: theme.spacing.lg,
   },
   intro: {
     color: theme.colors.text,

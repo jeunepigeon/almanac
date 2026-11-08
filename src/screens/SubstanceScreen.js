@@ -4,8 +4,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import PagerView from 'react-native-pager-view';
+import { useNavigation } from '@react-navigation/native';
 import { theme } from '../theme';
 import { useStore, EMPTY_LIST } from '../store';
 import { getIconById } from '../icons';
@@ -25,8 +24,11 @@ import NotifWizard from '../components/NotifWizard';
 import { useFlashBackground } from '../utils/flash';
 import { waitForAppReady, appStateInfo } from '../utils/appReady';
 
-// 1.48 : onglets en pages glissables (la page suit le doigt, comme les pages principales)
-const TABS = ['calendar', 'history', 'stats'];
+// 1.50 — Une substance = les mêmes 3 pages que Global (Calendrier · Recherche · Stats), placées par
+// MainScreen à droite de la liste, à la place de Global : même code de navigation, mêmes gestes
+// (glisser entre onglets ; depuis Calendrier, glisser vers la droite ramène à la vraie liste).
+// Ce module fournit les morceaux : topBar (flèche, nom, cloche — l'en-tête d'avant), header (onglets +
+// petit compteur), calendar / history / stats, fab, modals, reorgBar.
 
 function pad2(n) { return n < 10 ? `0${n}` : `${n}`; }
 function dayKeyOf(ts) {
@@ -34,10 +36,12 @@ function dayKeyOf(ts) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-export default function SubstanceScreen() {
+export function useSubstancePages({ sub, activeTab, goTab, visited = {}, onBack }) {
   const navigation = useNavigation();
-  const route = useRoute();
-  const { substanceId, focusDate, notifFlash } = route.params || {};
+  const substanceId = sub?.id ?? null;
+  const focusDate = sub?.focusDate ?? null;
+  const notifFlash = sub?.notifFlash ?? null;
+  const openTick = sub?.tick ?? 0;
 
   const substance = useStore((s) =>
     [...s.substances, ...s.archivedSubstances].find((x) => x.id === substanceId)
@@ -50,27 +54,18 @@ export default function SubstanceScreen() {
   // 1.40 : horodatages pour les compteurs ajoutés (précédente / plus longue)
   const consoTimestamps = useMemo(() => (consumptions || []).map((c) => c.timestamp), [consumptions]);
   const createConsumption = useStore((s) => s.createConsumption);
-  // 1.46 : en vrai/faux (le store contient la portée en cours ; un texte passé à `disabled` faisait planter)
-  const countersEditing = useStore((s) => !!s.countersEditing);
+  // Réorganisation des compteurs de CETTE substance (la portée est son id)
+  const countersEditing = useStore((s) => !!substanceId && s.countersEditing === substanceId);
+  const setPagerLocked = useStore((s) => s.setPagerLocked);
+  useEffect(() => {
+    if (!countersEditing) return undefined;
+    setPagerLocked(true);
+    return () => setPagerLocked(false);
+  }, [countersEditing]); // eslint-disable-line
   const requestCountersExit = useStore((s) => s.requestCountersExit);
   const updateConsumption = useStore((s) => s.updateConsumption);
   const deleteConsumption = useStore((s) => s.deleteConsumption);
 
-  const [activeTab, setActiveTab] = useState('calendar');
-  const { width: winW } = useWindowDimensions();
-  const pagerRef = useRef(null);
-  // Une page n'est construite qu'à sa 1re visite (ouverture de la page aussi rapide qu'avant)
-  const [visited, setVisited] = useState({ calendar: true });
-  const goTab = (t) => {
-    setActiveTab(t);
-    setVisited((v) => (v[t] ? v : { ...v, [t]: true }));
-    pagerRef.current?.setPage(TABS.indexOf(t));
-  };
-  // … puis les deux autres juste après l'ouverture : prêtes quand on glisse vers elles
-  useEffect(() => {
-    const t = setTimeout(() => setVisited({ calendar: true, history: true, stats: true }), 400);
-    return () => clearTimeout(t);
-  }, []);
   const [logOpen, setLogOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
@@ -78,38 +73,6 @@ export default function SubstanceScreen() {
   const [prefilledDate, setPrefilledDate] = useState(null);
   const [notifOpen, setNotifOpen] = useState(false);
   const hasSubNotif = useStore((s) => s.notifRules.some((r) => r.target === 'sub' && r.key === substanceId));
-
-  useEffect(() => {
-    navigation.setOptions({
-      title: substance?.name ?? 'Substance',
-      // 1.44 : compteurs en réorganisation → flèche retour et cloche assombries et inactives
-      headerTintColor: countersEditing ? theme.colors.textFaint : theme.colors.text,
-      // 1.49 : retour à la liste en glissant vers la droite, depuis l'onglet Calendrier uniquement
-      // (la liste se dévoile dessous) ; jamais pendant la réorganisation des compteurs
-      gestureEnabled: !countersEditing && activeTab === 'calendar',
-      gestureResponseDistance: winW,
-      // Cloche à la couleur de la substance : notifications de CETTE substance (sélection sautée)
-      headerRight: () => (substance ? (
-        <TouchableOpacity
-          onPress={() => setNotifOpen(true)}
-          disabled={countersEditing}
-          style={countersEditing && { opacity: 0.25 }}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <MaterialCommunityIcons name={hasSubNotif ? 'bell' : 'bell-outline'} size={20} color={substance.color} />
-        </TouchableOpacity>
-      ) : null),
-    });
-  }, [navigation, substance, hasSubNotif, countersEditing, activeTab, winW]);
-
-  // 1.44 : impossible de quitter la page pendant la réorganisation des compteurs (flèche retour de
-  // l'en-tête bloquée ; le retour Android, lui, fait sortir de la réorganisation)
-  useEffect(() => {
-    const unsub = navigation.addListener('beforeRemove', (e) => {
-      if (useStore.getState().countersEditing) e.preventDefault();
-    });
-    return unsub;
-  }, [navigation]);
 
   // 1.37 — Tap sur une notification de CETTE substance : flash du bloc « Sobre depuis » (même flash
   // que partout, dans la couleur de la substance), une fois l'app visible et la page arrivée.
@@ -135,12 +98,16 @@ export default function SubstanceScreen() {
     };
   }, [notifFlash]); // eslint-disable-line
 
+  // Ouverture depuis une prise (Recherche de Global) : carte du jour, une seule fois par ouverture
+  const focusDone = useRef(0);
   useEffect(() => {
-    if (focusDate && consumptions !== null) {
+    if (focusDate && consumptions !== null && focusDone.current !== openTick) {
+      focusDone.current = openTick;
       setDayDetail({ dayTimestamp: focusDate, dayKey: dayKeyOf(focusDate) });
-      navigation.setParams({ focusDate: undefined });
     }
-  }, [focusDate, consumptions, navigation]);
+  }, [focusDate, consumptions, openTick]);
+  // Nouvelle substance ouverte : fenêtres fermées
+  useEffect(() => { setDayDetail(null); setEditing(null); setLogOpen(false); setNotifOpen(false); }, [substanceId]);
 
   const markersByDay = useMemo(() => {
     if (!consumptions || !substance) return {};
@@ -158,19 +125,34 @@ export default function SubstanceScreen() {
       .sort((a, b) => a.timestamp - b.timestamp);
   }, [dayDetail, consumptions]);
 
-  if (!substance) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.notFound}>Substance introuvable</Text>
-      </View>
-    );
-  }
+  if (!substance) return { topBar: null, header: null, calendar: null, history: null, stats: null, fab: null, modals: null, reorgBar: null };
 
+  // En-tête du haut (comme l'en-tête d'écran d'avant) : flèche retour, nom, cloche de la substance
+  const topBar = (
+    <View style={styles.topBar}>
+      <TouchableOpacity
+        onPress={onBack}
+        disabled={countersEditing}
+        style={[styles.topBtn, countersEditing && styles.dimmed]}
+        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+      >
+        <MaterialCommunityIcons name="arrow-left" size={24} color={theme.colors.text} />
+      </TouchableOpacity>
+      <Text style={[styles.topTitle, countersEditing && styles.dimmed]} numberOfLines={1}>{substance.name}</Text>
+      <TouchableOpacity
+        onPress={() => setNotifOpen(true)}
+        disabled={countersEditing}
+        style={[styles.topBtn, countersEditing && styles.dimmed]}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <MaterialCommunityIcons name={hasSubNotif ? 'bell' : 'bell-outline'} size={20} color={substance.color} />
+      </TouchableOpacity>
+    </View>
+  );
 
-  return (
-    <View style={styles.container}>
-      {/* 1.46 : même disposition que le global — onglets en haut, petit compteur dessous, puis l'onglet.
-          Pendant la réorganisation des compteurs (onglet Stats), onglets et petit compteur assombris. */}
+  // 1.46 : onglets en haut, petit compteur dessous (même disposition que Global)
+  const header = (
+    <View style={styles.headerBox}>
       <View style={[styles.tabs, countersEditing && styles.dimmed]} pointerEvents={countersEditing ? 'none' : 'auto'}>
         <Tab label="Calendrier" active={activeTab === 'calendar'} onPress={() => goTab('calendar')} />
         <Tab label="Recherche" active={activeTab === 'history'} onPress={() => goTab('history')} />
@@ -185,55 +167,42 @@ export default function SubstanceScreen() {
         dimmed={countersEditing}
         noBorder={activeTab === 'stats'}
       />
+    </View>
+  );
 
-      {/* 1.48 : glisser à gauche / droite change d'onglet ; bloqué pendant la réorganisation des compteurs */}
-      <PagerView
-        ref={pagerRef}
-        style={styles.pager}
-        initialPage={0}
-        scrollEnabled={!countersEditing}
-        onPageSelected={(e) => {
-          const t = TABS[e.nativeEvent.position];
-          if (!t) return;
-          setActiveTab(t);
-          setVisited((v) => (v[t] ? v : { ...v, [t]: true }));
-        }}
-      >
-        <View key="calendar" style={styles.page}>
-          <ScrollableCalendar
-            markersByDay={markersByDay}
-            showSoberFill={true}
-            showJumpButtons={true}
-            substanceColor={substance.color}
-            onDayPress={(dayKey, dayTimestamp) => setDayDetail({ dayKey, dayTimestamp })}
-          />
-        </View>
-        <View key="history" style={styles.page}>
-          {visited.history && (
-            <HistoryList consumptions={consumptions} color={substance.color} onOpenDay={(c) => setDayDetail({ dayTimestamp: c.timestamp, dayKey: dayKeyOf(c.timestamp) })} />
-          )}
-        </View>
-        <View key="stats" style={styles.page}>
-          {visited.stats && (
-            <StatsView
-              mode="substance"
-              consumptions={consumptions || []}
-              color={substance.color}
-              navigation={navigation}
-              substanceId={substanceId}
-            />
-          )}
-        </View>
-      </PagerView>
+  const calendar = (
+    <ScrollableCalendar
+      markersByDay={markersByDay}
+      showSoberFill={true}
+      showJumpButtons={true}
+      substanceColor={substance.color}
+      onDayPress={(dayKey, dayTimestamp) => setDayDetail({ dayKey, dayTimestamp })}
+    />
+  );
+  const history = visited.history ? (
+    <HistoryList consumptions={consumptions} color={substance.color} onOpenDay={(c) => setDayDetail({ dayTimestamp: c.timestamp, dayKey: dayKeyOf(c.timestamp) })} />
+  ) : null;
+  const stats = visited.stats ? (
+    <StatsView
+      key={substanceId}
+      mode="substance"
+      consumptions={consumptions || []}
+      color={substance.color}
+      navigation={navigation}
+      substanceId={substanceId}
+    />
+  ) : null;
 
+  const fab = !countersEditing ? <FAB color={substance.color} onPress={() => setLogOpen(true)} /> : null;
+  const reorgBar = countersEditing ? <ReorgBar onDone={requestCountersExit} /> : null;
+
+  const modals = (
+    <>
       <NotifWizard
         visible={notifOpen}
         initialTarget={{ target: 'sub', key: substanceId }}
         onClose={() => setNotifOpen(false)}
       />
-
-      {!countersEditing && <FAB color={substance.color} onPress={() => setLogOpen(true)} />}
-      {countersEditing && <ReorgBar onDone={requestCountersExit} />}
 
       <LogConsumptionModal
         visible={logOpen}
@@ -293,8 +262,10 @@ export default function SubstanceScreen() {
         }}
         onClose={() => setDayDetail(null)}
       />
-    </View>
+    </>
   );
+
+  return { topBar, header, calendar, history, stats, fab, modals, reorgBar };
 }
 
 function Tab({ label, active, onPress }) {
@@ -381,8 +352,11 @@ function FAB({ color, onPress }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
-  pager: { flex: 1 },
-  page: { flex: 1 },
+  headerBox: { backgroundColor: theme.colors.background },
+  // 1.50 : en-tête du haut (remplace l'en-tête d'écran de la navigation)
+  topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: theme.spacing.md, gap: theme.spacing.md, height: 56 },
+  topBtn: { padding: 4 },
+  topTitle: { flex: 1, color: theme.colors.text, fontSize: 20, fontWeight: '300', letterSpacing: 1 },
   notFound: { color: theme.colors.textMuted, textAlign: 'center', marginTop: theme.spacing.xl },
   // 1.42 : le dernier séparateur des compteurs (avec la pilule « + ») sert de bordure basse
   hero: {

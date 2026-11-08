@@ -138,7 +138,7 @@ export function useGlobalPages({ activeTab, goTab, visited = {} }) {
       substancesById={substancesById}
       onTapConsumption={(c) => {
         const sid = c.substanceId ?? c.substance_id;
-        navigation.navigate('Substance', { substanceId: sid, focusDate: c.timestamp });
+        useStore.getState().openSubstance(sid, { focusDate: c.timestamp, from: 'global' });
       }}
     />
   ) : null;

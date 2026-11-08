@@ -214,6 +214,9 @@ export default function SubstancesPage() {
     setTimeout(() => { if (useStore.getState().reorderMode) useStore.getState().setReorderMode(false); }, 400);
   };
   useEffect(() => { bumpMounts(); }, []); // eslint-disable-line
+  // 1.50 : « Terminé » touché dans l'en-tête principal (la barre y remplace partager · points · cloche)
+  const listFinishTick = useStore((s) => s.listFinishTick);
+  useEffect(() => { if (listFinishTick) setFinishSignal((x) => x + 1); }, [listFinishTick]);
   // Plus aucune substance (dernière supprimée) : la liste disparaît → on quitte le mode
   useEffect(() => { if (reorderMode && substances.length === 0) setReorderMode(false); }, [reorderMode, substances.length]); // eslint-disable-line
   const [pendingBannerDelete, setPendingBannerDelete] = useState(null); // couleur
@@ -543,9 +546,10 @@ export default function SubstancesPage() {
           onItemLongPress={() => setReorderMode(true)}
           onDeactivate={() => setReorderMode(false)}
           finishSignal={finishSignal}
+          showBar={false}
           onReorder={handleReorder}
           onItemTap={(item) => {
-            if (item.kind === 'sub') navigation.navigate('Substance', { substanceId: item.id });
+            if (item.kind === 'sub') useStore.getState().openSubstance(item.id, { from: 'list' });
           }}
           scrollLocked={gridDragging}
           onScrollY={handleScroll}

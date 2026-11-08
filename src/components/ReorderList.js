@@ -140,6 +140,7 @@ export default function ReorderList({
   scrollRef = null,
   finishSignal = 0,        // 1.33 : change → termine la réorganisation (ordre en cours enregistré)
   scrollLocked = false,    // 1.48 : un élément fixe gère son propre glisser (grille des bandeaux)
+  showBar = true,          // 1.50 : false → la barre « Réorganisation · Terminé » est affichée ailleurs
 }) {
   const [localIds, setLocalIds] = useState(data.map((d) => d.id));
   const [pickupIdx, setPickupIdx] = useState(null);
@@ -470,7 +471,7 @@ export default function ReorderList({
         {footerComponent}
       </ScrollView>
 
-      {active && (
+      {active && showBar && (
         <View style={styles.reorderBarOverlay} pointerEvents="box-none">
           <View style={styles.reorderBar}>
             <Text style={styles.reorderBarText}>Réorganisation</Text>

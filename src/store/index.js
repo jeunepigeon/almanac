@@ -119,12 +119,19 @@ export const useStore = create((set, get) => ({
   gotoGlobalStatsTick: 0,
   requestGotoGlobalStats: () => set((s) => ({ gotoGlobalStatsTick: s.gotoGlobalStatsTick + 1 })),
   pagerLocked: false,
+  // 1.50 — Ouvrir une substance : ses pages remplacent Global à droite de la liste (MainScreen).
+  // opts : { focusDate, notifFlash, from: 'list' | 'global' }
+  subRequest: null,
+  openSubstance: (id, opts = {}) => set({ subRequest: { id, ...opts, tick: Date.now() } }),
   setPagerLocked: (locked) => set({ pagerLocked: !!locked }),
 
   // 1.32 : mode réorganisation gardé dans le store (et non dans l'état local de la page) :
   // il survit à un éventuel remontage de la page Substances (suppression, couleur, icône…)
   reorderMode: false,
   setReorderMode: (on) => set({ reorderMode: !!on }),
+  // 1.50 : « Terminé » de la barre (posée dans l'en-tête principal) → la liste enregistre et sort
+  listFinishTick: 0,
+  requestListFinish: () => set((s) => ({ listFinishTick: s.listFinishTick + 1 })),
   // Debug : nombre de montages de la page Substances depuis le lancement (1 = normal)
   substancesPageMounts: 0,
   bumpSubstancesPageMounts: () => set((s) => ({ substancesPageMounts: s.substancesPageMounts + 1 })),

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, Switch,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, Switch, Linking,
 } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -20,6 +20,10 @@ import ImportWizard from '../components/ImportWizard';
 import RestoreWizard from '../components/RestoreWizard';
 import NotifWizard from '../components/NotifWizard';
 import ShareModal from '../components/ShareModal';
+import DonationsModal from '../components/DonationsModal';
+
+// 1.50 : profil Discord du développeur (@jeunepigeon)
+const DEV_DISCORD_URL = 'https://discord.com/users/302744783523282944';
 import ToggleListModal from '../components/ToggleListModal';
 import CustomBannerNameModal from '../components/CustomBannerNameModal';
 import DayDetailModal from '../components/DayDetailModal';
@@ -59,6 +63,7 @@ export default function SettingsScreen() {
 
   const [pendingWipeStep, setPendingWipeStep] = useState(0);
   const [wipeToastVisible, setWipeToastVisible] = useState(false);
+  const [donationsOpen, setDonationsOpen] = useState(false);
 
   const [snapshotAction, setSnapshotAction] = useState(null);
   const [pendingSnapDelete, setPendingSnapDelete] = useState(null);
@@ -303,9 +308,14 @@ export default function SettingsScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {/* ===== SOUTENIR (sans titre, 1.26) ===== */}
       <View style={{ height: theme.spacing.md }} />
-      <TouchableOpacity style={styles.row} onPress={() => navigation.navigate('Donations')}>
+      <TouchableOpacity style={styles.row} onPress={() => setDonationsOpen(true)}>
         <Text style={styles.rowLabel}>Soutenir le développement</Text>
         <MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.textMuted} />
+      </TouchableOpacity>
+      {/* 1.50 : contact du développeur (Discord) */}
+      <TouchableOpacity style={styles.row} onPress={() => Linking.openURL(DEV_DISCORD_URL).catch(() => {})}>
+        <Text style={styles.rowLabel}>Contacter le développeur</Text>
+        <MaterialCommunityIcons name="open-in-new" size={18} color={theme.colors.textMuted} />
       </TouchableOpacity>
 
       {/* ===== VERROUILLAGE + NOTIFICATIONS (sans titre) ===== */}
@@ -509,6 +519,8 @@ export default function SettingsScreen() {
         <Text style={styles.creditText}>almanac — développé par pigeon</Text>
       </View>
     </ScrollView>
+    {/* monté seulement à l'ouverture : la connexion au store ne démarre qu'à ce moment, comme avant */}
+    {donationsOpen && <DonationsModal visible onClose={() => setDonationsOpen(false)} />}
 
       {/* Action sheet snapshot */}
       <ActionSheet
