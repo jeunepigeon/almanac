@@ -208,6 +208,7 @@ export default function BannerGrid({
     return { left: mix(free(copy.fx, copy.w, copy.ox), copy.frx), top: mix(free(copy.fy, copy.h, copy.oy), copy.fry) };
   }, [copy]);
   const langX = useRef(new Animated.Value(4000)).current;
+  const dimV = useRef(new Animated.Value(0)).current; // 1.57 : 1 = aperçu (les autres cases assombries)
   const drag = useRef({ id: null }).current;
 
   // Ordre affiché : drag en cours > ordre lâché en attente > ordre du parent
@@ -287,7 +288,11 @@ export default function BannerGrid({
     Animated.timing(langX, { toValue: on ? LANG_VISIBLE - LANG : -LANG - 4, duration: 180, easing: EASE, useNativeDriver: false }).start();
   };
   // Bascule possible ? (au moins 2 bandeaux ; jamais en tenant la case large en 2 colonnes)
-  const canToggle = () => drag.n >= 2 && !(drag.cols === 2 && drag.g0.wide);
+  // 1.57 : aussi en tenant la grande case (nombre impair en 2 colonnes) — l'aperçu en pointillés
+  // montre clairement le résultat
+  // Cases de la future disposition (aperçu) : 4 au plus en 1 colonne, 8 au plus en 2 colonnes
+  const previewSlots = () => Array.from({ length: Math.min(drag.n, drag.cols === 1 ? 8 : 4) }, (_, i) => geom(i, drag.n, drag.cols === 1 ? 2 : 1, W));
+  const canToggle = () => drag.n >= 2;
   // Position du doigt → centre de la copie (bloqué aux bords), coin haut-gauche logique
   const placeCopy = (f, gH) => {
     const cg = drag.cg;
@@ -300,7 +305,7 @@ export default function BannerGrid({
   const cleanup = () => {
     drag.id = null;
     setPickId(null); setArr(null); setStage(0); setBar(null);
-    showLang(false); onLangHover?.(false);
+    showLang(false); onLangHover?.(false); dimV.setValue(0); onSlots?.(null);
     onDragChange?.(false); onDimChange?.(false);
   };
 
@@ -402,8 +407,12 @@ export default function BannerGrid({
         st = inLang ? 1 : 0;
         if (st !== drag.stage) {
           drag.stage = st;
-          setStage(st);
+          // 1.57 : aperçu IMMÉDIAT (pointillés, assombrissement) — valeurs animées posées directement,
+          // sans attendre un nouveau rendu de la liste
+          dimV.setValue(st === 1 ? 1 : 0);
+          onSlots?.(st === 1 ? previewSlots() : null);
           onLangHover?.(st === 1); // 1.56 : la languette remplace ses rayons par un liseré
+          setStage(st);
           if (st === 1) {
             haptics.medium();
             setArr(drag.base); drag.key = drag.base.join('|');
@@ -461,7 +470,7 @@ export default function BannerGrid({
         const nextCols = drag.cols === 1 ? 2 : 1;
         const ids = drag.base;
         // 1.54 / 1.55 : pointillés ET assombrissement retirés dès le lâcher (aperçu = survol seulement)
-        onSlots?.(null); onDimChange?.(false); setStage(0); showLang(false); onLangHover?.(false);
+        dimV.setValue(0); onSlots?.(null); onDimChange?.(false); setStage(0); showLang(false); onLangHover?.(false);
         // 1.53 : lâché trop bas dans la liste → elle remonte d'abord en haut (la copie s'efface sur la
         // languette, l'aperçu en pointillés reste), puis la bascule se joue sous les yeux
         const wait = beforeToggle ? beforeToggle() : 0;
@@ -498,15 +507,8 @@ export default function BannerGrid({
   useEffect(() => { if (!active && drag.id) { moveTo(drag.id, drag.g0, 0, true); cleanup(); } }, [active]); // eslint-disable-line
 
   const pickedItem = pickId ? byId.current[pickId] : null;
-  const dimOthers = stage >= 1;
   // 1.52 : aperçu de la future disposition fourni au parent (affiché en haut de l'écran, visible même
   // quand on est descendu dans la liste)
-  useEffect(() => {
-    if (!onSlots) return;
-    if (stage === 1 && drag.id) {
-      onSlots(Array.from({ length: Math.min(drag.n, drag.cols === 1 ? 8 : 4) }, (_, i) => geom(i, drag.n, drag.cols === 1 ? 2 : 1, W)));
-    } else onSlots(null);
-  }, [stage, pickId]); // eslint-disable-line
   const pillTop = useMemo(() => Animated.subtract(heightAnim, SPACER_HEIGHT + PILL_HIT / 2), [heightAnim]);
 
   return (
@@ -551,7 +553,7 @@ export default function BannerGrid({
             col2={!g.wide && g.col === 0}
             active={active}
             hidden={id === pickId}
-            dimmed={dimOthers && id !== pickId}
+            dimmed={false}
             isWiggling={active && !pickId}
             phase={i % 3}
             renderBanner={renderBanner}
@@ -561,6 +563,9 @@ export default function BannerGrid({
           />
         );
       })}
+      {/* 1.57 : assombrissement de l'aperçu = un seul voile sur la grille (sous la copie et les
+          pointillés), posé sans nouveau rendu */}
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.veil, { opacity: dimV.interpolate({ inputRange: [0, 1], outputRange: [0, 1 - DIM] }) }]} />
       {/* Aperçu de la future disposition (survol de la languette) : cases en pointillés */}
       {!onSlots && stage === 1 && drag.id && Array.from({ length: Math.min(drag.n, drag.cols === 1 ? 8 : 4) }, (_, i) => geom(i, drag.n, drag.cols === 1 ? 2 : 1, W)).map((gq, i) => (
         <View key={`slot-${i}`} pointerEvents="none" style={[styles.slot, { left: gq.x + 3, top: gq.y + 3, width: gq.w - 6, height: gq.h - 6 }]} />
@@ -591,7 +596,7 @@ export default function BannerGrid({
       </Animated.View>}
 
       {/* Pilule « + » sur la dernière ligne : suit la grille pendant ses animations */}
-      {showAdd && <Animated.View pointerEvents="box-none" style={[styles.pillWrap, { top: pillTop }, dimOthers && { opacity: DIM }]}>
+      {showAdd && <Animated.View pointerEvents="box-none" style={[styles.pillWrap, { top: pillTop, opacity: dimV.interpolate({ inputRange: [0, 1], outputRange: [1, DIM] }) }]}>
         {/* 1.51 : zone de toucher réelle (et non plus un hitSlop qui débordait sur les cases) */}
         <TouchableOpacity
           style={styles.pillHit}
@@ -620,6 +625,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#9A9A9A', borderRadius: 8,
     backgroundColor: 'rgba(14,14,14,0.85)', alignItems: 'center', justifyContent: 'center',
   },
+  veil: { backgroundColor: theme.colors.background, zIndex: 4, elevation: 4 },
   slot: {
     position: 'absolute', zIndex: 5, elevation: 5,
     borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#9A9A9A', borderRadius: 8,

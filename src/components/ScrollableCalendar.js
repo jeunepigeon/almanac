@@ -613,7 +613,9 @@ export default function ScrollableCalendar({
         initialNumToRender={3}
         maxToRenderPerBatch={4}
         windowSize={5}
-        removeClippedSubviews
+        // 1.57 : PAS de removeClippedSubviews — quand la page d'une substance glisse (retour), Android
+        // croyait les mois hors écran et les retirait / remettait → le calendrier clignotait
+        removeClippedSubviews={false}
         contentContainerStyle={{ paddingBottom: 80 }}
         showsVerticalScrollIndicator={false}
         bounces={true}

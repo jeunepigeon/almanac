@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, Pressable, Alert, Animated, AppState,
 } from 'react-native';
@@ -116,13 +116,16 @@ export default function SubstancesPage() {
   const bannerColumns = useStore((s) => s.bannerColumns);
   const setBannerColumns = useStore((s) => s.setBannerColumns);
   const [gridDragging, setGridDragging] = useState(false);
-  const [bannerDim, setBannerDim] = useState(false);
+  // 1.57 : aperçu de colonnes sans re-rendu de la liste : voile animé sur les substances + calque des
+  // pointillés qui se met à jour seul
+  const rowsDim = useRef(new Animated.Value(0)).current;
+  const rowsDimTop = useRef(new Animated.Value(0)).current;
+  const slotsRef = useRef(null);
   const gridHeightAnim = useRef(new Animated.Value(0)).current;
   // 1.51 : languette de bascule 1 ↔ 2 colonnes FIXE à l'écran (dessinée ici, au-dessus de la liste)
   const [langActive, setLangActive] = useState(false);
   const [langHover, setLangHover] = useState(false);
   const [langCols, setLangCols] = useState(1);
-  const [gridSlots, setGridSlots] = useState(null); // 1.52 : pointillés de la bascule, en haut de l'écran
   const [catOrder, setCatOrder] = useState(null);   // 1.52 : ordre figé du « + » tant qu'il est ouvert
   const notifRules = useStore((s) => s.notifRules);
   const [bannerNotif, setBannerNotif] = useState(null); // { target: 'all' | 'color', key } — cloche d'un bandeau
@@ -328,6 +331,8 @@ export default function SubstancesPage() {
   ], [substances, gridHeightAnim]);
 
   const getItemHeight = (item) => (item.kind === 'grid' ? gridH : ROW_HEIGHT);
+  const gridHRef = useRef(gridH);
+  gridHRef.current = gridH;
 
   const scrollRef = useRef(null);
   const scrollYRef = useRef(0);
@@ -518,7 +523,10 @@ export default function SubstancesPage() {
           onReorder={saveBannerOrder}
           onToggleColumns={(cols, ids) => { saveBannerOrder(ids); setBannerColumns(cols); }}
           onDragChange={setGridDragging}
-          onDimChange={setBannerDim}
+          onDimChange={(on) => {
+            if (on) rowsDimTop.setValue(Math.max(0, gridHRef.current - scrollYRef.current));
+            rowsDim.setValue(on ? 1 : 0);
+          }}
           onAddPress={() => { setCatOrder(bannerInfo.categories.map((c) => c.color)); setAddBannerOpen(true); }}
           showAdd={substances.length >= 2}
           externalLang
@@ -526,7 +534,7 @@ export default function SubstancesPage() {
           onLangHover={setLangHover}
           getScrollY={() => scrollYRef.current}
           onLangCols={setLangCols}
-          onSlots={setGridSlots}
+          onSlots={(sl) => slotsRef.current?.set(sl)}
           beforeToggle={() => {
             // 1.53 : plus de la moitié des bandeaux cachée → la liste remonte d'abord en haut
             if (scrollYRef.current <= gridH / 2) return 0;
@@ -537,7 +545,7 @@ export default function SubstancesPage() {
       );
     }
     return (
-      <View style={bannerDim && styles.dimmed}>
+      <View>
       <SubstanceRow
         substance={item.sub}
         lastTimestamp={lastTimestamps[item.id]}
@@ -582,9 +590,11 @@ export default function SubstancesPage() {
       )}
 
       {/* 1.52 : aperçu en pointillés en haut de l'écran (visible même en bas de la liste) */}
-      {gridSlots && gridSlots.map((gq, i) => (
-        <View key={`slot-${i}`} pointerEvents="none" style={[styles.slot, { left: gq.x + 3, top: gq.y + 3, width: gq.w - 6, height: gq.h - 6 }]} />
-      ))}
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.rowsVeil, { top: rowsDimTop, opacity: rowsDim.interpolate({ inputRange: [0, 1], outputRange: [0, 1 - theme.dim] }) }]}
+      />
+      <SlotsLayer ref={slotsRef} />
       {/* 1.55 : languette fixe, blanche, visible dès la réorganisation ; rayons quand un bandeau est tenu
           1.56 : bord gauche ; liseré au survol aimanté */}
       <Languette visible={!!reorderMode && bannerItems.length >= 2} active={langActive} hover={langHover} cols={langCols} />
@@ -825,6 +835,7 @@ export default function SubstancesPage() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   dimmed: { opacity: theme.dim },
+  rowsVeil: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: theme.colors.background, zIndex: 14, elevation: 14 },
   slot: {
     position: 'absolute', zIndex: 15, elevation: 15,
     borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#9A9A9A', borderRadius: 8,
@@ -912,4 +923,15 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 }, elevation: 6,
   },
+});
+
+// 1.57 — Calque des pointillés de l'aperçu de colonnes (en haut de l'écran) : il se met à jour seul,
+// la liste n'est pas redessinée.
+const SlotsLayer = forwardRef(function SlotsLayer(_, ref) {
+  const [slots, setSlots] = useState(null);
+  useImperativeHandle(ref, () => ({ set: setSlots }), []);
+  if (!slots) return null;
+  return slots.map((gq, i) => (
+    <View key={`slot-${i}`} pointerEvents="none" style={[styles.slot, { left: gq.x + 3, top: gq.y + 3, width: gq.w - 6, height: gq.h - 6 }]} />
+  ));
 });
