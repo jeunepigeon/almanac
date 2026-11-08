@@ -391,8 +391,8 @@ export default function BannerGrid({
       setCopyType({ L: g.w / g.s, compact: !g.wide });
       haptics.medium();
       setPickId(id); setArr(base); setStage(0); setBar(null);
+      if (canToggle()) showLang(true); // 1.61 : la languette d'abord (animation lancée sans attendre)
       onDragChange?.(true);
-      if (canToggle()) showLang(true);
     },
     move: (e) => {
       if (!drag.id) return;

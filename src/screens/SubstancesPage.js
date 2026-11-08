@@ -123,8 +123,8 @@ export default function SubstancesPage() {
   const slotsRef = useRef(null);
   const gridHeightAnim = useRef(new Animated.Value(0)).current;
   // 1.51 : languette de bascule 1 ↔ 2 colonnes FIXE à l'écran (dessinée ici, au-dessus de la liste)
-  const [langActive, setLangActive] = useState(false);
-  const [langHover, setLangHover] = useState(false);
+  const langRef = useRef(null); // 1.61 : languette pilotée directement (sans re-rendu de la liste)
+  const gridDragRef = useRef(false);
   const [langCols, setLangCols] = useState(1);
   const [catOrder, setCatOrder] = useState(null);   // 1.52 : ordre figé du « + » tant qu'il est ouvert
   const notifRules = useStore((s) => s.notifRules);
@@ -522,7 +522,12 @@ export default function SubstancesPage() {
           onEnterReorder={() => setReorderMode(true)}
           onReorder={saveBannerOrder}
           onToggleColumns={(cols, ids) => { saveBannerOrder(ids); setBannerColumns(cols); }}
-          onDragChange={setGridDragging}
+          // 1.61 : verrou du défilement posé une image plus tard → les animations de la prise partent d'abord
+          onDragChange={(on) => {
+            gridDragRef.current = on;
+            if (on) requestAnimationFrame(() => { if (gridDragRef.current) setGridDragging(true); });
+            else setGridDragging(false);
+          }}
           onDimChange={(on) => {
             if (on) rowsDimTop.setValue(Math.max(0, gridHRef.current - scrollYRef.current));
             rowsDim.setValue(on ? 1 : 0);
@@ -530,8 +535,8 @@ export default function SubstancesPage() {
           onAddPress={() => { setCatOrder(bannerInfo.categories.map((c) => c.color)); setAddBannerOpen(true); }}
           showAdd={substances.length >= 2}
           externalLang
-          onLangActive={setLangActive}
-          onLangHover={setLangHover}
+          onLangActive={(on) => langRef.current?.setActive(on)}
+          onLangHover={(on) => langRef.current?.setHover(on)}
           getScrollY={() => scrollYRef.current}
           onLangCols={setLangCols}
           onSlots={(sl) => slotsRef.current?.set(sl)}
@@ -597,7 +602,7 @@ export default function SubstancesPage() {
       <SlotsLayer ref={slotsRef} />
       {/* 1.55 : languette fixe, blanche, visible dès la réorganisation ; rayons quand un bandeau est tenu
           1.56 : bord gauche ; liseré au survol aimanté */}
-      <Languette visible={!!reorderMode && bannerItems.length >= 2} active={langActive} hover={langHover} cols={langCols} />
+      <Languette ref={langRef} visible={!!reorderMode && bannerItems.length >= 2} cols={langCols} />
 
       {!reorderMode && <FAB onPress={() => setCreateOpen(true)} />}
 

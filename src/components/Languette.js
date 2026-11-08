@@ -6,7 +6,7 @@
 //    détaché les remplace.
 //  - 1.60 : transition « tracé » (350 ms) : les rayons s'effacent pendant que le liseré se dessine, du
 //    haut vers le bas (la moitié visible) ; à l'envers quand le bandeau quitte la languette.
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo, forwardRef, useImperativeHandle } from 'react';
 import { View, StyleSheet, Animated, Easing } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import Reanimated, { useSharedValue, useAnimatedProps, withTiming, Easing as REasing } from 'react-native-reanimated';
@@ -28,33 +28,44 @@ const HALF_C = Math.PI * RING_R; // demi-cercle visible (l'autre moitié est hor
 const AnimatedCircle = Reanimated.createAnimatedComponent(Circle);
 const BOX = SIZE + 2 * (RAY_GAP + RAY_LEN) + 4;
 
-export default function Languette({ visible, active, hover = false, cols }) {
+// 1.61 : mise en avant (bandeau tenu) et survol aimanté pilotés DIRECTEMENT par la grille (ref) :
+// l'animation part tout de suite, sans attendre un nouveau rendu de la liste.
+const Languette = forwardRef(function Languette({ visible, cols }, ref) {
   const [W, setW] = useState(0);
   const x = useRef(new Animated.Value(1)).current;      // 0 = en place, 1 = sortie à droite
   const accent = useRef(new Animated.Value(0)).current; // 0 = repos, 1 = bandeau tenu
   const spin = useRef(new Animated.Value(0)).current;
   const hov = useRef(new Animated.Value(0)).current;    // 1 = survol aimanté
   const trace = useSharedValue(0); // 0 = rien, 1 = liseré entièrement dessiné
-  useEffect(() => {
-    Animated.timing(hov, { toValue: hover ? 1 : 0, duration: TRACE_MS, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }).start();
-    trace.value = withTiming(hover ? 1 : 0, { duration: TRACE_MS, easing: REasing.inOut(REasing.cubic) });
-  }, [hover, hov]); // eslint-disable-line
+  const loopRef = useRef(null);
+  const state = useRef({ active: false, hover: false });
+  useImperativeHandle(ref, () => ({
+    setHover: (on) => {
+      if (state.current.hover === on) return;
+      state.current.hover = on;
+      Animated.timing(hov, { toValue: on ? 1 : 0, duration: TRACE_MS, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }).start();
+      trace.value = withTiming(on ? 1 : 0, { duration: TRACE_MS, easing: REasing.inOut(REasing.cubic) });
+    },
+    setActive: (on) => {
+      if (state.current.active === on) return;
+      state.current.active = on;
+      Animated.timing(accent, { toValue: on ? 1 : 0, duration: 160, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+      loopRef.current?.stop(); loopRef.current = null;
+      if (on) {
+        spin.setValue(0);
+        loopRef.current = Animated.loop(Animated.timing(spin, { toValue: 1, duration: TURN_MS, easing: Easing.linear, useNativeDriver: true }));
+        loopRef.current.start();
+      }
+    },
+  }), []); // eslint-disable-line
+  useEffect(() => () => loopRef.current?.stop(), []);
   // Le trait part du haut et descend le long de la moitié visible
   const ringProps = useAnimatedProps(() => ({ strokeDashoffset: HALF_C * (1 - trace.value) }));
-  const raysOpacity = Animated.multiply(accent, Animated.subtract(1, hov));
+  const raysOpacity = useMemo(() => Animated.multiply(accent, Animated.subtract(1, hov)), [accent, hov]);
 
   useEffect(() => {
     Animated.timing(x, { toValue: visible ? 0 : 1, duration: 180, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
   }, [visible, x]);
-
-  useEffect(() => {
-    Animated.timing(accent, { toValue: active ? 1 : 0, duration: 160, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
-    if (!active) { spin.stopAnimation(); return undefined; }
-    spin.setValue(0);
-    const loop = Animated.loop(Animated.timing(spin, { toValue: 1, duration: TURN_MS, easing: Easing.linear, useNativeDriver: true }));
-    loop.start();
-    return () => loop.stop();
-  }, [active, accent, spin]);
 
   const scale = accent.interpolate({ inputRange: [0, 1], outputRange: [1, 1.15] });
   const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
@@ -98,7 +109,9 @@ export default function Languette({ visible, active, hover = false, cols }) {
       )}
     </View>
   );
-}
+});
+
+export default Languette;
 
 const styles = StyleSheet.create({
   wrap: { position: 'absolute', width: BOX, height: BOX, alignItems: 'center', justifyContent: 'center', zIndex: 20, elevation: 20 },
