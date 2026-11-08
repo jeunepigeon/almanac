@@ -48,10 +48,10 @@ const PICKUP_SCALE = 1.06;
 const PICKUP_OPACITY = 0.92;
 const BOUND_PX = 6;
 const DIM = theme.dim;
-const LANG = 40;                   // languette (cercle), à moitié sortie du bord droit
+const LANG = 32;                   // languette (cercle), à moitié sortie du bord droit
 const LANG_TOP = 44;               // sous la barre « Réorganisation » (posée par-dessus le haut de la liste)
-const LANG_VISIBLE = 22;
-const LANG_ZONE_X = 56;            // zone de survol de la languette (depuis le bord droit)
+const LANG_VISIBLE = 16;           // 1.56 : à GAUCHE, moitié visible
+const LANG_ZONE_X = 56;            // zone de survol de la languette (depuis le bord GAUCHE, 1.56)
 const LANG_ZONE_PAD = 14;
 const EASE = Easing.out(Easing.cubic);
 const EASE_SOFT = Easing.inOut(Easing.cubic); // 1.49 : glissements pendant le fondu (pilule comprise)
@@ -143,6 +143,7 @@ export default function BannerGrid({
   showAdd = true,       // 1.51 : pilule « + » (cachée en dessous de 2 substances)
   externalLang = false, // 1.55 : languette dessinée par le parent (fixe à l'écran, visible en réorganisation)
   onLangActive = null,  // (bool) → bandeau tenu, bascule possible : la languette est mise en avant
+  onLangHover = null,   // (bool) → survol aimanté de la languette
   getScrollY = () => 0, // défilement de la liste (la languette est fixe à l'écran, pas dans la grille)
   onLangCols = null,    // (cols) → icône de la languette
   onSlots = null,       // 1.52 : cases en pointillés dessinées par le parent, en haut de l'écran
@@ -282,8 +283,8 @@ export default function BannerGrid({
   };
   const showLang = (on) => {
     if (externalLang) { onLangActive?.(on); return; }
-    if (on) langX.setValue(W + 4);
-    Animated.timing(langX, { toValue: on ? W - LANG_VISIBLE : W + 4, duration: 180, easing: EASE, useNativeDriver: false }).start();
+    if (on) langX.setValue(-LANG - 4);
+    Animated.timing(langX, { toValue: on ? LANG_VISIBLE - LANG : -LANG - 4, duration: 180, easing: EASE, useNativeDriver: false }).start();
   };
   // Bascule possible ? (au moins 2 bandeaux ; jamais en tenant la case large en 2 colonnes)
   const canToggle = () => drag.n >= 2 && !(drag.cols === 2 && drag.g0.wide);
@@ -299,7 +300,7 @@ export default function BannerGrid({
   const cleanup = () => {
     drag.id = null;
     setPickId(null); setArr(null); setStage(0); setBar(null);
-    showLang(false);
+    showLang(false); onLangHover?.(false);
     onDragChange?.(false); onDimChange?.(false);
   };
 
@@ -344,7 +345,7 @@ export default function BannerGrid({
     const a = anims.current[id];
     if (a) {
       const k = LANG_COPY_SCALE; const cg = drag.cg;
-      const lx = W - LANG_VISIBLE / 2; const ly = LANG_TOP + getScrollY() + LANG / 2;
+      const lx = LANG_VISIBLE / 2; const ly = LANG_TOP + getScrollY() + LANG / 2;
       a.x.setValue(lx - (cg.w * k) / 2); a.y.setValue(ly - (cg.h * k) / 2);
       a.w.setValue(cg.w * k); a.h.setValue(cg.h * k); a.s.setValue(cg.s * k);
       targets.current[id] = null;
@@ -397,18 +398,19 @@ export default function BannerGrid({
         // Survol → léger aimant (la copie rétrécit et se colle), vibration, aperçu de la future
         // disposition en pointillés, le reste assombri ; quitter la languette → tout revient.
         const lt = LANG_TOP + getScrollY(); // languette fixe à l'écran → en coordonnées de la grille
-        const inLang = f.x > W - LANG_ZONE_X && f.y > lt - LANG_ZONE_PAD && f.y < lt + LANG + LANG_ZONE_PAD;
+        const inLang = f.x < LANG_ZONE_X && f.y > lt - LANG_ZONE_PAD && f.y < lt + LANG + LANG_ZONE_PAD;
         st = inLang ? 1 : 0;
         if (st !== drag.stage) {
           drag.stage = st;
           setStage(st);
+          onLangHover?.(st === 1); // 1.56 : la languette remplace ses rayons par un liseré
           if (st === 1) {
             haptics.medium();
             setArr(drag.base); drag.key = drag.base.join('|');
             setBar(null); drag.bound = null;
             onDimChange?.(true);
             const cg = drag.cg;
-            copy.frx.setValue(W - LANG_VISIBLE / 2 - cg.w / 2);
+            copy.frx.setValue(LANG_VISIBLE / 2 - cg.w / 2);
             copy.fry.setValue(LANG_TOP + getScrollY() + LANG / 2 - cg.h / 2);
             Animated.parallel([
               Animated.timing(copy.m, { toValue: 1, duration: SHIFT_MS, easing: EASE, useNativeDriver: false }),
@@ -459,7 +461,7 @@ export default function BannerGrid({
         const nextCols = drag.cols === 1 ? 2 : 1;
         const ids = drag.base;
         // 1.54 / 1.55 : pointillés ET assombrissement retirés dès le lâcher (aperçu = survol seulement)
-        onSlots?.(null); onDimChange?.(false); setStage(0); showLang(false);
+        onSlots?.(null); onDimChange?.(false); setStage(0); showLang(false); onLangHover?.(false);
         // 1.53 : lâché trop bas dans la liste → elle remonte d'abord en haut (la copie s'efface sur la
         // languette, l'aperçu en pointillés reste), puis la bascule se joue sous les yeux
         const wait = beforeToggle ? beforeToggle() : 0;
@@ -585,7 +587,7 @@ export default function BannerGrid({
 
       {/* Languette de bascule (sort du bord gauche à la saisie) */}
       {!externalLang && <Animated.View pointerEvents="none" style={[styles.lang, { left: langX }]}>
-        <MaterialCommunityIcons name={cols === 1 ? 'view-grid-outline' : 'view-agenda-outline'} size={18} color={theme.colors.text} />
+        <MaterialCommunityIcons name={cols === 1 ? 'view-grid-outline' : 'view-agenda-outline'} size={14} color={theme.colors.text} />
       </Animated.View>}
 
       {/* Pilule « + » sur la dernière ligne : suit la grille pendant ses animations */}
@@ -626,7 +628,7 @@ const styles = StyleSheet.create({
   lang: {
     position: 'absolute', top: LANG_TOP, width: LANG, height: LANG, borderRadius: LANG / 2,
     backgroundColor: theme.colors.surfaceAlt, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.textFaint,
-    alignItems: 'flex-start', justifyContent: 'center', paddingLeft: 3, zIndex: 20, elevation: 20,
+    alignItems: 'flex-end', justifyContent: 'center', paddingRight: 1, zIndex: 20, elevation: 20,
   },
   pillWrap: { position: 'absolute', left: 0, right: 0, height: PILL_HIT, alignItems: 'center', zIndex: 12, elevation: 12 },
   pillHit: { width: 64, height: PILL_HIT, alignItems: 'center', justifyContent: 'center' },

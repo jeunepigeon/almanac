@@ -120,6 +120,7 @@ export default function SubstancesPage() {
   const gridHeightAnim = useRef(new Animated.Value(0)).current;
   // 1.51 : languette de bascule 1 ↔ 2 colonnes FIXE à l'écran (dessinée ici, au-dessus de la liste)
   const [langActive, setLangActive] = useState(false);
+  const [langHover, setLangHover] = useState(false);
   const [langCols, setLangCols] = useState(1);
   const [gridSlots, setGridSlots] = useState(null); // 1.52 : pointillés de la bascule, en haut de l'écran
   const [catOrder, setCatOrder] = useState(null);   // 1.52 : ordre figé du « + » tant qu'il est ouvert
@@ -522,6 +523,7 @@ export default function SubstancesPage() {
           showAdd={substances.length >= 2}
           externalLang
           onLangActive={setLangActive}
+          onLangHover={setLangHover}
           getScrollY={() => scrollYRef.current}
           onLangCols={setLangCols}
           onSlots={setGridSlots}
@@ -583,8 +585,9 @@ export default function SubstancesPage() {
       {gridSlots && gridSlots.map((gq, i) => (
         <View key={`slot-${i}`} pointerEvents="none" style={[styles.slot, { left: gq.x + 3, top: gq.y + 3, width: gq.w - 6, height: gq.h - 6 }]} />
       ))}
-      {/* 1.55 : languette fixe, blanche, visible dès la réorganisation ; rayons quand un bandeau est tenu */}
-      <Languette visible={!!reorderMode && bannerItems.length >= 2} active={langActive} cols={langCols} />
+      {/* 1.55 : languette fixe, blanche, visible dès la réorganisation ; rayons quand un bandeau est tenu
+          1.56 : bord gauche ; liseré au survol aimanté */}
+      <Languette visible={!!reorderMode && bannerItems.length >= 2} active={langActive} hover={langHover} cols={langCols} />
 
       {!reorderMode && <FAB onPress={() => setCreateOpen(true)} />}
 

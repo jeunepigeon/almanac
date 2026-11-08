@@ -23,13 +23,16 @@ const SLIDE_EASE = Easing.out(Easing.cubic);
 
 // sub : { id, focusDate, notifFlash, tick } ; headerH : hauteur de l'en-tête principal (recouvert)
 // onOpened : arrivée terminée ; onClosed : départ terminé (le parent retire la surcouche)
-export default function SubstanceOverlay({ sub, headerH, onOpened, onClosed }) {
+export default function SubstanceOverlay({ sub, headerH, tabsH0 = 96, onOpened, onClosed }) {
   const { width: winW } = useWindowDimensions();
   const pagerRef = useRef(null);
   const [page, setPage] = useState(0);
   const pageRef = useRef(0);
   const [visited, setVisited] = useState({ calendar: true });
-  const [tabsH, setTabsH] = useState(96);
+  // 1.56 : hauteur des onglets connue d'avance (mesurée sur Global) → le calendrier ne se décale plus
+  const [tabsH, setTabsH] = useState(tabsH0);
+  // 1.56 : pendant les déplacements, la page est dessinée comme une image (texture) → glisse d'un bloc
+  const [hw, setHw] = useState(true);
   const pagerLocked = useStore((s) => s.pagerLocked);
 
   // Position horizontale de la surcouche (0 = affichée, winW = sortie à droite)
@@ -55,7 +58,7 @@ export default function SubstanceOverlay({ sub, headerH, onOpened, onClosed }) {
       ox.value = winW;
       // 1.55 : la page est construite (1re image) AVANT de bouger → pas de saccade à l'arrivée
       requestAnimationFrame(() => {
-        ox.value = withTiming(0, { duration: SLIDE_MS, easing: SLIDE_EASE }, (fin) => { if (fin && onOpened) runOnJS(onOpened)(); });
+        ox.value = withTiming(0, { duration: SLIDE_MS, easing: SLIDE_EASE }, (fin) => { if (fin) runOnJS(opened)(); });
       });
     } else if (pageRef.current !== 0) {
       pagerRef.current?.setPageWithoutAnimation(0);
@@ -63,12 +66,18 @@ export default function SubstanceOverlay({ sub, headerH, onOpened, onClosed }) {
     return () => clearTimeout(t);
   }, [sub?.tick]); // eslint-disable-line
 
+  const opened = () => { setHw(false); onOpened?.(); };
   const close = useCallback(() => {
     if (closing.current) return;
     closing.current = true;
+    // texture seulement si la page est encore en place (retour) ; au glisser elle bouge déjà
+    if (ox.value < 1) setHw(true);
     // 1.55 : aucune mise à jour pendant le départ, sauf si la réorganisation des compteurs est ouverte
     if (useStore.getState().countersEditing) useStore.getState().requestCountersExit();
-    ox.value = withTiming(winW, { duration: SLIDE_MS, easing: SLIDE_EASE }, (fin) => { if (fin) runOnJS(onClosed)(); });
+    // 1.56 : départ une image plus tard, une fois la page préparée en texture (plus d'à-coup au retour)
+    requestAnimationFrame(() => {
+      ox.value = withTiming(winW, { duration: SLIDE_MS, easing: SLIDE_EASE }, (fin) => { if (fin) runOnJS(onClosed)(); });
+    });
   }, [winW, onClosed]); // eslint-disable-line
 
   // Retour Android (enregistré après celui de l'écran principal → prioritaire)
@@ -106,7 +115,7 @@ export default function SubstanceOverlay({ sub, headerH, onOpened, onClosed }) {
   if (!s.topBar) return null;
 
   return (
-    <Reanimated.View style={[styles.overlay, slideStyle]}>
+    <Reanimated.View style={[styles.overlay, slideStyle]} renderToHardwareTextureAndroid={hw}>
       <GestureDetector gesture={swipe}>
         <View style={styles.fill} collapsable={false}>
           {/* En-tête (flèche, nom, cloche) à la place de l'en-tête principal */}

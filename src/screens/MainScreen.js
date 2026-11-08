@@ -274,7 +274,7 @@ export default function MainScreen() {
       {g.modals}
       {/* 1.54 : substance en surcouche (la liste reste immobile dessous) */}
       {sub && (
-        <SubstanceOverlay sub={sub} headerH={mainHeaderH} onOpened={onSubOpened} onClosed={onSubClosed} />
+        <SubstanceOverlay sub={sub} headerH={mainHeaderH} tabsH0={tabsH} onOpened={onSubOpened} onClosed={onSubClosed} />
       )}
       <ShareModal visible={shareOpen} onClose={() => setShareOpen(false)} />
       <NotifWizard visible={notifOpen} onClose={() => setNotifOpen(false)} />
