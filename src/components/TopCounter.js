@@ -18,7 +18,8 @@ export default function TopCounter({
   // 8 px : le logo ne bouge pas à chaque seconde du compteur.
   const [wrapW, setWrapW] = useState(0);
   const [textW, setTextW] = useState(0);
-  const iconLeft = wrapW && textW ? Math.max(4, Math.round((wrapW - textW) / 4 - ICON / 2)) : theme.spacing.md;
+  // 1.55 : 8 px plus à gauche que le centre de la marge
+  const iconLeft = wrapW && textW ? Math.max(4, Math.round((wrapW - textW) / 4 - ICON / 2) - 8) : theme.spacing.md;
   return (
     <Animated.View
       onLayout={withIcon ? (e) => { const w = Math.round(e.nativeEvent.layout.width); if (w !== wrapW) setWrapW(w); } : undefined}

@@ -310,6 +310,16 @@ export default function ScrollableCalendar({
   // + re-calage dès que la taille du contenu change tant que l'utilisateur n'a pas touché.
   const userTouchedRef = useRef(false);
   const navigatedRef = useRef(false); // true dès la 1re navigation (chevrons, dropdown, prise)
+  // 1.55 : la liste reste invisible tant qu'elle n'est pas calée sur le mois courant → plus de
+  // défilement visible vers le bas à l'ouverture (page d'une substance)
+  const [placed, setPlaced] = useState(false);
+  const placedRef = useRef(false);
+  const markPlaced = useCallback(() => {
+    if (placedRef.current) return;
+    placedRef.current = true;
+    requestAnimationFrame(() => setPlaced(true));
+  }, []);
+  useEffect(() => { const t = setTimeout(markPlaced, 350); return () => clearTimeout(t); }, [markPlaced]);
   const snapToPresent = useCallback(() => {
     // Uniquement à l'ouverture : sinon un saut lointain (qui charge de nouveaux mois et change la
     // taille du contenu) déclenchait ce recalage et ramenait au présent.
@@ -318,7 +328,8 @@ export default function ScrollableCalendar({
       flatListRef.current?.scrollToOffset({ offset: currentIdx * MONTH_ITEM_HEIGHT, animated: false });
       setVisibleIdx(currentIdx);
     } catch {}
-  }, [currentIdx]);
+    markPlaced();
+  }, [currentIdx, markPlaced]);
 
   // --- Fin de scroll programmé : détectée quand les events onScroll s'arrêtent (≈70ms de silence).
   // Plus réactif que onMomentumScrollEnd (pas toujours émis sur un scroll programmé Android).
@@ -608,6 +619,8 @@ export default function ScrollableCalendar({
         bounces={true}
         overScrollMode="always"
         initialScrollIndex={currentIdx}
+        contentOffset={{ x: 0, y: currentIdx * MONTH_ITEM_HEIGHT }}
+        style={!placed && { opacity: 0 }}
         onContentSizeChange={snapToPresent}
         onLayout={snapToPresent}
         onScrollBeginDrag={() => { userTouchedRef.current = true; clearCursor(); }}

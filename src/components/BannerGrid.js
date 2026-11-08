@@ -141,7 +141,8 @@ export default function BannerGrid({
   onDimChange,          // (bool) → assombrit les substances (cadre de bascule affiché)
   onAddPress,           // pilule « + »
   showAdd = true,       // 1.51 : pilule « + » (cachée en dessous de 2 substances)
-  langAnim = null,      // 1.51 : position de la languette (dessinée par le parent, fixe à l'écran)
+  externalLang = false, // 1.55 : languette dessinée par le parent (fixe à l'écran, visible en réorganisation)
+  onLangActive = null,  // (bool) → bandeau tenu, bascule possible : la languette est mise en avant
   getScrollY = () => 0, // défilement de la liste (la languette est fixe à l'écran, pas dans la grille)
   onLangCols = null,    // (cols) → icône de la languette
   onSlots = null,       // 1.52 : cases en pointillés dessinées par le parent, en haut de l'écran
@@ -205,8 +206,7 @@ export default function BannerGrid({
     const mix = (a, b) => Animated.add(Animated.multiply(a, Animated.subtract(1, copy.m)), Animated.multiply(b, copy.m));
     return { left: mix(free(copy.fx, copy.w, copy.ox), copy.frx), top: mix(free(copy.fy, copy.h, copy.oy), copy.fry) };
   }, [copy]);
-  const ownLangX = useRef(new Animated.Value(4000)).current;
-  const langX = langAnim || ownLangX;
+  const langX = useRef(new Animated.Value(4000)).current;
   const drag = useRef({ id: null }).current;
 
   // Ordre affiché : drag en cours > ordre lâché en attente > ordre du parent
@@ -281,6 +281,7 @@ export default function BannerGrid({
     Animated.parallel(['w', 'h', 's'].map((p) => Animated.timing(copy[p], { toValue: g[p], duration: dur, easing: EASE, useNativeDriver: false }))).start();
   };
   const showLang = (on) => {
+    if (externalLang) { onLangActive?.(on); return; }
     if (on) langX.setValue(W + 4);
     Animated.timing(langX, { toValue: on ? W - LANG_VISIBLE : W + 4, duration: 180, easing: EASE, useNativeDriver: false }).start();
   };
@@ -457,7 +458,8 @@ export default function BannerGrid({
         // Lâché sur la languette : bascule ; l'ordre ne change pas (le bandeau tenu garde sa place)
         const nextCols = drag.cols === 1 ? 2 : 1;
         const ids = drag.base;
-        onSlots?.(null); // 1.54 : pointillés retirés dès le lâcher (affichés seulement au survol)
+        // 1.54 / 1.55 : pointillés ET assombrissement retirés dès le lâcher (aperçu = survol seulement)
+        onSlots?.(null); onDimChange?.(false); setStage(0); showLang(false);
         // 1.53 : lâché trop bas dans la liste → elle remonte d'abord en haut (la copie s'efface sur la
         // languette, l'aperçu en pointillés reste), puis la bascule se joue sous les yeux
         const wait = beforeToggle ? beforeToggle() : 0;
@@ -582,7 +584,7 @@ export default function BannerGrid({
       {bar && <View pointerEvents="none" style={[styles.bar, { left: bar.x, width: bar.w, top: bar.y - 0.5 }]} />}
 
       {/* Languette de bascule (sort du bord gauche à la saisie) */}
-      {!langAnim && <Animated.View pointerEvents="none" style={[styles.lang, { left: langX }]}>
+      {!externalLang && <Animated.View pointerEvents="none" style={[styles.lang, { left: langX }]}>
         <MaterialCommunityIcons name={cols === 1 ? 'view-grid-outline' : 'view-agenda-outline'} size={18} color={theme.colors.text} />
       </Animated.View>}
 

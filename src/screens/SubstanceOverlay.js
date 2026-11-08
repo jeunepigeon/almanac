@@ -53,7 +53,10 @@ export default function SubstanceOverlay({ sub, headerH, onOpened, onClosed }) {
     if (!openedOnce.current) {
       openedOnce.current = true;
       ox.value = winW;
-      ox.value = withTiming(0, { duration: SLIDE_MS, easing: SLIDE_EASE }, (fin) => { if (fin && onOpened) runOnJS(onOpened)(); });
+      // 1.55 : la page est construite (1re image) AVANT de bouger → pas de saccade à l'arrivée
+      requestAnimationFrame(() => {
+        ox.value = withTiming(0, { duration: SLIDE_MS, easing: SLIDE_EASE }, (fin) => { if (fin && onOpened) runOnJS(onOpened)(); });
+      });
     } else if (pageRef.current !== 0) {
       pagerRef.current?.setPageWithoutAnimation(0);
     }
@@ -63,7 +66,8 @@ export default function SubstanceOverlay({ sub, headerH, onOpened, onClosed }) {
   const close = useCallback(() => {
     if (closing.current) return;
     closing.current = true;
-    useStore.getState().requestCountersExit();
+    // 1.55 : aucune mise à jour pendant le départ, sauf si la réorganisation des compteurs est ouverte
+    if (useStore.getState().countersEditing) useStore.getState().requestCountersExit();
     ox.value = withTiming(winW, { duration: SLIDE_MS, easing: SLIDE_EASE }, (fin) => { if (fin) runOnJS(onClosed)(); });
   }, [winW, onClosed]); // eslint-disable-line
 
@@ -120,7 +124,7 @@ export default function SubstanceOverlay({ sub, headerH, onOpened, onClosed }) {
                 setPage(p);
                 const t = TABS[p];
                 setVisited((v) => (v[t] ? v : { ...v, [t]: true }));
-                useStore.getState().requestCountersExit();
+                if (useStore.getState().countersEditing) useStore.getState().requestCountersExit();
               }}
             >
               <View key="s-calendar" style={[styles.fill, { paddingTop: tabsH }]}>{s.calendar}</View>
@@ -145,10 +149,8 @@ export default function SubstanceOverlay({ sub, headerH, onOpened, onClosed }) {
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    ...StyleSheet.absoluteFillObject, zIndex: 50, elevation: 50, backgroundColor: theme.colors.background,
-    shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 8, shadowOffset: { width: -2, height: 0 },
-  },
+  // 1.55 : sans ombre (coûteuse à animer sur Android → saccades)
+  overlay: { ...StyleSheet.absoluteFillObject, zIndex: 50, backgroundColor: theme.colors.background },
   fill: { flex: 1 },
   topBar: { paddingTop: 34, backgroundColor: theme.colors.background },
   tabsHeader: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: theme.colors.background },

@@ -26,7 +26,8 @@ import CustomBannerNameModal from '../components/CustomBannerNameModal';
 import {
   SobreBanner, CounterBanner, RecordBanner, Last24Banner,
 } from '../components/Banners';
-import BannerGrid, { gridHeight, effectiveCols, SPACER_HEIGHT, LANGUETTE } from '../components/BannerGrid';
+import BannerGrid, { gridHeight, effectiveCols, SPACER_HEIGHT } from '../components/BannerGrid';
+import Languette from '../components/Languette';
 import { toastNotifOn, ensureNotifPermission } from '../utils/notifications';
 import haptics from '../utils/haptics';
 
@@ -118,7 +119,7 @@ export default function SubstancesPage() {
   const [bannerDim, setBannerDim] = useState(false);
   const gridHeightAnim = useRef(new Animated.Value(0)).current;
   // 1.51 : languette de bascule 1 ↔ 2 colonnes FIXE à l'écran (dessinée ici, au-dessus de la liste)
-  const langAnim = useRef(new Animated.Value(4000)).current;
+  const [langActive, setLangActive] = useState(false);
   const [langCols, setLangCols] = useState(1);
   const [gridSlots, setGridSlots] = useState(null); // 1.52 : pointillés de la bascule, en haut de l'écran
   const [catOrder, setCatOrder] = useState(null);   // 1.52 : ordre figé du « + » tant qu'il est ouvert
@@ -519,7 +520,8 @@ export default function SubstancesPage() {
           onDimChange={setBannerDim}
           onAddPress={() => { setCatOrder(bannerInfo.categories.map((c) => c.color)); setAddBannerOpen(true); }}
           showAdd={substances.length >= 2}
-          langAnim={langAnim}
+          externalLang
+          onLangActive={setLangActive}
           getScrollY={() => scrollYRef.current}
           onLangCols={setLangCols}
           onSlots={setGridSlots}
@@ -581,10 +583,8 @@ export default function SubstancesPage() {
       {gridSlots && gridSlots.map((gq, i) => (
         <View key={`slot-${i}`} pointerEvents="none" style={[styles.slot, { left: gq.x + 3, top: gq.y + 3, width: gq.w - 6, height: gq.h - 6 }]} />
       ))}
-      {/* 1.51 : languette fixe (ne suit pas le défilement de la liste) */}
-      <Animated.View pointerEvents="none" style={[styles.lang, { left: langAnim }]}>
-        <MaterialCommunityIcons name={langCols === 1 ? 'view-grid-outline' : 'view-agenda-outline'} size={18} color={theme.colors.text} />
-      </Animated.View>
+      {/* 1.55 : languette fixe, blanche, visible dès la réorganisation ; rayons quand un bandeau est tenu */}
+      <Languette visible={!!reorderMode && bannerItems.length >= 2} active={langActive} cols={langCols} />
 
       {!reorderMode && <FAB onPress={() => setCreateOpen(true)} />}
 
@@ -826,11 +826,7 @@ const styles = StyleSheet.create({
     position: 'absolute', zIndex: 15, elevation: 15,
     borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#9A9A9A', borderRadius: 8,
   },
-  lang: {
-    position: 'absolute', top: LANGUETTE.top, width: LANGUETTE.size, height: LANGUETTE.size, borderRadius: LANGUETTE.size / 2,
-    backgroundColor: theme.colors.surfaceAlt, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.textFaint,
-    alignItems: 'flex-start', justifyContent: 'center', paddingLeft: 3, zIndex: 20, elevation: 20,
-  },
+
   emptyWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: theme.spacing.lg },
   emptyText: { color: theme.colors.textFaint, fontSize: theme.font.sizes.md, fontWeight: '300', textAlign: 'center', letterSpacing: 0.5 },
 
