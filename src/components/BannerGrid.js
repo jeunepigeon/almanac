@@ -39,6 +39,7 @@ const H1 = BANNER_HEIGHT;
 const HH = BANNER_HEIGHT * HALF_SCALE;
 export const SPACER_HEIGHT = 16;   // espace sous les bandeaux (pilule « + » posée sur la dernière ligne)
 const PILL_HALF = 6;
+const PILL_HIT = 30; // 1.51 : hauteur de la zone de toucher de la pilule « + »
 const LONG_PRESS_MS = 400;
 const SHIFT_MS = 140;              // glissement des autres pendant le drag (= liste)
 const DROP_MS = 180;               // la case lâchée rejoint sa place
@@ -57,6 +58,7 @@ const EASE_SOFT = Easing.inOut(Easing.cubic); // 1.49 : glissements pendant le f
 const CENTER_MS = 150;             // la copie vient se centrer sous le doigt à la saisie
 const LANG_COPY_SCALE = 0.7;       // 1.50 : la copie rétrécit un peu au-dessus de la languette
 
+export const LANGUETTE = { size: LANG, top: LANG_TOP, visible: LANG_VISIBLE };
 export function effectiveCols(columns, n) { return columns === 2 && n >= 2 ? 2 : 1; }
 
 export function gridHeight(n, cols) {
@@ -86,41 +88,44 @@ const Cell = memo(function Cell({
   const idRef = useRef(item.id);
   idRef.current = item.id;
   const gesture = useMemo(() => Gesture.Pan()
+    .enabled(!!active)
     .activateAfterLongPress(LONG_PRESS_MS)
     .runOnJS(true)
     .onStart((e) => handlersRef.current.start(idRef.current, e))
     .onUpdate((e) => handlersRef.current.move(e))
     .onEnd(() => handlersRef.current.end())
-    .onFinalize(() => handlersRef.current.finalize()), [handlersRef]);
+    .onFinalize(() => handlersRef.current.finalize()), [handlersRef, active]);
 
   const content = (
     <Animated.View style={[styles.content, { width: L, transform: [{ scale: anim.s }] }]}>
       {renderBanner(item, { compact, layoutWidth: L, inReorder: active, isWiggling, phase })}
     </Animated.View>
   );
-  const body = (
-    <Animated.View
-      collapsable={false}
-      // Case saisie : entièrement transparente (fond compris) → l'emplacement vide laisse voir la case qui y arrive
-      style={[styles.cell, { left: anim.x, top: anim.y, width: anim.w, height: anim.h, opacity: hidden ? 0 : anim.o }]}
-    >
-      <View style={[StyleSheet.absoluteFill, dimmed && { opacity: DIM }]} pointerEvents="box-none">
-        {active ? content : (
+  // 1.51 : même arbre en réorganisation ou non (le geste est seulement activé / désactivé) → pas de
+  // remontage des bandeaux à l'entrée / sortie du mode (icônes qui bougeaient, clignotements)
+  return (
+    <GestureDetector gesture={gesture}>
+      <Animated.View
+        collapsable={false}
+        // Case saisie : entièrement transparente (fond compris) → l'emplacement vide laisse voir la case qui y arrive
+        style={[styles.cell, { left: anim.x, top: anim.y, width: anim.w, height: anim.h, opacity: hidden ? 0 : anim.o }]}
+      >
+        <View style={[StyleSheet.absoluteFill, dimmed && { opacity: DIM }]} pointerEvents="box-none">
           <Pressable
             style={StyleSheet.absoluteFill}
+            disabled={active}
             onPress={() => onTap?.(item)}
             onLongPress={() => { haptics.medium(); onLongPress?.(); }}
             delayLongPress={LONG_PRESS_MS}
           >
             {content}
           </Pressable>
-        )}
-        <View pointerEvents="none" style={styles.lineBottom} />
-        {col2 && <View pointerEvents="none" style={styles.lineRight} />}
-      </View>
-    </Animated.View>
+          <View pointerEvents="none" style={styles.lineBottom} />
+          {col2 && <View pointerEvents="none" style={styles.lineRight} />}
+        </View>
+      </Animated.View>
+    </GestureDetector>
   );
-  return active ? <GestureDetector gesture={gesture}>{body}</GestureDetector> : body;
 });
 
 export default function BannerGrid({
@@ -135,6 +140,10 @@ export default function BannerGrid({
   onDragChange,         // (bool) → bloque le défilement de la liste
   onDimChange,          // (bool) → assombrit les substances (cadre de bascule affiché)
   onAddPress,           // pilule « + »
+  showAdd = true,       // 1.51 : pilule « + » (cachée en dessous de 2 substances)
+  langAnim = null,      // 1.51 : position de la languette (dessinée par le parent, fixe à l'écran)
+  getScrollY = () => 0, // défilement de la liste (la languette est fixe à l'écran, pas dans la grille)
+  onLangCols = null,    // (cols) → icône de la languette
 }) {
   const { width: winW } = useWindowDimensions();
   const [W, setW] = useState(winW); // largeur réelle de la grille (mesurée)
@@ -194,7 +203,8 @@ export default function BannerGrid({
     const mix = (a, b) => Animated.add(Animated.multiply(a, Animated.subtract(1, copy.m)), Animated.multiply(b, copy.m));
     return { left: mix(free(copy.fx, copy.w, copy.ox), copy.frx), top: mix(free(copy.fy, copy.h, copy.oy), copy.fry) };
   }, [copy]);
-  const langX = useRef(new Animated.Value(4000)).current;
+  const ownLangX = useRef(new Animated.Value(4000)).current;
+  const langX = langAnim || ownLangX;
   const drag = useRef({ id: null }).current;
 
   // Ordre affiché : drag en cours > ordre lâché en attente > ordre du parent
@@ -217,6 +227,7 @@ export default function BannerGrid({
   }, [pending]);
 
   const n = order.length;
+  useEffect(() => { onLangCols?.(cols); }, [cols]); // eslint-disable-line
 
   // Bandeaux retirés : gardés en fondu à leur place pendant que les autres glissent
   const prevItems = useRef(items);
@@ -365,7 +376,8 @@ export default function BannerGrid({
         // 1.50 — Bascule en une action : la languette est la zone de dépôt (façon poubelle des stories).
         // Survol → léger aimant (la copie rétrécit et se colle), vibration, aperçu de la future
         // disposition en pointillés, le reste assombri ; quitter la languette → tout revient.
-        const inLang = f.x > W - LANG_ZONE_X && f.y > LANG_TOP - LANG_ZONE_PAD && f.y < LANG_TOP + LANG + LANG_ZONE_PAD;
+        const lt = LANG_TOP + getScrollY(); // languette fixe à l'écran → en coordonnées de la grille
+        const inLang = f.x > W - LANG_ZONE_X && f.y > lt - LANG_ZONE_PAD && f.y < lt + LANG + LANG_ZONE_PAD;
         st = inLang ? 1 : 0;
         if (st !== drag.stage) {
           drag.stage = st;
@@ -377,7 +389,7 @@ export default function BannerGrid({
             onDimChange?.(true);
             const cg = drag.cg;
             copy.frx.setValue(W - LANG_VISIBLE / 2 - cg.w / 2);
-            copy.fry.setValue(LANG_TOP + LANG / 2 - cg.h / 2);
+            copy.fry.setValue(LANG_TOP + getScrollY() + LANG / 2 - cg.h / 2);
             Animated.parallel([
               Animated.timing(copy.m, { toValue: 1, duration: SHIFT_MS, easing: EASE, useNativeDriver: false }),
               Animated.timing(copy.k, { toValue: LANG_COPY_SCALE, duration: SHIFT_MS, useNativeDriver: false }),
@@ -428,7 +440,7 @@ export default function BannerGrid({
         const ids = drag.base;
         if (a) { // la case repart de la languette vers sa nouvelle place
           const k = LANG_COPY_SCALE; const cg = drag.cg;
-          const lx = W - LANG_VISIBLE / 2; const ly = LANG_TOP + LANG / 2;
+          const lx = W - LANG_VISIBLE / 2; const ly = LANG_TOP + getScrollY() + LANG / 2;
           a.x.setValue(lx - (cg.w * k) / 2); a.y.setValue(ly - (cg.h * k) / 2);
           a.w.setValue(cg.w * k); a.h.setValue(cg.h * k); a.s.setValue(cg.s * k);
           targets.current[id] = null;
@@ -465,7 +477,7 @@ export default function BannerGrid({
 
   const pickedItem = pickId ? byId.current[pickId] : null;
   const dimOthers = stage >= 1;
-  const pillTop = useMemo(() => Animated.subtract(heightAnim, SPACER_HEIGHT + PILL_HALF), [heightAnim]);
+  const pillTop = useMemo(() => Animated.subtract(heightAnim, SPACER_HEIGHT + PILL_HIT / 2), [heightAnim]);
 
   return (
     <View style={styles.wrap} onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); if (w > 0 && w !== W) setW(w); }}>
@@ -520,7 +532,7 @@ export default function BannerGrid({
         );
       })}
       {/* Aperçu de la future disposition (survol de la languette) : cases en pointillés */}
-      {stage === 1 && drag.id && Array.from({ length: drag.n }, (_, i) => geom(i, drag.n, drag.cols === 1 ? 2 : 1, W)).map((gq, i) => (
+      {stage === 1 && drag.id && Array.from({ length: Math.min(drag.n, drag.cols === 1 ? 8 : 4) }, (_, i) => geom(i, drag.n, drag.cols === 1 ? 2 : 1, W)).map((gq, i) => (
         <View key={`slot-${i}`} pointerEvents="none" style={[styles.slot, { left: gq.x + 3, top: gq.y + 3, width: gq.w - 6, height: gq.h - 6 }]} />
       ))}
 
@@ -544,21 +556,23 @@ export default function BannerGrid({
       {bar && <View pointerEvents="none" style={[styles.bar, { left: bar.x, width: bar.w, top: bar.y - 0.5 }]} />}
 
       {/* Languette de bascule (sort du bord gauche à la saisie) */}
-      <Animated.View pointerEvents="none" style={[styles.lang, { left: langX }]}>
+      {!langAnim && <Animated.View pointerEvents="none" style={[styles.lang, { left: langX }]}>
         <MaterialCommunityIcons name={cols === 1 ? 'view-grid-outline' : 'view-agenda-outline'} size={18} color={theme.colors.text} />
-      </Animated.View>
+      </Animated.View>}
 
       {/* Pilule « + » sur la dernière ligne : suit la grille pendant ses animations */}
-      <Animated.View pointerEvents="box-none" style={[styles.pillWrap, { top: pillTop }]}>
+      {showAdd && <Animated.View pointerEvents="box-none" style={[styles.pillWrap, { top: pillTop }, dimOthers && { opacity: DIM }]}>
+        {/* 1.51 : zone de toucher réelle (et non plus un hitSlop qui débordait sur les cases) */}
         <TouchableOpacity
-          style={styles.pill}
+          style={styles.pillHit}
           onPress={() => { haptics.light(); onAddPress?.(); }}
-          hitSlop={{ top: 10, bottom: 10, left: 14, right: 14 }}
           activeOpacity={0.6}
         >
-          <MaterialCommunityIcons name="plus" size={10} color={theme.colors.background} />
+          <View style={styles.pill}>
+            <MaterialCommunityIcons name="plus" size={10} color={theme.colors.background} />
+          </View>
         </TouchableOpacity>
-      </Animated.View>
+      </Animated.View>}
     </View>
   );
 }
@@ -586,7 +600,8 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surfaceAlt, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.textFaint,
     alignItems: 'flex-start', justifyContent: 'center', paddingLeft: 3, zIndex: 20, elevation: 20,
   },
-  pillWrap: { position: 'absolute', left: 0, right: 0, height: PILL_HALF * 2, alignItems: 'center', zIndex: 12, elevation: 12 },
+  pillWrap: { position: 'absolute', left: 0, right: 0, height: PILL_HIT, alignItems: 'center', zIndex: 12, elevation: 12 },
+  pillHit: { width: 64, height: PILL_HIT, alignItems: 'center', justifyContent: 'center' },
   pill: {
     height: PILL_HALF * 2, width: 32, borderRadius: PILL_HALF,
     backgroundColor: theme.colors.text, alignItems: 'center', justifyContent: 'center',

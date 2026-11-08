@@ -72,8 +72,11 @@ export function WiggleContent({ children, isWiggling, phase, style }) {
 //  - décalage animé côté natif (glisse en 140 ms au lieu de sauter) PENDANT le drag ;
 //  - hors drag, décalage statique 0 : au lâcher, le nouvel ordre et la remise à 0 arrivent dans
 //    le même rendu (pas de saut d'une frame).
+// 1.51 : la MÊME ligne en mode normal et en réorganisation (le geste est seulement activé /
+// désactivé, le tap seulement coupé) → plus de remontage de la liste ni de la grille des bandeaux
+// à l'entrée / sortie du mode (icônes qui bougeaient, clignotements, latence).
 const ActiveRow = memo(function ActiveRow({
-  item, index, itemHeight, offsetY, dragging, isPicked, isWiggling, handlersRef, renderItem,
+  item, index, itemHeight, offsetY, dragging, isPicked, isWiggling, handlersRef, renderItem, active, cbRef,
 }) {
   const indexRef = useRef(index);
   indexRef.current = index;
@@ -87,17 +90,18 @@ const ActiveRow = memo(function ActiveRow({
   }, [offsetY, dragging, offAnim]);
 
   const gesture = useMemo(() => Gesture.Pan()
+    .enabled(!!active)
     .activateAfterLongPress(LONG_PRESS_MS)
     .runOnJS(true)
     .onStart((e) => handlersRef.current.start(indexRef.current, e))
     .onUpdate((e) => handlersRef.current.move(e))
     .onEnd(() => handlersRef.current.end())
-    .onFinalize(() => handlersRef.current.finalize()), [handlersRef]);
+    .onFinalize(() => handlersRef.current.finalize()), [handlersRef, active]);
 
   const translateY = dragging && !isPicked ? offAnim : 0;
 
   if (item.static) {
-    return <Animated.View style={[{ height: item.animHeight || itemHeight }, item.containerStyle]}>{renderItem({ item, index, isWiggling: false, isPickup: false, inReorder: true })}</Animated.View>;
+    return <Animated.View style={[{ height: item.animHeight || itemHeight }, item.containerStyle]}>{renderItem({ item, index, isWiggling: false, isPickup: false, inReorder: !!active })}</Animated.View>;
   }
 
   return (
@@ -106,9 +110,15 @@ const ActiveRow = memo(function ActiveRow({
         collapsable={false}
         style={[styles.rowContainer, { height: item.collapse || itemHeight, transform: [{ translateY }] }, item.collapse && { overflow: 'hidden' }]}
       >
-        <View style={{ opacity: isPicked ? 0 : 1 }}>
-          {renderItem({ item, index, isWiggling, phase: index % 3, isPickup: false, inReorder: true })}
-        </View>
+        <Pressable
+          disabled={!!active}
+          style={{ opacity: isPicked ? 0 : 1 }}
+          onPress={() => cbRef.current.tap?.(item, indexRef.current)}
+          onLongPress={() => { haptics.medium(); cbRef.current.longPress?.(item, indexRef.current); }}
+          delayLongPress={LONG_PRESS_MS}
+        >
+          {renderItem({ item, index, isWiggling: !!active && isWiggling, phase: active ? index % 3 : 0, isPickup: false, inReorder: !!active })}
+        </Pressable>
       </Animated.View>
     </GestureDetector>
   );
@@ -278,6 +288,8 @@ export default function ReorderList({
     applyPosition();
   };
 
+  const cbRef = useRef({});
+  cbRef.current = { tap: onItemTap, longPress: onItemLongPress };
   const handlersRef = useRef(null);
   handlersRef.current = {
     start: (idx, e) => {
@@ -400,44 +412,22 @@ export default function ReorderList({
           style={styles.listArea}
           onLayout={(e) => { listTopRef.current = e.nativeEvent.layout.y; reportMetrics(); }}
         >
-          {items.map((item, idx) => {
-            if (active) {
-              const isPicked = idx === pickupIdx;
-              return (
-                <ActiveRow
-                  key={item.id}
-                  item={item}
-                  index={idx}
-                  itemHeight={heights[idx]}
-                  offsetY={offsetFor(idx)}
-                  dragging={pickupIdx != null}
-                  isPicked={isPicked}
-                  isWiggling={pickupIdx == null}
-                  handlersRef={handlersRef}
-                  renderItem={renderItem}
-                />
-              );
-            }
-            if (item.static) {
-              return (
-                <Animated.View key={item.id} style={[{ height: item.animHeight || heights[idx] }, item.containerStyle]}>
-                  {renderItem({ item, index: idx, isWiggling: false, isPickup: false, inReorder: false })}
-                </Animated.View>
-              );
-            }
-            return (
-              // item.collapse (Animated.Value) : hauteur animée (ex. bandeau supprimé qui se referme)
-              <Animated.View key={item.id} style={[styles.rowContainer, { height: item.collapse || heights[idx] }, item.collapse && { overflow: 'hidden' }]}>
-                <Pressable
-                  onPress={() => onItemTap?.(item, idx)}
-                  onLongPress={() => { haptics.medium(); onItemLongPress?.(item, idx); }}
-                  delayLongPress={400}
-                >
-                  {renderItem({ item, index: idx, isWiggling: false, isPickup: false, inReorder: false })}
-                </Pressable>
-              </Animated.View>
-            );
-          })}
+          {items.map((item, idx) => (
+            <ActiveRow
+              key={item.id}
+              item={item}
+              index={idx}
+              itemHeight={heights[idx]}
+              offsetY={active ? offsetFor(idx) : 0}
+              dragging={!!active && pickupIdx != null}
+              isPicked={!!active && idx === pickupIdx}
+              isWiggling={pickupIdx == null}
+              handlersRef={handlersRef}
+              renderItem={renderItem}
+              active={!!active}
+              cbRef={cbRef}
+            />
+          ))}
 
           {/* Copie qui suit le doigt : fond NON agrandi (hauteur de ligne moins le séparateur, pour
               ne pas recouvrir les séparateurs voisins), seul le contenu est agrandi. */}

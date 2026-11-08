@@ -29,9 +29,9 @@ export const FADE_MS = 450;
 const traceAnim = (label) => () => useStore.getState().traceNotif('animation lancée', label);
 
 // Cloche : vide / pleine. En réorganisation, toujours affichée mais inactive.
-export function BannerBell({ color, active, onPress, disabled, compact, left = null }) {
+export function BannerBell({ color, active, onPress, disabled, compact }) {
   return (
-    <View style={[styles.bell, compact && styles.bellCompact, left != null && { left }]} pointerEvents={disabled ? 'none' : 'auto'}>
+    <View style={[styles.bell, compact && styles.bellCompact]} pointerEvents={disabled ? 'none' : 'auto'}>
       <TouchableOpacity onPress={onPress} disabled={disabled} hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}>
         <MaterialCommunityIcons name={active ? 'bell' : 'bell-outline'} size={compact ? COMPACT_BELL : 18} color={color} />
       </TouchableOpacity>
@@ -39,18 +39,20 @@ export function BannerBell({ color, active, onPress, disabled, compact, left = n
   );
 }
 
-function Tools({ onEdit, onDelete, compact, right = null }) {
+function Tools({ onEdit, onDelete, compact }) {
   const size = compact ? COMPACT_TOOL : 20;
   return (
-    <View style={[styles.tools, compact && styles.toolsCompact, right != null && { right }]}>
+    <View style={[styles.tools, compact && styles.toolsCompact]}>
       {onEdit && (
         <TouchableOpacity onPress={onEdit} style={styles.toolBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <MaterialCommunityIcons name="pencil-outline" size={size} color={theme.colors.textMuted} />
         </TouchableOpacity>
       )}
-      <TouchableOpacity onPress={onDelete} style={styles.toolBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-        <MaterialCommunityIcons name="trash-can-outline" size={size} color={theme.colors.danger} />
-      </TouchableOpacity>
+      {onDelete && (
+        <TouchableOpacity onPress={onDelete} style={styles.toolBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <MaterialCommunityIcons name="trash-can-outline" size={size} color={theme.colors.danger} />
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -74,28 +76,16 @@ function useFade(fading) {
 function Frame({ flashColor, flashTick, traceLabel, fading, inReorder, isWiggling, phase, bell, onEdit, onDelete, compact, children }) {
   const fade = useFade(fading);
   const flashBg = useFlashBackground(flashTick, flashColor, traceAnim(traceLabel));
-  // 1.50 : en demi-case, cloche et outils centrés dans la marge entre le bord et le texte (symétriques)
-  const [fw, setFw] = useState(0);
-  const [tw, setTw] = useState(0);
-  const margin = compact && fw > 0 && tw > 0 ? Math.max(0, (fw - tw) / 2) : null;
-  const bellLeft = margin != null ? Math.max(0, margin / 2 - (COMPACT_BELL + 8) / 2) : null;
-  const toolsRight = margin != null ? Math.max(0, margin / 2 - (COMPACT_TOOL + 8) / 2) : null;
   return (
     <Animated.View
       style={[styles.frame, { opacity: fade, backgroundColor: flashBg }]}
       pointerEvents={fading ? 'none' : 'auto'}
-      onLayout={compact ? (e) => setFw(Math.round(e.nativeEvent.layout.width)) : undefined}
     >
       <WiggleContent isWiggling={!!isWiggling} phase={phase || 0} style={[styles.content, compact && styles.contentCompact]}>
-        {compact ? (
-          // largeur du texte (arrondie par pas de 8 : la cloche ne bouge pas à chaque seconde du compteur)
-          <View style={styles.textBlock} onLayout={(e) => setTw(Math.ceil(e.nativeEvent.layout.width / 8) * 8)}>
-            {children}
-          </View>
-        ) : children}
+        {children}
       </WiggleContent>
-      {bell && !fading ? <BannerBell {...bell} compact={compact} disabled={inReorder} left={bellLeft} /> : null}
-      {inReorder && <Tools onEdit={onEdit} onDelete={onDelete} compact={compact} right={toolsRight} />}
+      {bell && !fading ? <BannerBell {...bell} compact={compact} disabled={inReorder} /> : null}
+      {inReorder && (onEdit || onDelete) && <Tools onEdit={onEdit} onDelete={onDelete} compact={compact} />}
     </Animated.View>
   );
 }
@@ -248,7 +238,6 @@ const styles = StyleSheet.create({
   frame: { height: BANNER_HEIGHT - StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
   content: { alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch', paddingHorizontal: 56 },
   contentCompact: { paddingHorizontal: COMPACT_PAD },
-  textBlock: { alignItems: 'center', maxWidth: '100%' },
   label: {
     color: theme.colors.textMuted, fontSize: theme.font.sizes.xs, fontWeight: '300',
     letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: theme.spacing.xs,
@@ -275,8 +264,9 @@ const styles = StyleSheet.create({
   },
   // 1.48 : demi-case → collés au bord, empilés et centrés (bandeau personnalisé : crayon + poubelle)
   // cloche et outils à la même distance de leur bord (icône à ~6 du bord, avant réduction)
-  toolsCompact: { right: 2, flexDirection: 'column', justifyContent: 'center', gap: 2 },
-  bellCompact: { left: 2 },
+  // 1.51 : position FIXE (même place dans toutes les petites cases) : centrées dans la marge latérale
+  toolsCompact: { right: Math.max(0, COMPACT_PAD / 2 - (COMPACT_TOOL + 8) / 2), flexDirection: 'column', justifyContent: 'center', gap: 2 },
+  bellCompact: { left: Math.max(0, COMPACT_PAD / 2 - (COMPACT_BELL + 8) / 2) },
   toolBtn: { padding: theme.spacing.xs },
   // 1.43 : points centrés, même écart au-dessus (chiffre) et en dessous (« clic pour plus de détails »)
   dotsRow: {

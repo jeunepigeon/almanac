@@ -14,6 +14,8 @@ import StatsView from '../components/StatsView';
 import GlobalHistoryView from '../components/GlobalHistoryView';
 import ReorgBar from '../components/ReorgBar';
 import TopCounter from '../components/TopCounter';
+import AnimatedTabs from '../components/AnimatedTabs';
+import { formatDayKey } from '../utils/dates';
 
 
 // 1.49 — Global en 3 pages du défilement principal (Liste · Calendrier · Recherche · Stats), comme les
@@ -22,7 +24,9 @@ import TopCounter from '../components/TopCounter';
 //  - calendar / history / stats : contenu de chaque page ;
 //  - modals (une seule fois) et reorgBar (réorganisation des compteurs, par-dessus les onglets).
 // activeTab : onglet affiché ; goTab(t) : aller à un onglet ; visited : pages déjà construites.
-export function useGlobalPages({ activeTab, goTab, visited = {} }) {
+const TAB_IDS = ['calendar', 'history', 'stats'];
+
+export function useGlobalPages({ activeTab, goTab, visited = {}, progress }) {
   const navigation = useNavigation();
   const substances = useStore((s) => s.substances);
   const archivedSubstances = useStore((s) => s.archivedSubstances);
@@ -94,17 +98,15 @@ export function useGlobalPages({ activeTab, goTab, visited = {} }) {
 
   const header = (
     <View style={styles.headerBox}>
-      <View style={[styles.tabs, countersEditing && { opacity: 0.25 }]} pointerEvents={countersEditing ? 'none' : 'auto'}>
-        <Tab label="Calendrier" active={activeTab === 'calendar'} onPress={() => { requestCountersExit(); goTab('calendar'); }} />
-        <Tab label="Recherche" active={activeTab === 'history'} onPress={() => { requestCountersExit(); goTab('history'); }} />
-        <Tab label="Stats" active={activeTab === 'stats'} onPress={() => { requestCountersExit(); goTab('stats'); }} />
-      </View>
+      {/* 1.51 : trait et couleurs qui suivent le doigt (même composant que les substances) */}
+      <AnimatedTabs progress={progress} dimmed={countersEditing} onPress={(i) => { requestCountersExit(); goTab(TAB_IDS[i]); }} />
       {/* 1.46 : petit compteur sous les onglets (même disposition que la page d'une substance) */}
       <TopCounter label="Sobre de tout depuis" timestamp={lastGlobalTs} dimmed={countersEditing} noBorder={activeTab === 'stats'} />
     </View>
   );
 
-  const calendar = (
+  // 1.51 : pages mémorisées → pas redessinées quand l'écran principal change (onglet, substance…)
+  const calendar = useMemo(() => (
     <View style={{ flex: 1 }}>
       <ScrollableCalendar
         markersByDay={markersByDay}
@@ -130,20 +132,21 @@ export function useGlobalPages({ activeTab, goTab, visited = {} }) {
         <Ionicons name="add" size={26} color={theme.colors.background} />
       </TouchableOpacity>
     </View>
-  );
+  ), [markersByDay, byDay]);
 
-  const history = visited.history ? (
+  const history = useMemo(() => (visited.history ? (
     <GlobalHistoryView
       consumptions={allConsumptions}
       substancesById={substancesById}
+      // 1.51 : ouvre la carte du jour de Global (on reste dans Global)
       onTapConsumption={(c) => {
-        const sid = c.substanceId ?? c.substance_id;
-        useStore.getState().openSubstance(sid, { focusDate: c.timestamp, from: 'global' });
+        const d = new Date(c.timestamp); d.setHours(0, 0, 0, 0);
+        setDayDetail({ dayKey: c.dayKey || formatDayKey(c.timestamp), dayTimestamp: d.getTime() });
       }}
     />
-  ) : null;
+  ) : null), [visited.history, allConsumptions, substancesById]);
 
-  const stats = visited.stats ? (
+  const stats = useMemo(() => (visited.stats ? (
     <View style={{ flex: 1 }}>
       <StatsView
         mode="global"
@@ -152,7 +155,7 @@ export function useGlobalPages({ activeTab, goTab, visited = {} }) {
         navigation={navigation}
       />
     </View>
-  ) : null;
+  ) : null), [visited.stats, consumptionsBySubstance, substancesById, navigation]);
 
   const modals = (
     <>
@@ -247,23 +250,9 @@ export function useGlobalPages({ activeTab, goTab, visited = {} }) {
   return { header, calendar, history, stats, modals, reorgBar };
 }
 
-function Tab({ label, active, onPress }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={styles.tab}>
-      <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
-      {active && <View style={styles.tabUnderline} />}
-    </TouchableOpacity>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: theme.colors.background },
   headerBox: { backgroundColor: theme.colors.background },
-  tabs: { flexDirection: 'row', paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, gap: theme.spacing.lg, justifyContent: 'center' },
-  tab: { paddingBottom: theme.spacing.sm },
-  tabText: { color: theme.colors.textFaint, fontSize: theme.font.sizes.md, fontWeight: '300', letterSpacing: 1 },
-  tabTextActive: { color: theme.colors.text },
-  tabUnderline: { height: 2, backgroundColor: theme.colors.text, marginTop: theme.spacing.xs },
   scrollContent: { paddingBottom: 60 },
   fab: {
     position: 'absolute',

@@ -49,7 +49,8 @@ export default function DayDetailModal({
                   <SubstanceIcon iconId={sub.icon} size={16} color={sub.color} />
                 </View>
                 <View style={styles.rowMiddle}>
-                  {!singleSubstance && <Text style={styles.rowName}>{sub.name}</Text>}
+                  {/* 1.51 : même carte partout (nom de la substance sur chaque ligne, aussi dans une substance) */}
+                  <Text style={styles.rowName}>{sub.name}</Text>
                   <View style={styles.metaRow}>
                     <Text style={styles.rowTime}>{formatTime(item.timestamp)}</Text>
                     {item.dosage != null ? (

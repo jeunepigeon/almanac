@@ -170,10 +170,10 @@ export const useStore = create((set, get) => ({
   // Règles sans bandeau (anciennes versions, import, restauration) → le bandeau est (ré)activé,
   // pour ne perdre aucune notification. Les catégories dissoutes sont nettoyées par pruneOrphans.
   ensureBannersForRules: () => {
-    const { substances, colorBanners, notifRules, sobreBanner } = get();
+    const { substances, colorBanners, notifRules } = get();
     const count = {};
     for (const sub of substances) count[sub.color] = (count[sub.color] || 0) + 1;
-    if (!sobreBanner && notifRules.some((r) => r.target === 'all')) get().setSobreBanner(true);
+    // 1.51 : « Sobre de tout » ne dépend plus des notifications (automatique dès 2 substances)
     const missing = [...new Set(notifRules
       .filter((r) => r.target === 'color' && (count[r.key] || 0) >= 2 && !colorBanners.includes(r.key))
       .map((r) => r.key))];
@@ -203,10 +203,20 @@ export const useStore = create((set, get) => ({
   // 1.40 — Bandeau « Sobre de tout » activable. Le retirer retire aussi ses notifications.
   // 1.48 : c'est un bandeau comme les autres → entrée '__sobre' dans colorBanners (déplaçable,
   // ajouté en bas quand on le réactive). `sobreBanner` reste tenu à jour pour le reste du code.
+  // 1.51 : AUTOMATIQUE — affiché dès 2 substances, masqué en dessous (avec ses notifications :
+  // pas de bandeau = pas de notification). Plus de poubelle ni d'entrée dans le « + », toujours déplaçable.
+  // Réapparaît en tête de la liste des bandeaux.
   sobreBanner: false,
-  setSobreBanner: (on) => {
-    if (on) get().addColorBanner('__sobre');
-    else get().removeColorBanner('__sobre');
+  syncSobre: () => {
+    const { substances, colorBanners } = get();
+    const on = substances.length >= 2;
+    const has = colorBanners.includes('__sobre');
+    if (on && !has) get().saveColorBanners(['__sobre', ...colorBanners]);
+    else if (!on && has) get().removeColorBanner('__sobre');
+    else if (!on) {
+      const rules = get().notifRules.filter((r) => r.target !== 'all');
+      if (rules.length !== get().notifRules.length) get().setNotifRules(rules);
+    }
   },
 
   // 1.48 — Bandeaux sur 1 ou 2 colonnes
@@ -253,6 +263,7 @@ export const useStore = create((set, get) => ({
   // changement de couleur, remise à zéro…), son bandeau et ses notifications sont SUPPRIMÉS.
   // Les notifications de substances qui n'existent plus sont supprimées aussi.
   pruneOrphans: () => {
+    get().syncSobre();
     const { substances, colorBanners, notifRules, sobreBanner, customBanners } = get();
     const count = {};
     for (const sub of substances) count[sub.color] = (count[sub.color] || 0) + 1;
@@ -533,6 +544,7 @@ export const useStore = create((set, get) => ({
     const created = await dbCreateSubstance({ name: trimmed, color, icon });
     // En FIN de liste, comme en base (avant : en tête en mémoire, puis en bas au redémarrage)
     set((state) => ({ substances: [...state.substances, created] }));
+    get().syncSobre(); // 1.51 : 2e substance → « Sobre de tout » apparaît
     return created;
   },
 
@@ -591,6 +603,7 @@ export const useStore = create((set, get) => ({
         archivedSubstances: [{ ...sub, archived: true }, ...state.archivedSubstances],
       }));
     }
+    get().syncSobre();
   },
 
   restoreSubstance: async (id) => {
@@ -602,6 +615,7 @@ export const useStore = create((set, get) => ({
         substances: [{ ...sub, archived: false }, ...state.substances],
       }));
     }
+    get().syncSobre();
   },
 
   // ---- Consumptions ----

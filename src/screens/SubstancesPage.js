@@ -26,7 +26,7 @@ import CustomBannerNameModal from '../components/CustomBannerNameModal';
 import {
   SobreBanner, CounterBanner, RecordBanner, Last24Banner,
 } from '../components/Banners';
-import BannerGrid, { gridHeight, effectiveCols, SPACER_HEIGHT } from '../components/BannerGrid';
+import BannerGrid, { gridHeight, effectiveCols, SPACER_HEIGHT, LANGUETTE } from '../components/BannerGrid';
 import { toastNotifOn, ensureNotifPermission } from '../utils/notifications';
 import haptics from '../utils/haptics';
 
@@ -111,14 +111,15 @@ export default function SubstancesPage() {
   const addColorBanner = useStore((s) => s.addColorBanner);
   const removeColorBanner = useStore((s) => s.removeColorBanner);
   const reorderColorBanners = useStore((s) => s.reorderColorBanners);
-  const sobreBanner = useStore((s) => s.sobreBanner);
-  const setSobreBanner = useStore((s) => s.setSobreBanner);
   // 1.48 : bandeaux sur 1 ou 2 colonnes (grille dessinée par BannerGrid)
   const bannerColumns = useStore((s) => s.bannerColumns);
   const setBannerColumns = useStore((s) => s.setBannerColumns);
   const [gridDragging, setGridDragging] = useState(false);
   const [bannerDim, setBannerDim] = useState(false);
   const gridHeightAnim = useRef(new Animated.Value(0)).current;
+  // 1.51 : languette de bascule 1 ↔ 2 colonnes FIXE à l'écran (dessinée ici, au-dessus de la liste)
+  const langAnim = useRef(new Animated.Value(4000)).current;
+  const [langCols, setLangCols] = useState(1);
   const notifRules = useStore((s) => s.notifRules);
   const [bannerNotif, setBannerNotif] = useState(null); // { target: 'all' | 'color', key } — cloche d'un bandeau
   const notifCountOf = (target, key = null) => notifRules.filter((r) => r.target === target && (r.key || null) === key).length;
@@ -219,6 +220,8 @@ export default function SubstancesPage() {
   useEffect(() => { if (listFinishTick) setFinishSignal((x) => x + 1); }, [listFinishTick]);
   // Plus aucune substance (dernière supprimée) : la liste disparaît → on quitte le mode
   useEffect(() => { if (reorderMode && substances.length === 0) setReorderMode(false); }, [reorderMode, substances.length]); // eslint-disable-line
+  // 1.51 : « Sobre de tout » automatique dès 2 substances (store.syncSobre)
+  useEffect(() => { if (ready) useStore.getState().syncSobre(); }, [ready, substances.length]); // eslint-disable-line
   const [pendingBannerDelete, setPendingBannerDelete] = useState(null); // couleur
   const [addBannerOpen, setAddBannerOpen] = useState(false);
   const [bannerFlash, setBannerFlash] = useState(null); // { id, tick } — flash d'un bandeau
@@ -446,7 +449,8 @@ export default function SubstancesPage() {
     const frame = {
       inReorder, isWiggling, phase, compact,
       flashTick: bannerFlash?.id === item.id ? bannerFlash.tick : 0,
-      onDelete: () => setPendingBannerDelete(item.entry),
+      // 1.51 : « Sobre de tout » n'est pas désactivable (pas de poubelle)
+      onDelete: item.type === 'sobre' ? undefined : () => setPendingBannerDelete(item.entry),
     };
     if (item.type === 'sobre') {
       return (
@@ -512,6 +516,10 @@ export default function SubstancesPage() {
           onDragChange={setGridDragging}
           onDimChange={setBannerDim}
           onAddPress={() => setAddBannerOpen(true)}
+          showAdd={substances.length >= 2}
+          langAnim={langAnim}
+          getScrollY={() => scrollYRef.current}
+          onLangCols={setLangCols}
         />
       );
     }
@@ -560,6 +568,11 @@ export default function SubstancesPage() {
         />
       )}
 
+      {/* 1.51 : languette fixe (ne suit pas le défilement de la liste) */}
+      <Animated.View pointerEvents="none" style={[styles.lang, { left: langAnim }]}>
+        <MaterialCommunityIcons name={langCols === 1 ? 'view-grid-outline' : 'view-agenda-outline'} size={18} color={theme.colors.text} />
+      </Animated.View>
+
       {!reorderMode && <FAB onPress={() => setCreateOpen(true)} />}
 
       <SubstanceFormModal
@@ -603,8 +616,7 @@ export default function SubstancesPage() {
         onConfirm={() => {
           const e = pendingBannerDelete;
           haptics.success();
-          if (e === '__sobre') setSobreBanner(false);
-          else if (e?.startsWith('custom:')) deleteCustomBanner(e.slice(7));
+          if (e?.startsWith('custom:')) deleteCustomBanner(e.slice(7));
           else if (e) removeColorBanner(e);
           setPendingBannerDelete(null);
         }}
@@ -615,10 +627,6 @@ export default function SubstancesPage() {
         visible={addBannerOpen}
         title="Bandeaux"
         options={[
-          {
-            id: '__sobre', color: theme.colors.text, label: 'Sobre de tout', checked: sobreBanner,
-            removeConfirm: notifCountOf('all') > 0 ? bannerRemoveMessage('__sobre') : null,
-          },
           {
             id: 'record', color: theme.colors.text, label: 'Plus longue sobriété de tout', checked: colorBanners.includes('record'),
             removeConfirm: notifCountOf('record') > 0 ? bannerRemoveMessage('record') : null,
@@ -653,8 +661,7 @@ export default function SubstancesPage() {
         }]}
         footer={bannerInfo.categories.length === 0 ? 'Les catégories apparaissent quand 2 substances partagent une couleur.' : null}
         onToggle={(id, on) => {
-          if (id === '__sobre') setSobreBanner(on);
-          else if (on) addColorBanner(id);
+          if (on) addColorBanner(id);
           else removeColorBanner(id);
         }}
         onClose={() => setAddBannerOpen(false)}
@@ -797,6 +804,11 @@ export default function SubstancesPage() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   dimmed: { opacity: 0.25 },
+  lang: {
+    position: 'absolute', top: LANGUETTE.top, width: LANGUETTE.size, height: LANGUETTE.size, borderRadius: LANGUETTE.size / 2,
+    backgroundColor: theme.colors.surfaceAlt, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.textFaint,
+    alignItems: 'flex-start', justifyContent: 'center', paddingLeft: 3, zIndex: 20, elevation: 20,
+  },
   emptyWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: theme.spacing.lg },
   emptyText: { color: theme.colors.textFaint, fontSize: theme.font.sizes.md, fontWeight: '300', textAlign: 'center', letterSpacing: 0.5 },
 

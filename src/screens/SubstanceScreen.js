@@ -13,6 +13,7 @@ import { formatDateLong, formatTime } from '../utils/dates';
 import LiveCounter from '../components/LiveCounter';
 import ReorgBar from '../components/ReorgBar';
 import TopCounter from '../components/TopCounter';
+import AnimatedTabs from '../components/AnimatedTabs';
 import { DateLine } from '../components/Banners';
 import { rangeFR } from '../utils/soberPeriods';
 import LogConsumptionModal from '../components/LogConsumptionModal';
@@ -36,7 +37,9 @@ function dayKeyOf(ts) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-export function useSubstancePages({ sub, activeTab, goTab, visited = {}, onBack }) {
+const TAB_IDS = ['calendar', 'history', 'stats'];
+
+export function useSubstancePages({ sub, activeTab, goTab, visited = {}, onBack, progress }) {
   const navigation = useNavigation();
   const substanceId = sub?.id ?? null;
   const focusDate = sub?.focusDate ?? null;
@@ -125,6 +128,31 @@ export function useSubstancePages({ sub, activeTab, goTab, visited = {}, onBack 
       .sort((a, b) => a.timestamp - b.timestamp);
   }, [dayDetail, consumptions]);
 
+  // 1.51 : pages mémorisées (pas redessinées à chaque changement de l'écran principal)
+  const subColor = substance?.color;
+  const calendar = useMemo(() => (substance ? (
+    <ScrollableCalendar
+      markersByDay={markersByDay}
+      showSoberFill={true}
+      showJumpButtons={true}
+      substanceColor={subColor}
+      onDayPress={(dayKey, dayTimestamp) => setDayDetail({ dayKey, dayTimestamp })}
+    />
+  ) : null), [!!substance, markersByDay, subColor]); // eslint-disable-line
+  const history = useMemo(() => (substance && visited.history ? (
+    <HistoryList consumptions={consumptions} color={subColor} onOpenDay={(c) => setDayDetail({ dayTimestamp: c.timestamp, dayKey: dayKeyOf(c.timestamp) })} />
+  ) : null), [!!substance, visited.history, consumptions, subColor]); // eslint-disable-line
+  const stats = useMemo(() => (substance && visited.stats ? (
+    <StatsView
+      key={substanceId}
+      mode="substance"
+      consumptions={consumptions || []}
+      color={subColor}
+      navigation={navigation}
+      substanceId={substanceId}
+    />
+  ) : null), [!!substance, visited.stats, consumptions, subColor, substanceId, navigation]); // eslint-disable-line
+
   if (!substance) return { topBar: null, header: null, calendar: null, history: null, stats: null, fab: null, modals: null, reorgBar: null };
 
   // En-tête du haut (comme l'en-tête d'écran d'avant) : flèche retour, nom, cloche de la substance
@@ -153,11 +181,7 @@ export function useSubstancePages({ sub, activeTab, goTab, visited = {}, onBack 
   // 1.46 : onglets en haut, petit compteur dessous (même disposition que Global)
   const header = (
     <View style={styles.headerBox}>
-      <View style={[styles.tabs, countersEditing && styles.dimmed]} pointerEvents={countersEditing ? 'none' : 'auto'}>
-        <Tab label="Calendrier" active={activeTab === 'calendar'} onPress={() => goTab('calendar')} />
-        <Tab label="Recherche" active={activeTab === 'history'} onPress={() => goTab('history')} />
-        <Tab label="Stats" active={activeTab === 'stats'} onPress={() => goTab('stats')} />
-      </View>
+      <AnimatedTabs progress={progress} dimmed={countersEditing} onPress={(i) => goTab(TAB_IDS[i])} />
       <TopCounter
         label="Sobre depuis"
         timestamp={lastTimestamp}
@@ -169,29 +193,6 @@ export function useSubstancePages({ sub, activeTab, goTab, visited = {}, onBack 
       />
     </View>
   );
-
-  const calendar = (
-    <ScrollableCalendar
-      markersByDay={markersByDay}
-      showSoberFill={true}
-      showJumpButtons={true}
-      substanceColor={substance.color}
-      onDayPress={(dayKey, dayTimestamp) => setDayDetail({ dayKey, dayTimestamp })}
-    />
-  );
-  const history = visited.history ? (
-    <HistoryList consumptions={consumptions} color={substance.color} onOpenDay={(c) => setDayDetail({ dayTimestamp: c.timestamp, dayKey: dayKeyOf(c.timestamp) })} />
-  ) : null;
-  const stats = visited.stats ? (
-    <StatsView
-      key={substanceId}
-      mode="substance"
-      consumptions={consumptions || []}
-      color={substance.color}
-      navigation={navigation}
-      substanceId={substanceId}
-    />
-  ) : null;
 
   const fab = !countersEditing ? <FAB color={substance.color} onPress={() => setLogOpen(true)} /> : null;
   const reorgBar = countersEditing ? <ReorgBar onDone={requestCountersExit} /> : null;
@@ -266,15 +267,6 @@ export function useSubstancePages({ sub, activeTab, goTab, visited = {}, onBack 
   );
 
   return { topBar, header, calendar, history, stats, fab, modals, reorgBar };
-}
-
-function Tab({ label, active, onPress }) {
-  return (
-    <TouchableOpacity onPress={onPress} style={styles.tab}>
-      <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
-      {active && <View style={styles.tabUnderline} />}
-    </TouchableOpacity>
-  );
 }
 
 function HistoryList({ consumptions, color, onOpenDay }) {
@@ -381,11 +373,6 @@ const styles = StyleSheet.create({
     fontSize: theme.font.sizes.xl, fontWeight: '300', letterSpacing: 0.5,
     fontVariant: ['tabular-nums'], textAlign: 'center', flexShrink: 1,
   },
-  tabs: { flexDirection: 'row', paddingHorizontal: theme.spacing.lg, paddingTop: theme.spacing.md, gap: theme.spacing.lg, justifyContent: 'center' },
-  tab: { paddingBottom: theme.spacing.sm },
-  tabText: { color: theme.colors.textFaint, fontSize: theme.font.sizes.md, fontWeight: '300', letterSpacing: 1 },
-  tabTextActive: { color: theme.colors.text },
-  tabUnderline: { height: 2, backgroundColor: theme.colors.text, marginTop: theme.spacing.xs },
   scrollContent: { paddingBottom: 120 },
   placeholder: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: theme.spacing.lg },
   placeholderText: { color: theme.colors.textMuted, fontSize: theme.font.sizes.md, fontWeight: '300', textAlign: 'center' },

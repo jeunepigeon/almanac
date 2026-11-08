@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, Switch, Linking,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, Switch, Linking, Animated, Easing, useWindowDimensions,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -51,6 +53,29 @@ function formatDateLongFR(ts) {
 
 export default function SettingsScreen() {
   const navigation = useNavigation();
+  // 1.51 : glisser de gauche à droite ferme Paramètres — la page suit le doigt et part à droite
+  // (l'écran principal reste visible dessous : présentation « transparentModal », voir App.js)
+  const insets = useSafeAreaInsets();
+  const { width: winW } = useWindowDimensions();
+  const swipeX = useRef(new Animated.Value(0)).current;
+  const leaving = useRef(false);
+  const closeBySwipe = () => {
+    if (leaving.current) return;
+    leaving.current = true;
+    Animated.timing(swipeX, { toValue: winW, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(() => {
+      navigation.setOptions({ animation: 'none' }); // déjà sortie : pas de 2e animation
+      requestAnimationFrame(() => navigation.goBack());
+    });
+  };
+  const swipe = useMemo(() => Gesture.Pan()
+    .activeOffsetX(18)
+    .failOffsetY([-14, 14])
+    .runOnJS(true)
+    .onUpdate((e) => { if (!leaving.current) swipeX.setValue(Math.max(0, e.translationX)); })
+    .onEnd((e) => {
+      if (e.translationX > winW * 0.3 || e.velocityX > 800) closeBySwipe();
+      else Animated.spring(swipeX, { toValue: 0, useNativeDriver: true, bounciness: 0, speed: 18 }).start();
+    }), [winW]); // eslint-disable-line
   useKeepAwake('settings-screen');
   const substances = useStore((s) => s.substances);
   const archivedSubstances = useStore((s) => s.archivedSubstances);
@@ -304,7 +329,15 @@ export default function SettingsScreen() {
     // Les modals (wizards, confirmations) sont rendues HORS de la ScrollView :
     // sinon la ScrollView parente intercepte le 1er tap quand le clavier est ouvert
     // et ferme le clavier au lieu de déclencher le bouton.
-    <View style={styles.container}>
+    <GestureDetector gesture={swipe}>
+    <Animated.View style={[styles.container, styles.swipeShadow, { transform: [{ translateX: swipeX }] }]}>
+    {/* En-tête (remplace celui de la navigation : la page entière suit le doigt) */}
+    <View style={[styles.topBar, { paddingTop: insets.top }]}>
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.topBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+        <MaterialCommunityIcons name="arrow-left" size={24} color={theme.colors.text} />
+      </TouchableOpacity>
+      <Text style={styles.topTitle} numberOfLines={1}>Paramètres</Text>
+    </View>
     <ScrollView style={styles.container} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       {/* ===== SOUTENIR (sans titre, 1.26) ===== */}
       <View style={{ height: theme.spacing.md }} />
@@ -810,11 +843,16 @@ export default function SettingsScreen() {
           />
         );
       })()}
-    </View>
+    </Animated.View>
+    </GestureDetector>
   );
 }
 
 const styles = StyleSheet.create({
+  topBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: theme.spacing.md, gap: theme.spacing.md, backgroundColor: theme.colors.background },
+  topBtn: { padding: 4, height: 56, justifyContent: 'center' },
+  topTitle: { flex: 1, color: theme.colors.text, fontSize: 20, fontWeight: '300', letterSpacing: 1 },
+  swipeShadow: { shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 8, shadowOffset: { width: -2, height: 0 }, elevation: 12 },
   traceBox: {
     paddingHorizontal: theme.spacing.lg, paddingVertical: theme.spacing.md, gap: 3,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.colors.border,

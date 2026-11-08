@@ -126,7 +126,13 @@ export default function App() {
         }}
       >
         <Stack.Screen name="Main" component={MainScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Paramètres' }} />
+        {/* 1.51 : en-tête dessiné par la page (elle suit le doigt quand on glisse pour fermer) ;
+            transparente → l'écran principal reste visible dessous pendant le glisser */}
+        <Stack.Screen
+          name="Settings"
+          component={SettingsScreen}
+          options={{ headerShown: false, presentation: 'transparentModal', contentStyle: { backgroundColor: 'transparent' } }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
     {/* Verrouillage (option) : par-dessus toute l'app */}
