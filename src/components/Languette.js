@@ -4,8 +4,12 @@
 //    autour ;
 //  - 1.56 : bord GAUCHE, 32 px, un tour en 8 s ; survol aimanté : les rayons s'effacent, un liseré fin
 //    détaché les remplace.
+//  - 1.60 : transition « tracé » (350 ms) : les rayons s'effacent pendant que le liseré se dessine, du
+//    haut vers le bas (la moitié visible) ; à l'envers quand le bandeau quitte la languette.
 import { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Animated, Easing } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
+import Reanimated, { useSharedValue, useAnimatedProps, withTiming, Easing as REasing } from 'react-native-reanimated';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { theme } from '../theme';
 import { LANGUETTE } from './BannerGrid';
@@ -18,6 +22,10 @@ const TURN_MS = 8000;  // un tour complet (1.56 : un peu plus lent)
 const RING_GAP = 6;    // liseré du survol aimanté : écart et épaisseur
 const RING_W = 1.5;
 const ICON = 14;
+const TRACE_MS = 350;  // 1.60 : rayons → liseré
+const RING_R = SIZE / 2 + RING_GAP;
+const HALF_C = Math.PI * RING_R; // demi-cercle visible (l'autre moitié est hors écran)
+const AnimatedCircle = Reanimated.createAnimatedComponent(Circle);
 const BOX = SIZE + 2 * (RAY_GAP + RAY_LEN) + 4;
 
 export default function Languette({ visible, active, hover = false, cols }) {
@@ -26,9 +34,13 @@ export default function Languette({ visible, active, hover = false, cols }) {
   const accent = useRef(new Animated.Value(0)).current; // 0 = repos, 1 = bandeau tenu
   const spin = useRef(new Animated.Value(0)).current;
   const hov = useRef(new Animated.Value(0)).current;    // 1 = survol aimanté
+  const trace = useSharedValue(0); // 0 = rien, 1 = liseré entièrement dessiné
   useEffect(() => {
-    Animated.timing(hov, { toValue: hover ? 1 : 0, duration: 140, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
-  }, [hover, hov]);
+    Animated.timing(hov, { toValue: hover ? 1 : 0, duration: TRACE_MS, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }).start();
+    trace.value = withTiming(hover ? 1 : 0, { duration: TRACE_MS, easing: REasing.inOut(REasing.cubic) });
+  }, [hover, hov]); // eslint-disable-line
+  // Le trait part du haut et descend le long de la moitié visible
+  const ringProps = useAnimatedProps(() => ({ strokeDashoffset: HALF_C * (1 - trace.value) }));
   const raysOpacity = Animated.multiply(accent, Animated.subtract(1, hov));
 
   useEffect(() => {
@@ -69,8 +81,16 @@ export default function Languette({ visible, active, hover = false, cols }) {
               </View>
             ))}
           </Animated.View>
-          {/* Liseré du survol aimanté */}
-          <Animated.View style={[styles.ring, { opacity: hov }]} />
+          {/* Liseré du survol aimanté, tracé progressivement */}
+          <Svg width={BOX} height={BOX} style={StyleSheet.absoluteFill}>
+            <AnimatedCircle
+              cx={BOX / 2} cy={BOX / 2} r={RING_R}
+              fill="none" stroke={theme.colors.text} strokeWidth={RING_W}
+              strokeDasharray={[HALF_C, 2 * Math.PI * RING_R]}
+              animatedProps={ringProps}
+              transform={`rotate(-90 ${BOX / 2} ${BOX / 2})`}
+            />
+          </Svg>
           <View style={styles.dot}>
             <MaterialCommunityIcons name={cols === 1 ? 'view-grid-outline' : 'view-agenda-outline'} size={ICON} color={theme.colors.background} />
           </View>
@@ -85,10 +105,6 @@ const styles = StyleSheet.create({
   // Chaque rayon : une boîte de la taille du cadre, tournée ; le trait est posé en haut, au centre
   rayBox: { ...StyleSheet.absoluteFillObject, alignItems: 'center' },
   ray: { marginTop: (BOX - SIZE) / 2 - RAY_GAP - RAY_LEN, width: 2, height: RAY_LEN, borderRadius: 1, backgroundColor: theme.colors.text, opacity: 0.85 },
-  ring: {
-    position: 'absolute', width: SIZE + 2 * RING_GAP, height: SIZE + 2 * RING_GAP, borderRadius: SIZE / 2 + RING_GAP,
-    borderWidth: RING_W, borderColor: theme.colors.text,
-  },
   // Pastille : l'icône est placée dans la moitié visible (à droite du bord gauche de l'écran)
   dot: {
     width: SIZE, height: SIZE, borderRadius: SIZE / 2, backgroundColor: theme.colors.text,
