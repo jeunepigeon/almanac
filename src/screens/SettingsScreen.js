@@ -26,6 +26,7 @@ import DonationsModal from '../components/DonationsModal';
 
 // 1.50 : profil Discord du développeur (@jeunepigeon)
 const DEV_DISCORD_URL = 'https://discord.com/users/302744783523282944';
+const SETTINGS_SLIDE_MS = 280; // 1.54 : = défilement entre les pages
 import ToggleListModal from '../components/ToggleListModal';
 import CustomBannerNameModal from '../components/CustomBannerNameModal';
 import DayDetailModal from '../components/DayDetailModal';
@@ -57,15 +58,29 @@ export default function SettingsScreen() {
   // (l'écran principal reste visible dessous : présentation « transparentModal », voir App.js)
   const insets = useSafeAreaInsets();
   const { width: winW } = useWindowDimensions();
-  const swipeX = useRef(new Animated.Value(0)).current;
-  const leaving = useRef(false);
+  // 1.54 : entrée et sortie animées ici (même vitesse que les autres pages : 280 ms) ; la navigation
+  // n'anime plus (animation « none »). Toute sortie (flèche, retour Android, glisser) passe par ici.
+  const swipeX = useRef(new Animated.Value(winW)).current; // part de la droite
+  const leaving = useRef(false); // false · true (sortie en cours) · 'done'
+  useEffect(() => {
+    Animated.timing(swipeX, { toValue: 0, duration: SETTINGS_SLIDE_MS, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, []); // eslint-disable-line
+  const animateOut = (then, duration = SETTINGS_SLIDE_MS) => {
+    leaving.current = true;
+    Animated.timing(swipeX, { toValue: winW, duration, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(() => {
+      leaving.current = 'done';
+      then();
+    });
+  };
+  useEffect(() => navigation.addListener('beforeRemove', (e) => {
+    if (leaving.current === 'done') return;
+    e.preventDefault();
+    if (leaving.current) return;
+    animateOut(() => navigation.dispatch(e.data.action));
+  }), [navigation]); // eslint-disable-line
   const closeBySwipe = () => {
     if (leaving.current) return;
-    leaving.current = true;
-    Animated.timing(swipeX, { toValue: winW, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(() => {
-      navigation.setOptions({ animation: 'none' }); // déjà sortie : pas de 2e animation
-      requestAnimationFrame(() => navigation.goBack());
-    });
+    animateOut(() => navigation.goBack(), 200);
   };
   const swipe = useMemo(() => Gesture.Pan()
     .activeOffsetX(18)

@@ -127,11 +127,12 @@ export default function App() {
       >
         <Stack.Screen name="Main" component={MainScreen} options={{ headerShown: false }} />
         {/* 1.51 : en-tête dessiné par la page (elle suit le doigt quand on glisse pour fermer) ;
-            transparente → l'écran principal reste visible dessous pendant le glisser */}
+            transparente → l'écran principal reste visible dessous pendant le glisser ;
+            1.54 : entrée / sortie animées par la page elle-même (même vitesse que le reste) */}
         <Stack.Screen
           name="Settings"
           component={SettingsScreen}
-          options={{ headerShown: false, presentation: 'transparentModal', contentStyle: { backgroundColor: 'transparent' } }}
+          options={{ headerShown: false, presentation: 'transparentModal', animation: 'none', contentStyle: { backgroundColor: 'transparent' } }}
         />
       </Stack.Navigator>
     </NavigationContainer>

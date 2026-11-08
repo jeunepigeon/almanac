@@ -457,6 +457,7 @@ export default function BannerGrid({
         // Lâché sur la languette : bascule ; l'ordre ne change pas (le bandeau tenu garde sa place)
         const nextCols = drag.cols === 1 ? 2 : 1;
         const ids = drag.base;
+        onSlots?.(null); // 1.54 : pointillés retirés dès le lâcher (affichés seulement au survol)
         // 1.53 : lâché trop bas dans la liste → elle remonte d'abord en haut (la copie s'efface sur la
         // languette, l'aperçu en pointillés reste), puis la bascule se joue sous les yeux
         const wait = beforeToggle ? beforeToggle() : 0;

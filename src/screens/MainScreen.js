@@ -10,7 +10,7 @@ import { theme } from '../theme';
 import { useStore } from '../store';
 import SubstancesPage from './SubstancesPage';
 import { useGlobalPages } from './GlobalCalendarPage';
-import { useSubstancePages } from './SubstanceScreen';
+import SubstanceOverlay from './SubstanceOverlay';
 
 // 1.49 : un seul défilement Liste · Calendrier · Recherche · Stats.
 // 1.50 : les 3 pages de droite montrent Global OU la substance ouverte (même code, mêmes gestes).
@@ -25,6 +25,8 @@ import { useSubstancePages } from './SubstanceScreen';
 //  1.52 : tout ce qui suit le doigt (en-têtes, onglets, titres, points, bouton +) est calculé sur le fil
 //  d'affichage (Reanimated) depuis la position du défilement → accroché aux pages à chaque image ;
 //  1.53 : retour = le glisser depuis Calendrier (plus d'image qui glisse : plus de flash noir).
+//  1.54 : la substance n'est plus dans ce défilement : c'est une SURCOUCHE posée sur la liste (immobile
+//  dessous), voir SubstanceOverlay. Ce défilement ne contient plus que Liste · Global (3 onglets).
 const TABS = ['calendar', 'history', 'stats'];
 const AnimatedPager = Reanimated.createAnimatedComponent(PagerView);
 const C_FAINT = theme.colors.textFaint; // couleurs lues sur le fil d'affichage
@@ -55,7 +57,6 @@ export default function MainScreen() {
   const [lastGlobal, setLastGlobal] = useState(1); // dernier onglet de Global affiché (page 1 à 3)
   // Pages construites à la 1re visite, puis toutes peu après (prêtes au glisser)
   const [gVisited, setGVisited] = useState({ calendar: true });
-  const [sVisited, setSVisited] = useState({ calendar: true });
   useEffect(() => {
     const t = setTimeout(() => setGVisited({ calendar: true, history: true, stats: true }), 600);
     return () => clearTimeout(t);
@@ -74,15 +75,9 @@ export default function MainScreen() {
   const [tabsH, setTabsH] = useState(96);
   const [mainHeaderH, setMainHeaderH] = useState(108);
 
-  // Substance ouverte : { id, focusDate, notifFlash, tick }
-  const [sub, setSub] = useState(null);
-  const subRef = useRef(null);
-  subRef.current = sub;
-  const subRequest = useStore((s) => s.subRequest);
-
-  // --- Retour à la liste (flèche, retour Android, tap sur « Substances ») ---
-  // 1.53 : EXACTEMENT le glisser gauche → droite depuis Calendrier (vrai défilement des pages).
-  // Depuis Recherche / Stats : passage instantané sur Calendrier, puis le même glisser.
+  // --- Retour à la liste depuis Global (flèche, retour Android, tap sur « Substances ») ---
+  // Le glisser gauche → droite depuis Calendrier ; depuis Recherche / Stats : passage instantané sur
+  // Calendrier, puis le même glisser.
   const closeToList = useCallback(() => {
     const p = pageRef.current;
     if (p === 0) return;
@@ -94,28 +89,27 @@ export default function MainScreen() {
     }
   }, []);
 
-  const tab = page >= 1 ? TABS[page - 1] : 'calendar';
+  const tab = page >= 1 ? TABS[page - 1] : TABS[lastGlobal - 1];
   const goTab = useCallback((t) => pagerRef.current?.setPage(1 + TABS.indexOf(t)), []);
-  const g = useGlobalPages({ activeTab: sub || page === 0 ? TABS[lastGlobal - 1] : tab, goTab, visited: gVisited, pos });
-  const s = useSubstancePages({ sub, activeTab: sub ? tab : 'calendar', goTab, visited: sVisited, onBack: closeToList, pos });
+  const g = useGlobalPages({ activeTab: tab, goTab, visited: gVisited, pos });
 
-  // Demande d'ouverture (liste, notification) — 1.51 : plus d'ouverture depuis Global
+  // --- Substance (surcouche) : { id, focusDate, notifFlash, tick } ---
+  const [sub, setSub] = useState(null);
+  const subRef = useRef(null);
+  subRef.current = sub;
+  const subRequest = useStore((s) => s.subRequest);
   useEffect(() => {
-    if (!subRequest) return undefined;
-    const cur = subRef.current;
+    if (!subRequest) return;
     const next = { ...subRequest };
     subRef.current = next;
     setSub(next);
-    setSVisited({ calendar: true });
-    const t = setTimeout(() => setSVisited({ calendar: true, history: true, stats: true }), 500);
-    if (cur || pageRef.current >= 1) {
-      // Substance déjà ouverte, ou notification reçue sur Global : la page s'affiche directement
-      pagerRef.current?.setPageWithoutAnimation(1);
-    } else {
-      requestAnimationFrame(() => pagerRef.current?.setPage(1));
-    }
-    return () => clearTimeout(t);
   }, [subRequest?.tick]); // eslint-disable-line
+  // Arrivée terminée : si on était sur Global (notification), la liste est remise en place DESSOUS
+  // → à la fermeture, on retrouve la liste
+  const onSubOpened = useCallback(() => {
+    if (pageRef.current !== 0) pagerRef.current?.setPageWithoutAnimation(0);
+  }, []);
+  const onSubClosed = useCallback(() => { subRef.current = null; setSub(null); }, []);
 
   const hasUnconsulted = useStore((s2) => s2.hasUnconsultedSnapshots);
   const gotoGlobalStatsTick = useStore((s2) => s2.gotoGlobalStatsTick);
@@ -129,13 +123,15 @@ export default function MainScreen() {
 
   // Tap sur une notification « Toutes » / catégorie → liste (directement)
   useEffect(() => {
-    if (notifFocus?.tick && pageRef.current !== 0) pagerRef.current?.setPageWithoutAnimation(0);
+    if (!notifFocus?.tick) return;
+    if (subRef.current) onSubClosed();
+    if (pageRef.current !== 0) pagerRef.current?.setPageWithoutAnimation(0);
   }, [notifFocus?.tick]);
 
   // Bandeau des stats → onglet Stats de Global
   useEffect(() => {
     if (gotoGlobalStatsTick > 0) {
-      if (subRef.current) { subRef.current = null; setSub(null); }
+      if (subRef.current) onSubClosed();
       requestAnimationFrame(() => pagerRef.current?.setPage(3));
     }
   }, [gotoGlobalStatsTick]); // eslint-disable-line
@@ -145,7 +141,7 @@ export default function MainScreen() {
   useFocusEffect(
     useCallback(() => {
       const onBack = () => {
-        if (subRef.current || pageRef.current >= 1) { closeToList(); return true; }
+        if (pageRef.current >= 1) { closeToList(); return true; }
         return false;
       };
       const h = BackHandler.addEventListener('hardwareBackPress', onBack);
@@ -153,18 +149,9 @@ export default function MainScreen() {
     }, [closeToList])
   );
 
-  const subOpen = !!sub && !!s.topBar;
   // 1.51 : la liste n'est pas redessinée quand l'écran principal change (onglets, cartes de Global…)
   const listPage = useMemo(() => <SubstancesPage />, []);
   const listReorg = reorderMode && page === 0;
-
-  // Contenu d'une page de droite : Global toujours monté (masqué si une substance est ouverte)
-  const pageBody = (key) => (
-    <>
-      <View style={[styles.fill, subOpen && styles.hidden]}>{g[key]}</View>
-      {subOpen && <View style={styles.fill}>{s[key]}</View>}
-    </>
-  );
 
   return (
     <View style={styles.container}>
@@ -259,11 +246,9 @@ export default function MainScreen() {
               const p = e.nativeEvent.position;
               pageRef.current = p;
               setPage(p);
-              if (p === 0 && subRef.current) { subRef.current = null; setSub(null); }
               if (p >= 1) {
                 const t = TABS[p - 1];
-                if (subRef.current) setSVisited((v) => (v[t] ? v : { ...v, [t]: true }));
-                else { setLastGlobal(p); setGVisited((v) => (v[t] ? v : { ...v, [t]: true })); }
+                setLastGlobal(p); setGVisited((v) => (v[t] ? v : { ...v, [t]: true }));
               }
               useStore.getState().requestCountersExit();
             }}
@@ -271,37 +256,26 @@ export default function MainScreen() {
             <View key="list" style={styles.page}>
               {listPage}
             </View>
-            <View key="p-calendar" style={[styles.page, { paddingTop: tabsH }]}>{pageBody('calendar')}</View>
-            <View key="p-history" style={[styles.page, { paddingTop: tabsH }]}>{pageBody('history')}</View>
-            <View key="p-stats" style={[styles.page, { paddingTop: tabsH }]}>{pageBody('stats')}</View>
+            <View key="p-calendar" style={[styles.page, { paddingTop: tabsH }]}>{g.calendar}</View>
+            <View key="p-history" style={[styles.page, { paddingTop: tabsH }]}>{g.history}</View>
+            <View key="p-stats" style={[styles.page, { paddingTop: tabsH }]}>{g.stats}</View>
           </AnimatedPager>
           {/* Onglets + petit compteur : fixes entre les 3 pages, glissent avec la page vers la liste */}
           <Reanimated.View
             style={[styles.gHeader, slideStyle]}
             onLayout={(e) => { const h = Math.round(e.nativeEvent.layout.height); if (h > 0 && h !== tabsH) setTabsH(h); }}
           >
-            <View style={subOpen && styles.hidden}>{g.header}</View>
-            {subOpen && s.header}
+            {g.header}
           </Reanimated.View>
-          {subOpen && s.fab && (
-            <Reanimated.View style={[styles.fabWrap, slideStyle]} pointerEvents="box-none">
-              {s.fab}
-            </Reanimated.View>
-          )}
-          {subOpen ? s.reorgBar : g.reorgBar}
+          {g.reorgBar}
         </View>
       </View>
 
-      {/* En-tête de la substance (flèche, nom, cloche) par-dessus l'en-tête principal : part et revient
-          avec ses pages */}
-      {subOpen && (
-        <Reanimated.View style={[styles.subTop, { height: mainHeaderH }, slideStyle]}>
-          {s.topBar}
-        </Reanimated.View>
-      )}
-
       {g.modals}
-      {subOpen && s.modals}
+      {/* 1.54 : substance en surcouche (la liste reste immobile dessous) */}
+      {sub && (
+        <SubstanceOverlay sub={sub} headerH={mainHeaderH} onOpened={onSubOpened} onClosed={onSubClosed} />
+      )}
       <ShareModal visible={shareOpen} onClose={() => setShareOpen(false)} />
       <NotifWizard visible={notifOpen} onClose={() => setNotifOpen(false)} />
     </View>
