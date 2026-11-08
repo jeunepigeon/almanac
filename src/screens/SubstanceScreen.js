@@ -39,7 +39,7 @@ function dayKeyOf(ts) {
 
 const TAB_IDS = ['calendar', 'history', 'stats'];
 
-export function useSubstancePages({ sub, activeTab, goTab, visited = {}, onBack, pos }) {
+export function useSubstancePages({ sub, activeTab, goTab, visited = {}, onBack, pos, onCalendarPlaced = null }) {
   const navigation = useNavigation();
   const substanceId = sub?.id ?? null;
   const focusDate = sub?.focusDate ?? null;
@@ -137,6 +137,7 @@ export function useSubstancePages({ sub, activeTab, goTab, visited = {}, onBack,
       showJumpButtons={true}
       substanceColor={subColor}
       onDayPress={(dayKey, dayTimestamp) => setDayDetail({ dayKey, dayTimestamp })}
+      onPlaced={onCalendarPlaced}
     />
   ) : null), [!!substance, markersByDay, subColor]); // eslint-disable-line
   const history = useMemo(() => (substance && visited.history ? (

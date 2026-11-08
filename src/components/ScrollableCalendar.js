@@ -218,6 +218,7 @@ export default function ScrollableCalendar({
   showJumpButtons = false,
   substanceColor = null,
   compactNav = false, // 1.45 : boutons de navigation −15 % (calendrier d'une substance)
+  onPlaced = null,    // 1.58 : appelé une fois calé sur le mois courant (la page peut alors arriver)
 }) {
   const nk = compactNav ? 0.85 : 1;
   const ns = (v) => Math.round(v * nk);
@@ -314,10 +315,12 @@ export default function ScrollableCalendar({
   // défilement visible vers le bas à l'ouverture (page d'une substance)
   const [placed, setPlaced] = useState(false);
   const placedRef = useRef(false);
+  const onPlacedRef = useRef(onPlaced);
+  onPlacedRef.current = onPlaced;
   const markPlaced = useCallback(() => {
     if (placedRef.current) return;
     placedRef.current = true;
-    requestAnimationFrame(() => setPlaced(true));
+    requestAnimationFrame(() => { setPlaced(true); onPlacedRef.current?.(); });
   }, []);
   useEffect(() => { const t = setTimeout(markPlaced, 350); return () => clearTimeout(t); }, [markPlaced]);
   const snapToPresent = useCallback(() => {

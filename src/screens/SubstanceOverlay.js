@@ -47,23 +47,36 @@ export default function SubstanceOverlay({ sub, headerH, tabsH0 = 96, onOpened, 
     spos.value = e.position + e.offset;
   }, ['onPageScroll']);
 
+  // 1.58 : la page ne commence à arriver qu'une fois TOUT en place hors écran (hauteur des onglets
+  // mesurée, calendrier calé sur le mois courant) → plus rien ne bouge ou ne se décale à l'arrivée.
+  const readyFlags = useRef({ tabs: false, cal: false });
+  const started = useRef(false);
+  const startOpen = () => {
+    if (started.current) return;
+    started.current = true;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      ox.value = withTiming(0, { duration: SLIDE_MS, easing: SLIDE_EASE }, (fin) => { if (fin) runOnJS(opened)(); });
+    }));
+  };
+  const checkReady = () => { if (readyFlags.current.tabs && readyFlags.current.cal) startOpen(); };
+  const onCalendarPlaced = useCallback(() => { readyFlags.current.cal = true; checkReady(); }, []); // eslint-disable-line
+
   // Arrivée (et nouvelle substance ouverte par-dessus : on revient sur Calendrier, sans animation)
   const openedOnce = useRef(false);
   useEffect(() => {
     if (!sub) return undefined;
     setVisited({ calendar: true });
-    const t = setTimeout(() => setVisited({ calendar: true, history: true, stats: true }), 500);
+    // Recherche et Stats construites APRÈS l'arrivée (pas pendant le glissement)
+    const t = setTimeout(() => setVisited({ calendar: true, history: true, stats: true }), 800);
+    let t2 = null;
     if (!openedOnce.current) {
       openedOnce.current = true;
       ox.value = winW;
-      // 1.55 : la page est construite (1re image) AVANT de bouger → pas de saccade à l'arrivée
-      requestAnimationFrame(() => {
-        ox.value = withTiming(0, { duration: SLIDE_MS, easing: SLIDE_EASE }, (fin) => { if (fin) runOnJS(opened)(); });
-      });
+      t2 = setTimeout(startOpen, 400); // filet : on part quand même
     } else if (pageRef.current !== 0) {
       pagerRef.current?.setPageWithoutAnimation(0);
     }
-    return () => clearTimeout(t);
+    return () => { clearTimeout(t); clearTimeout(t2); };
   }, [sub?.tick]); // eslint-disable-line
 
   const opened = () => { setHw(false); onOpened?.(); };
@@ -90,7 +103,7 @@ export default function SubstanceOverlay({ sub, headerH, tabsH0 = 96, onOpened, 
 
   const tab = TABS[page] || 'calendar';
   const goTab = useCallback((t) => pagerRef.current?.setPage(TABS.indexOf(t)), []);
-  const s = useSubstancePages({ sub, activeTab: tab, goTab, visited, onBack: close, pos: tabPos });
+  const s = useSubstancePages({ sub, activeTab: tab, goTab, visited, onBack: close, pos: tabPos, onCalendarPlaced });
 
   // Glisser vers la droite depuis Calendrier : la page suit le doigt
   const swipe = useMemo(() => Gesture.Pan()
@@ -143,7 +156,11 @@ export default function SubstanceOverlay({ sub, headerH, tabsH0 = 96, onOpened, 
             {/* Onglets + petit compteur : fixes entre les 3 pages */}
             <View
               style={styles.tabsHeader}
-              onLayout={(e) => { const h = Math.round(e.nativeEvent.layout.height); if (h > 0 && h !== tabsH) setTabsH(h); }}
+              onLayout={(e) => {
+                const h = Math.round(e.nativeEvent.layout.height);
+                if (h > 0 && h !== tabsH) setTabsH(h);
+                if (h > 0 && !readyFlags.current.tabs) { readyFlags.current.tabs = true; checkReady(); }
+              }}
             >
               {s.header}
             </View>

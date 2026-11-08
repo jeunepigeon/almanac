@@ -296,7 +296,11 @@ export default function BannerGrid({
   // Position du doigt → centre de la copie (bloqué aux bords), coin haut-gauche logique
   const placeCopy = (f, gH) => {
     const cg = drag.cg;
-    const cx = Math.max(cg.w / 2, Math.min(W - cg.w / 2, f.x));
+    // 1.58 : la copie peut dépasser les bords gauche et droit, proportionnellement à sa largeur
+    // (grande case : la taille de la languette ; demi-case : la moitié) → on sent qu'on peut aller
+    // jusqu'à la languette
+    const ov = W > 0 ? LANG * (cg.w / W) : 0;
+    const cx = Math.max(cg.w / 2 - ov, Math.min(W - cg.w / 2 + ov, f.x));
     const cy = Math.max(cg.h / 2, Math.min(Math.max(cg.h / 2, gH - cg.h / 2), f.y));
     copy.fx.setValue(cx); copy.fy.setValue(cy);
     drag.cx = cx - cg.w / 2; drag.cy = cy - cg.h / 2;
