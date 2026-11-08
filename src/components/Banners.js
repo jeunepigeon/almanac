@@ -266,7 +266,8 @@ const styles = StyleSheet.create({
   // cloche et outils à la même distance de leur bord (icône à ~6 du bord, avant réduction)
   // 1.51 : position FIXE (même place dans toutes les petites cases) : centrées dans la marge latérale
   toolsCompact: { right: Math.max(0, COMPACT_PAD / 2 - (COMPACT_TOOL + 8) / 2), flexDirection: 'column', justifyContent: 'center', gap: 2 },
-  bellCompact: { left: Math.max(0, COMPACT_PAD / 2 - (COMPACT_BELL + 8) / 2) },
+  // 1.52 : + 3 px visibles vers la droite (3 / HALF_SCALE avant réduction)
+  bellCompact: { left: Math.max(0, COMPACT_PAD / 2 - (COMPACT_BELL + 8) / 2) + 3 / HALF_SCALE },
   toolBtn: { padding: theme.spacing.xs },
   // 1.43 : points centrés, même écart au-dessus (chiffre) et en dessous (« clic pour plus de détails »)
   dotsRow: {

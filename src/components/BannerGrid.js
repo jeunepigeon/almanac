@@ -144,6 +144,7 @@ export default function BannerGrid({
   langAnim = null,      // 1.51 : position de la languette (dessinée par le parent, fixe à l'écran)
   getScrollY = () => 0, // défilement de la liste (la languette est fixe à l'écran, pas dans la grille)
   onLangCols = null,    // (cols) → icône de la languette
+  onSlots = null,       // 1.52 : cases en pointillés dessinées par le parent, en haut de l'écran
 }) {
   const { width: winW } = useWindowDimensions();
   const [W, setW] = useState(winW); // largeur réelle de la grille (mesurée)
@@ -477,6 +478,14 @@ export default function BannerGrid({
 
   const pickedItem = pickId ? byId.current[pickId] : null;
   const dimOthers = stage >= 1;
+  // 1.52 : aperçu de la future disposition fourni au parent (affiché en haut de l'écran, visible même
+  // quand on est descendu dans la liste)
+  useEffect(() => {
+    if (!onSlots) return;
+    if (stage === 1 && drag.id) {
+      onSlots(Array.from({ length: Math.min(drag.n, drag.cols === 1 ? 8 : 4) }, (_, i) => geom(i, drag.n, drag.cols === 1 ? 2 : 1, W)));
+    } else onSlots(null);
+  }, [stage, pickId]); // eslint-disable-line
   const pillTop = useMemo(() => Animated.subtract(heightAnim, SPACER_HEIGHT + PILL_HIT / 2), [heightAnim]);
 
   return (
@@ -532,7 +541,7 @@ export default function BannerGrid({
         );
       })}
       {/* Aperçu de la future disposition (survol de la languette) : cases en pointillés */}
-      {stage === 1 && drag.id && Array.from({ length: Math.min(drag.n, drag.cols === 1 ? 8 : 4) }, (_, i) => geom(i, drag.n, drag.cols === 1 ? 2 : 1, W)).map((gq, i) => (
+      {!onSlots && stage === 1 && drag.id && Array.from({ length: Math.min(drag.n, drag.cols === 1 ? 8 : 4) }, (_, i) => geom(i, drag.n, drag.cols === 1 ? 2 : 1, W)).map((gq, i) => (
         <View key={`slot-${i}`} pointerEvents="none" style={[styles.slot, { left: gq.x + 3, top: gq.y + 3, width: gq.w - 6, height: gq.h - 6 }]} />
       ))}
 

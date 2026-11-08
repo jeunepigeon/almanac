@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, BackHandler, Animated, Easing, Image, useWindowDimensions } from 'react-native';
 import PagerView from 'react-native-pager-view';
+import Reanimated, { useSharedValue, useAnimatedStyle, useEvent, interpolate, interpolateColor, Extrapolation } from 'react-native-reanimated';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { captureRef, releaseCapture } from 'react-native-view-shot';
 import NotifWizard from '../components/NotifWizard';
@@ -22,8 +23,30 @@ import { useSubstancePages } from './SubstanceScreen';
 //  - titres « Substances | Global », points et onglets suivent le doigt (couleurs calculées depuis
 //    la position du défilement) ;
 //  - partager visible aussi sur Global ; barre de réorganisation plus épaisse, sans délai.
+//  1.52 : tout ce qui suit le doigt (en-têtes, onglets, titres, points, bouton +) est calculé sur le fil
+//  d'affichage (Reanimated) depuis la position du défilement → accroché aux pages à chaque image ;
+//  fermeture = UNE seule animation : l'image de l'écran part à droite, la liste est déjà en place dessous.
 const TABS = ['calendar', 'history', 'stats'];
 const SLIDE_MS = 280;
+const AnimatedPager = Reanimated.createAnimatedComponent(PagerView);
+const C_FAINT = theme.colors.textFaint; // couleurs lues sur le fil d'affichage
+const C_TEXT = theme.colors.text;
+
+// Titre / point de l'en-tête principal : blanc sur sa page, gris sur l'autre (suit le doigt)
+function HeaderTitle({ pos, i, label, dim }) {
+  const style = useAnimatedStyle(() => {
+    const t = Math.max(0, Math.min(1, pos.value));
+    return { color: interpolateColor(i === 0 ? 1 - t : t, [0, 1], [C_FAINT, C_TEXT]) };
+  }, [i]);
+  return <Reanimated.Text style={[styles.titleText, style, dim && { opacity: 0.3 }]}>{label}</Reanimated.Text>;
+}
+function HeaderDot({ pos, i }) {
+  const style = useAnimatedStyle(() => {
+    const t = Math.max(0, Math.min(1, pos.value));
+    return { backgroundColor: interpolateColor(i === 0 ? 1 - t : t, [0, 1], [C_FAINT, C_TEXT]) };
+  }, [i]);
+  return <Reanimated.View style={[styles.dot, style]} />;
+}
 
 export default function MainScreen() {
   const navigation = useNavigation();
@@ -42,15 +65,16 @@ export default function MainScreen() {
     return () => clearTimeout(t);
   }, []);
 
-  // Position du défilement (JavaScript : suit toujours la page affichée)
-  const progress = useRef(new Animated.Value(0)).current;
-  const headerX = useMemo(() => progress.interpolate({
-    inputRange: [0, 1], outputRange: [winW, 0], extrapolate: 'clamp',
-  }), [progress, winW]);
-  const titleColors = useMemo(() => [
-    progress.interpolate({ inputRange: [0, 1], outputRange: [theme.colors.text, theme.colors.textFaint], extrapolate: 'clamp' }),
-    progress.interpolate({ inputRange: [0, 1], outputRange: [theme.colors.textFaint, theme.colors.text], extrapolate: 'clamp' }),
-  ], [progress]);
+  // Position du défilement (fil d'affichage) : 0 = liste, 1 à 3 = onglets
+  const pos = useSharedValue(0);
+  const onPageScroll = useEvent((e) => {
+    'worklet';
+    pos.value = e.position + e.offset;
+  }, ['onPageScroll']);
+  // En-têtes et bouton + des pages de droite : glissent avec la page vers la liste
+  const slideStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: interpolate(pos.value, [0, 1], [winW, 0], Extrapolation.CLAMP) }],
+  }), [winW]);
   const [tabsH, setTabsH] = useState(96);
   const [mainHeaderH, setMainHeaderH] = useState(108);
 
@@ -62,8 +86,7 @@ export default function MainScreen() {
 
   // --- Fermeture directe vers la liste (image figée qui part à droite) ---
   const closingRef = useRef(false);  // fermeture en cours
-  const freezeRef = useRef(false);   // pendant l'animation : la position du défilement est pilotée ici
-  const [shot, setShot] = useState(null); // { uri, full } — full : tout l'écran (substance, avec son en-tête)
+  const [shot, setShot] = useState(null); // { uri } — image de tout l'écran pendant la fermeture
   const shotX = useRef(new Animated.Value(0)).current;
   const shotStarted = useRef(false);
 
@@ -71,36 +94,38 @@ export default function MainScreen() {
     if (closingRef.current) return;
     if (pageRef.current === 0 && !subRef.current) return;
     closingRef.current = true;
-    const full = !!subRef.current;
     try {
-      const uri = await captureRef(full ? rootRef : areaRef, { format: 'jpg', quality: 0.85, result: 'tmpfile' });
+      const uri = await captureRef(rootRef, { format: 'jpg', quality: 0.85, result: 'tmpfile' });
       shotStarted.current = false;
       shotX.setValue(0);
-      setShot({ uri, full });
+      setShot({ uri });
     } catch (e) {
       closingRef.current = false;
       pagerRef.current?.setPage(0); // filet : défilement normal
     }
   }, [shotX]);
 
-  // L'image couvre l'écran : passage instantané sur la liste dessous, puis l'image glisse à droite
+  // L'image couvre tout l'écran : sous elle, la liste est mise en place D'UN COUP (page 0, substance
+  // fermée, en-têtes à leur place finale) ; puis seule l'image glisse à droite.
   const startShotSlide = () => {
     if (shotStarted.current) return;
     shotStarted.current = true;
-    freezeRef.current = true;
     pagerRef.current?.setPageWithoutAnimation(0); // la page 0 sélectionnée ferme la substance
-    progress.setValue(1);
-    const ease = Easing.out(Easing.cubic);
-    Animated.parallel([
-      Animated.timing(shotX, { toValue: winW, duration: SLIDE_MS, easing: ease, useNativeDriver: false }),
-      Animated.timing(progress, { toValue: 0, duration: SLIDE_MS, easing: ease, useNativeDriver: false }),
-    ]).start(() => {
-      freezeRef.current = false;
-      closingRef.current = false;
-      progress.setValue(pageRef.current);
-      setShot((cur) => { if (cur?.uri) { try { releaseCapture(cur.uri); } catch (e) { /* rien */ } } return null; });
-    });
+    pos.value = 0;
+    if (subRef.current) { subRef.current = null; setSub(null); }
+    pageRef.current = 0; setPage(0);
+    // 2 images d'attente : la liste est affichée dessous avant le départ
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      Animated.timing(shotX, { toValue: winW, duration: SLIDE_MS, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(() => {
+        closingRef.current = false;
+        const uri = shotUriRef.current;
+        setShot(null);
+        if (uri) { try { releaseCapture(uri); } catch (e) { /* rien */ } }
+      });
+    }));
   };
+  const shotUriRef = useRef(null);
+  shotUriRef.current = shot?.uri || null;
   useEffect(() => { // filet : image jamais chargée
     if (!shot) return undefined;
     const t = setTimeout(startShotSlide, 250);
@@ -109,8 +134,8 @@ export default function MainScreen() {
 
   const tab = page >= 1 ? TABS[page - 1] : 'calendar';
   const goTab = useCallback((t) => pagerRef.current?.setPage(1 + TABS.indexOf(t)), []);
-  const g = useGlobalPages({ activeTab: sub || page === 0 ? TABS[lastGlobal - 1] : tab, goTab, visited: gVisited, progress });
-  const s = useSubstancePages({ sub, activeTab: sub ? tab : 'calendar', goTab, visited: sVisited, onBack: closeToList, progress });
+  const g = useGlobalPages({ activeTab: sub || page === 0 ? TABS[lastGlobal - 1] : tab, goTab, visited: gVisited, pos });
+  const s = useSubstancePages({ sub, activeTab: sub ? tab : 'calendar', goTab, visited: sVisited, onBack: closeToList, pos });
 
   // Demande d'ouverture (liste, notification) — 1.51 : plus d'ouverture depuis Global
   useEffect(() => {
@@ -190,8 +215,8 @@ export default function MainScreen() {
           <View style={styles.headerCenter}>
             {titles.map((t, i) => {
               // Réorganisation en cours : la page affichée reste normale, l'autre est assombrie (1.44)
-              const cur = page === 0 ? 0 : 1;
-              const dim = pagerLocked && i !== cur;
+              // 1.52 : en réorganisation, « Substances », « Global » et « settings » sont assombris
+              const dim = pagerLocked;
               return (
                 <TouchableOpacity
                   key={t}
@@ -203,9 +228,7 @@ export default function MainScreen() {
                   style={styles.titleTab}
                   disabled={pagerLocked}
                 >
-                  <Animated.Text style={[styles.titleText, { color: titleColors[i] }, dim && { opacity: 0.3 }]}>
-                    {t}
-                  </Animated.Text>
+                  <HeaderTitle pos={pos} i={i} label={t} dim={dim} />
                 </TouchableOpacity>
               );
             })}
@@ -228,7 +251,7 @@ export default function MainScreen() {
 
         <View style={styles.indicator}>
           {[0, 1].map((i) => (
-            <Animated.View key={i} style={[styles.dot, { backgroundColor: titleColors[i] }]} />
+            <HeaderDot key={i} pos={pos} i={i} />
           ))}
           {/* Partage (liste et Global), en miroir de la cloche. Inactifs pendant une réorganisation,
               sans changer d'aspect (1.51 : plus de clignotement) */}
@@ -264,22 +287,21 @@ export default function MainScreen() {
 
       <View ref={areaRef} collapsable={false} style={styles.pagerArea}>
         <View style={styles.pagerWrap}>
-          <PagerView
+          <AnimatedPager
             ref={pagerRef}
             style={styles.pager}
             initialPage={0}
             scrollEnabled={!pagerLocked}
-            onPageScroll={(e) => { if (!freezeRef.current) progress.setValue(e.nativeEvent.position + e.nativeEvent.offset); }}
+            onPageScroll={onPageScroll}
             onPageSelected={(e) => {
-              const pos = e.nativeEvent.position;
-              pageRef.current = pos;
-              setPage(pos);
-              if (!freezeRef.current) progress.setValue(pos);
-              if (pos === 0 && subRef.current) { subRef.current = null; setSub(null); }
-              if (pos >= 1) {
-                const t = TABS[pos - 1];
+              const p = e.nativeEvent.position;
+              pageRef.current = p;
+              setPage(p);
+              if (p === 0 && subRef.current) { subRef.current = null; setSub(null); }
+              if (p >= 1) {
+                const t = TABS[p - 1];
                 if (subRef.current) setSVisited((v) => (v[t] ? v : { ...v, [t]: true }));
-                else { setLastGlobal(pos); setGVisited((v) => (v[t] ? v : { ...v, [t]: true })); }
+                else { setLastGlobal(p); setGVisited((v) => (v[t] ? v : { ...v, [t]: true })); }
               }
               useStore.getState().requestCountersExit();
             }}
@@ -290,38 +312,33 @@ export default function MainScreen() {
             <View key="p-calendar" style={[styles.page, { paddingTop: tabsH }]}>{pageBody('calendar')}</View>
             <View key="p-history" style={[styles.page, { paddingTop: tabsH }]}>{pageBody('history')}</View>
             <View key="p-stats" style={[styles.page, { paddingTop: tabsH }]}>{pageBody('stats')}</View>
-          </PagerView>
+          </AnimatedPager>
           {/* Onglets + petit compteur : fixes entre les 3 pages, glissent avec la page vers la liste */}
-          <Animated.View
-            style={[styles.gHeader, { transform: [{ translateX: headerX }] }]}
+          <Reanimated.View
+            style={[styles.gHeader, slideStyle]}
             onLayout={(e) => { const h = Math.round(e.nativeEvent.layout.height); if (h > 0 && h !== tabsH) setTabsH(h); }}
           >
             <View style={subOpen && styles.hidden}>{g.header}</View>
             {subOpen && s.header}
-          </Animated.View>
+          </Reanimated.View>
           {subOpen && s.fab && (
-            <Animated.View style={[styles.fabWrap, { transform: [{ translateX: headerX }] }]} pointerEvents="box-none">
+            <Reanimated.View style={[styles.fabWrap, slideStyle]} pointerEvents="box-none">
               {s.fab}
-            </Animated.View>
+            </Reanimated.View>
           )}
           {subOpen ? s.reorgBar : g.reorgBar}
         </View>
-        {shot && !shot.full && (
-          <Animated.View pointerEvents="none" style={[styles.shot, { transform: [{ translateX: shotX }] }]}>
-            <Image source={{ uri: shot.uri }} style={styles.shotImg} fadeDuration={0} onLoad={startShotSlide} />
-          </Animated.View>
-        )}
       </View>
 
       {/* En-tête de la substance (flèche, nom, cloche) par-dessus l'en-tête principal : part et revient
           avec ses pages */}
       {subOpen && (
-        <Animated.View style={[styles.subTop, { height: mainHeaderH, transform: [{ translateX: headerX }] }]}>
+        <Reanimated.View style={[styles.subTop, { height: mainHeaderH }, slideStyle]}>
           {s.topBar}
-        </Animated.View>
+        </Reanimated.View>
       )}
 
-      {shot && shot.full && (
+      {shot && (
         <Animated.View pointerEvents="none" style={[styles.shot, { transform: [{ translateX: shotX }] }]}>
           <Image source={{ uri: shot.uri }} style={styles.shotImg} fadeDuration={0} onLoad={startShotSlide} />
         </Animated.View>

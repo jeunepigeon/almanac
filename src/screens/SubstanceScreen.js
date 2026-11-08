@@ -39,7 +39,7 @@ function dayKeyOf(ts) {
 
 const TAB_IDS = ['calendar', 'history', 'stats'];
 
-export function useSubstancePages({ sub, activeTab, goTab, visited = {}, onBack, progress }) {
+export function useSubstancePages({ sub, activeTab, goTab, visited = {}, onBack, pos }) {
   const navigation = useNavigation();
   const substanceId = sub?.id ?? null;
   const focusDate = sub?.focusDate ?? null;
@@ -181,7 +181,7 @@ export function useSubstancePages({ sub, activeTab, goTab, visited = {}, onBack,
   // 1.46 : onglets en haut, petit compteur dessous (même disposition que Global)
   const header = (
     <View style={styles.headerBox}>
-      <AnimatedTabs progress={progress} dimmed={countersEditing} onPress={(i) => goTab(TAB_IDS[i])} />
+      <AnimatedTabs pos={pos} dimmed={countersEditing} onPress={(i) => goTab(TAB_IDS[i])} />
       <TopCounter
         label="Sobre depuis"
         timestamp={lastTimestamp}

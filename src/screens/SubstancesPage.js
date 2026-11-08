@@ -120,6 +120,8 @@ export default function SubstancesPage() {
   // 1.51 : languette de bascule 1 ↔ 2 colonnes FIXE à l'écran (dessinée ici, au-dessus de la liste)
   const langAnim = useRef(new Animated.Value(4000)).current;
   const [langCols, setLangCols] = useState(1);
+  const [gridSlots, setGridSlots] = useState(null); // 1.52 : pointillés de la bascule, en haut de l'écran
+  const [catOrder, setCatOrder] = useState(null);   // 1.52 : ordre figé du « + » tant qu'il est ouvert
   const notifRules = useStore((s) => s.notifRules);
   const [bannerNotif, setBannerNotif] = useState(null); // { target: 'all' | 'color', key } — cloche d'un bandeau
   const notifCountOf = (target, key = null) => notifRules.filter((r) => r.target === target && (r.key || null) === key).length;
@@ -515,11 +517,12 @@ export default function SubstancesPage() {
           onToggleColumns={(cols, ids) => { saveBannerOrder(ids); setBannerColumns(cols); }}
           onDragChange={setGridDragging}
           onDimChange={setBannerDim}
-          onAddPress={() => setAddBannerOpen(true)}
+          onAddPress={() => { setCatOrder(bannerInfo.categories.map((c) => c.color)); setAddBannerOpen(true); }}
           showAdd={substances.length >= 2}
           langAnim={langAnim}
           getScrollY={() => scrollYRef.current}
           onLangCols={setLangCols}
+          onSlots={setGridSlots}
         />
       );
     }
@@ -568,6 +571,10 @@ export default function SubstancesPage() {
         />
       )}
 
+      {/* 1.52 : aperçu en pointillés en haut de l'écran (visible même en bas de la liste) */}
+      {gridSlots && gridSlots.map((gq, i) => (
+        <View key={`slot-${i}`} pointerEvents="none" style={[styles.slot, { left: gq.x + 3, top: gq.y + 3, width: gq.w - 6, height: gq.h - 6 }]} />
+      ))}
       {/* 1.51 : languette fixe (ne suit pas le défilement de la liste) */}
       <Animated.View pointerEvents="none" style={[styles.lang, { left: langAnim }]}>
         <MaterialCommunityIcons name={langCols === 1 ? 'view-grid-outline' : 'view-agenda-outline'} size={18} color={theme.colors.text} />
@@ -632,7 +639,12 @@ export default function SubstancesPage() {
             removeConfirm: notifCountOf('record') > 0 ? bannerRemoveMessage('record') : null,
           },
           { id: 'last24', color: theme.colors.text, label: 'Toutes prises · dernières 24 h', checked: colorBanners.includes('last24') },
-          ...bannerInfo.categories.map((c) => ({
+          ...(catOrder
+            ? [...bannerInfo.categories].sort((a, b) => {
+              const ia = catOrder.indexOf(a.color); const ib = catOrder.indexOf(b.color);
+              return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
+            })
+            : bannerInfo.categories).map((c) => ({
             id: c.color,
             color: c.color,
             checked: c.active,
@@ -804,6 +816,10 @@ export default function SubstancesPage() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   dimmed: { opacity: 0.25 },
+  slot: {
+    position: 'absolute', zIndex: 15, elevation: 15,
+    borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#9A9A9A', borderRadius: 8,
+  },
   lang: {
     position: 'absolute', top: LANGUETTE.top, width: LANGUETTE.size, height: LANGUETTE.size, borderRadius: LANGUETTE.size / 2,
     backgroundColor: theme.colors.surfaceAlt, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.textFaint,

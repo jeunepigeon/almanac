@@ -26,7 +26,7 @@ import { formatDayKey } from '../utils/dates';
 // activeTab : onglet affiché ; goTab(t) : aller à un onglet ; visited : pages déjà construites.
 const TAB_IDS = ['calendar', 'history', 'stats'];
 
-export function useGlobalPages({ activeTab, goTab, visited = {}, progress }) {
+export function useGlobalPages({ activeTab, goTab, visited = {}, pos }) {
   const navigation = useNavigation();
   const substances = useStore((s) => s.substances);
   const archivedSubstances = useStore((s) => s.archivedSubstances);
@@ -99,7 +99,7 @@ export function useGlobalPages({ activeTab, goTab, visited = {}, progress }) {
   const header = (
     <View style={styles.headerBox}>
       {/* 1.51 : trait et couleurs qui suivent le doigt (même composant que les substances) */}
-      <AnimatedTabs progress={progress} dimmed={countersEditing} onPress={(i) => { requestCountersExit(); goTab(TAB_IDS[i]); }} />
+      <AnimatedTabs pos={pos} dimmed={countersEditing} onPress={(i) => { requestCountersExit(); goTab(TAB_IDS[i]); }} />
       {/* 1.46 : petit compteur sous les onglets (même disposition que la page d'une substance) */}
       <TopCounter label="Sobre de tout depuis" timestamp={lastGlobalTs} dimmed={countersEditing} noBorder={activeTab === 'stats'} />
     </View>
