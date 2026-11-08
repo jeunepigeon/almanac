@@ -1,10 +1,12 @@
 // Version du CODE de l'app (JavaScript), distincte de la version de l'APK (app.json).
 // Les mises à jour sans build (EAS Update) changent ce numéro SANS toucher à app.json :
 // modifier la version dans app.json changerait l'empreinte native et l'APK installé refuserait la mise à jour.
-export const JS_VERSION = '1.61';
+export const JS_VERSION = '1.62';
 
 // Nouveautés affichées UNE fois après une mise à jour (message « Almanac mis à jour »).
 // À réécrire à chaque version (quelques lignes courtes).
 export const JS_NOTES = [
-  'Languette : rayons et liseré réagissent sans délai (prise, survol, sortie du survol)',
+  'Partage refait : substances et bandeaux à cocher (2 onglets)',
+  'Aperçu / Réorganisation : déplacer les éléments, languette par section pour 1 ou 2 colonnes',
+  'Image : bandeaux en haut comme dans la liste, puis les substances ; réduite si plus haute qu’une story',
 ];

@@ -36,7 +36,6 @@ import haptics from '../utils/haptics';
 import { BANNER_HEIGHT, HALF_SCALE, FADE_MS } from './Banners';
 
 const H1 = BANNER_HEIGHT;
-const HH = BANNER_HEIGHT * HALF_SCALE;
 export const SPACER_HEIGHT = 16;   // espace sous les bandeaux (pilule « + » posée sur la dernière ligne)
 const PILL_HALF = 6;
 const PILL_HIT = 30; // 1.51 : hauteur de la zone de toucher de la pilule « + »
@@ -61,21 +60,26 @@ const LANG_COPY_SCALE = 0.7;       // 1.50 : la copie rétrécit un peu au-dessu
 export const LANGUETTE = { size: LANG, top: LANG_TOP, visible: LANG_VISIBLE };
 export function effectiveCols(columns, n) { return columns === 2 && n >= 2 ? 2 : 1; }
 
-export function gridHeight(n, cols) {
+// 1.62 : grille paramétrable (partage) : h1 = hauteur d'une case pleine, u = échelle du contenu
+// (liste : h1 = 104, u = 1). Demi-case : hauteur h1 × HALF_SCALE, contenu réduit à u × HALF_SCALE.
+export const GRID_DEFAULT = { h1: H1, u: 1 };
+export function gridHeight(n, cols, c = GRID_DEFAULT) {
   if (n <= 0) return 0;
-  if (cols === 1) return n * H1;
+  const h1 = c.h1; const hh = c.h1 * HALF_SCALE;
+  if (cols === 1) return n * h1;
   const odd = n % 2 === 1;
-  return (odd ? H1 : 0) + ((n - (odd ? 1 : 0)) / 2) * HH;
+  return (odd ? h1 : 0) + ((n - (odd ? 1 : 0)) / 2) * hh;
 }
 
 // Géométrie de la case i (ordre lu ligne par ligne)
-function geom(i, n, cols, W) {
-  if (cols === 1) return { x: 0, y: i * H1, w: W, h: H1, s: 1, wide: true, col: -1 };
+export function geom(i, n, cols, W, c = GRID_DEFAULT) {
+  const h1 = c.h1; const hh = c.h1 * HALF_SCALE;
+  if (cols === 1) return { x: 0, y: i * h1, w: W, h: h1, s: c.u, wide: true, col: -1 };
   const odd = n % 2 === 1;
-  if (odd && i === 0) return { x: 0, y: 0, w: W, h: H1, s: 1, wide: true, col: -1 };
+  if (odd && i === 0) return { x: 0, y: 0, w: W, h: h1, s: c.u, wide: true, col: -1 };
   const j = i - (odd ? 1 : 0);
   const row = Math.floor(j / 2); const col = j % 2;
-  return { x: (col * W) / 2, y: (odd ? H1 : 0) + row * HH, w: W / 2, h: HH, s: HALF_SCALE, wide: false, col };
+  return { x: (col * W) / 2, y: (odd ? h1 : 0) + row * hh, w: W / 2, h: hh, s: c.u * HALF_SCALE, wide: false, col };
 }
 const keyOf = (g) => `${g.x}|${g.y}|${g.w}|${g.h}|${g.s}`;
 const sameArr = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
@@ -83,7 +87,7 @@ const sameArr = (a, b) => a.length === b.length && a.every((x, i) => x === b[i])
 // Une case : position / taille animées ; contenu = bandeau entier (largeur L) réduit à s
 const Cell = memo(function Cell({
   item, anim, L, compact, col2, active, hidden, dimmed, isWiggling, phase,
-  renderBanner, onTap, onLongPress, handlersRef,
+  renderBanner, onTap, onLongPress, handlersRef, ch = H1,
 }) {
   const idRef = useRef(item.id);
   idRef.current = item.id;
@@ -97,7 +101,7 @@ const Cell = memo(function Cell({
     .onFinalize(() => handlersRef.current.finalize()), [handlersRef, active]);
 
   const content = (
-    <Animated.View style={[styles.content, { width: L, transform: [{ scale: anim.s }] }]}>
+    <Animated.View style={[styles.content, { width: L, height: ch, transform: [{ scale: anim.s }] }]}>
       {renderBanner(item, { compact, layoutWidth: L, inReorder: active, isWiggling, phase })}
     </Animated.View>
   );
@@ -145,10 +149,19 @@ export default function BannerGrid({
   onLangActive = null,  // (bool) → bandeau tenu, bascule possible : la languette est mise en avant
   onLangHover = null,   // (bool) → survol aimanté de la languette
   getScrollY = () => 0, // défilement de la liste (la languette est fixe à l'écran, pas dans la grille)
+  cell = null,          // 1.62 : { h1, u } (partage) ; sinon bandeaux de la liste
+  spacer = SPACER_HEIGHT, // espace sous la grille (pilule « + ») ; 0 dans le partage
+  getLangY = null,      // 1.62 : () → haut de la languette en coordonnées de la grille (sinon liste)
+  langX0 = 0,           // 1.62 : abscisse du bord gauche de l'écran dans la grille (≤ 0)
   onLangCols = null,    // (cols) → icône de la languette
   onSlots = null,       // 1.52 : cases en pointillés dessinées par le parent, en haut de l'écran
   beforeToggle = null,  // 1.53 : () → ms d'attente (la liste remonte d'abord en haut), ou 0
 }) {
+  // 1.62 : géométrie (liste ou partage)
+  const GC = cell || GRID_DEFAULT;
+  const H1L = GC.h1; const HHL = GC.h1 * HALF_SCALE;
+  const CH = GC.h1 / GC.u; // hauteur du contenu dessiné (avant réduction)
+  const langTop = () => (getLangY ? getLangY() : LANG_TOP + getScrollY());
   const { width: winW } = useWindowDimensions();
   const [W, setW] = useState(winW); // largeur réelle de la grille (mesurée)
   const liveIds = items.map((it) => it.id);
@@ -258,7 +271,7 @@ export default function BannerGrid({
     const first = !mounted.current;
     order.forEach((id, i) => {
       if (id === pickId) return;
-      const g = geom(i, n, cols, W);
+      const g = geom(i, n, cols, W, GC);
       animOf(id, g, !first);
       moveTo(id, g, first ? 0 : (pickId ? SHIFT_MS : (structural ? MORPH_MS : SHIFT_MS)));
     });
@@ -266,7 +279,7 @@ export default function BannerGrid({
       const a = anims.current[id];
       if (a) Animated.timing(a.o, { toValue: 1, duration: FADE_MS, useNativeDriver: false }).start();
     });
-    const h = gridHeight(n, cols) + SPACER_HEIGHT;
+    const h = gridHeight(n, cols, GC) + spacer;
     if (first) heightAnim.setValue(h);
     else if (structural) Animated.timing(heightAnim, { toValue: h, duration: MORPH_MS, easing: EASE_SOFT, useNativeDriver: false }).start();
     prevShape.current = { n, cols };
@@ -274,7 +287,7 @@ export default function BannerGrid({
   }); // à chaque rendu : moveTo ignore les cases déjà en route vers la bonne place
   // 1er affichage : la hauteur est reposée après le montage du conteneur parent (sinon une valeur
   // posée avant son branchement n'est pas prise en compte)
-  useEffect(() => { heightAnim.setValue(gridHeight(prevShape.current.n, prevShape.current.cols) + SPACER_HEIGHT); }, []); // eslint-disable-line
+  useEffect(() => { heightAnim.setValue(gridHeight(prevShape.current.n, prevShape.current.cols, GC) + spacer); }, []); // eslint-disable-line
 
   // --- Gestes ---
   const setCopyGeom = (g, dur) => {
@@ -291,7 +304,7 @@ export default function BannerGrid({
   // 1.57 : aussi en tenant la grande case (nombre impair en 2 colonnes) — l'aperçu en pointillés
   // montre clairement le résultat
   // Cases de la future disposition (aperçu) : 4 au plus en 1 colonne, 8 au plus en 2 colonnes
-  const previewSlots = () => Array.from({ length: Math.min(drag.n, drag.cols === 1 ? 8 : 4) }, (_, i) => geom(i, drag.n, drag.cols === 1 ? 2 : 1, W));
+  const previewSlots = () => Array.from({ length: Math.min(drag.n, drag.cols === 1 ? 8 : 4) }, (_, i) => geom(i, drag.n, drag.cols === 1 ? 2 : 1, W, GC));
   const canToggle = () => drag.n >= 2;
   // Position du doigt → centre de la copie (bloqué aux bords), coin haut-gauche logique
   const placeCopy = (f, gH) => {
@@ -315,16 +328,16 @@ export default function BannerGrid({
   const targetOrder = (f) => {
     const { base, p, n: N, cols: C } = drag;
     if (C === 1) {
-      const t = Math.max(0, Math.min(N - 1, Math.floor((drag.cy + drag.cg.h / 2) / H1)));
+      const t = Math.max(0, Math.min(N - 1, Math.floor((drag.cy + drag.cg.h / 2) / H1L)));
       const next = [...base]; const [m] = next.splice(p, 1); next.splice(t, 0, m);
       let b = null;
-      if (t !== p) b = { x: W * 0.225, w: W * 0.55, y: t < p ? t * H1 : (t + 1) * H1 };
+      if (t !== p) b = { x: W * 0.225, w: W * 0.55, y: t < p ? t * H1L : (t + 1) * H1L };
       return { next, bar: b, swap: false };
     }
     const odd = N % 2 === 1; const off = odd ? 1 : 0;
     const rows = (N - off) / 2;
-    const inWide = odd && f.y < H1;
-    const r = Math.max(0, Math.min(rows - 1, Math.floor((f.y - (odd ? H1 : 0)) / HH)));
+    const inWide = odd && f.y < H1L;
+    const r = Math.max(0, Math.min(rows - 1, Math.floor((f.y - (odd ? H1L : 0)) / HHL)));
     const c = f.x < W / 2 ? 0 : 1;
     const slotAt = off + r * 2 + c;
     const swapWith = (q) => { const next = [...base]; [next[p], next[q]] = [next[q], next[p]]; return next; };
@@ -340,8 +353,8 @@ export default function BannerGrid({
     const next = [...base]; colSlots.forEach((s, k) => { next[s] = ids[k]; });
     let b = null;
     if (r !== kp) {
-      const gt = geom(colSlots[r], N, 2, W);
-      b = { x: gt.x + (W / 2) * 0.225, w: (W / 2) * 0.55, y: r < kp ? gt.y : gt.y + HH };
+      const gt = geom(colSlots[r], N, 2, W, GC);
+      b = { x: gt.x + (W / 2) * 0.225, w: (W / 2) * 0.55, y: r < kp ? gt.y : gt.y + HHL };
     }
     return { next, bar: b, swap: false };
   };
@@ -352,7 +365,7 @@ export default function BannerGrid({
     const a = anims.current[id];
     if (a) {
       const k = LANG_COPY_SCALE; const cg = drag.cg;
-      const lx = LANG_VISIBLE / 2; const ly = LANG_TOP + getScrollY() + LANG / 2;
+      const lx = langX0 + LANG_VISIBLE / 2; const ly = langTop() + LANG / 2;
       a.x.setValue(lx - (cg.w * k) / 2); a.y.setValue(ly - (cg.h * k) / 2);
       a.w.setValue(cg.w * k); a.h.setValue(cg.h * k); a.s.setValue(cg.s * k);
       targets.current[id] = null;
@@ -371,14 +384,14 @@ export default function BannerGrid({
       const p = base.indexOf(id);
       if (p < 0) return;
       const N = base.length; const C = effectiveCols(columns, N);
-      const g = geom(p, N, C, W);
+      const g = geom(p, N, C, W, GC);
       Object.assign(drag, {
         id, base, p, n: N, cols: C, g0: g, f0x: g.x + e.x, f0y: g.y + e.y,
         cx: g.x, cy: g.y, stage: 0, bound: null, key: base.join('|'), committed: false, cg: g,
       });
       setCopyGeom(g, 0);
       // Centre sous le doigt : la copie part de la case et glisse sous le doigt
-      placeCopy({ x: drag.f0x, y: drag.f0y }, gridHeight(N, C));
+      placeCopy({ x: drag.f0x, y: drag.f0y }, gridHeight(N, C, GC));
       copy.ox.setValue(g.x - drag.cx); copy.oy.setValue(g.y - drag.cy);
       Animated.parallel([
         Animated.timing(copy.ox, { toValue: 0, duration: CENTER_MS, easing: EASE, useNativeDriver: false }),
@@ -397,15 +410,15 @@ export default function BannerGrid({
     move: (e) => {
       if (!drag.id) return;
       const f = { x: drag.f0x + e.translationX, y: drag.f0y + e.translationY };
-      const gH = gridHeight(drag.n, drag.cols);
+      const gH = gridHeight(drag.n, drag.cols, GC);
       // Étapes de la bascule
       let st = drag.stage;
       if (canToggle()) {
         // 1.50 — Bascule en une action : la languette est la zone de dépôt (façon poubelle des stories).
         // Survol → léger aimant (la copie rétrécit et se colle), vibration, aperçu de la future
         // disposition en pointillés, le reste assombri ; quitter la languette → tout revient.
-        const lt = LANG_TOP + getScrollY(); // languette fixe à l'écran → en coordonnées de la grille
-        const inLang = f.x < LANG_ZONE_X && f.y > lt - LANG_ZONE_PAD && f.y < lt + LANG + LANG_ZONE_PAD;
+        const lt = langTop(); // languette fixe à l'écran → en coordonnées de la grille
+        const inLang = f.x < langX0 + LANG_ZONE_X && f.y > lt - LANG_ZONE_PAD && f.y < lt + LANG + LANG_ZONE_PAD;
         st = inLang ? 1 : 0;
         if (st !== drag.stage) {
           drag.stage = st;
@@ -421,8 +434,8 @@ export default function BannerGrid({
             setBar(null); drag.bound = null;
             onDimChange?.(true);
             const cg = drag.cg;
-            copy.frx.setValue(LANG_VISIBLE / 2 - cg.w / 2);
-            copy.fry.setValue(LANG_TOP + getScrollY() + LANG / 2 - cg.h / 2);
+            copy.frx.setValue(langX0 + LANG_VISIBLE / 2 - cg.w / 2);
+            copy.fry.setValue(langTop() + LANG / 2 - cg.h / 2);
             Animated.parallel([
               Animated.timing(copy.m, { toValue: 1, duration: SHIFT_MS, easing: EASE, useNativeDriver: false }),
               Animated.timing(copy.k, { toValue: LANG_COPY_SCALE, duration: SHIFT_MS, useNativeDriver: false }),
@@ -453,7 +466,7 @@ export default function BannerGrid({
         if (swap) haptics.medium(); else haptics.light();
         setArr(next);
         // La copie prend la taille de sa future place (large / demi)
-        const tg = geom(next.indexOf(drag.id), drag.n, drag.cols, W);
+        const tg = geom(next.indexOf(drag.id), drag.n, drag.cols, W, GC);
         if (tg.wide !== drag.cg.wide) { setCopyType({ L: tg.w / tg.s, compact: !tg.wide }); setCopyGeom(tg, SHIFT_MS); }
       }
       if (b) {
@@ -486,7 +499,7 @@ export default function BannerGrid({
       }
       const next = arr || drag.base;
       const slot = next.indexOf(id);
-      const tg = geom(slot, drag.n, drag.cols, W);
+      const tg = geom(slot, drag.n, drag.cols, W, GC);
       // La case repart de la position de la copie vers sa place
       if (a) {
         a.x.setValue(drag.cx); a.y.setValue(drag.cy); a.w.setValue(drag.cg.w); a.h.setValue(drag.cg.h); a.s.setValue(drag.cg.s);
@@ -511,19 +524,20 @@ export default function BannerGrid({
   const pickedItem = pickId ? byId.current[pickId] : null;
   // 1.52 : aperçu de la future disposition fourni au parent (affiché en haut de l'écran, visible même
   // quand on est descendu dans la liste)
-  const pillTop = useMemo(() => Animated.subtract(heightAnim, SPACER_HEIGHT + PILL_HIT / 2), [heightAnim]);
+  const pillTop = useMemo(() => Animated.subtract(heightAnim, spacer + PILL_HIT / 2), [heightAnim]);
 
   return (
     <View style={styles.wrap} onLayout={(e) => { const w = Math.round(e.nativeEvent.layout.width); if (w > 0 && w !== W) setW(w); }}>
       {/* Bandeaux retirés (en fondu), sous les autres cases qui glissent à leur place */}
       {ghosts.filter((it) => !liveIds.includes(it.id) && anims.current[it.id]).map((it) => {
-        const g = lastGeom.current[it.id] || geom(0, 1, 1, W);
+        const g = lastGeom.current[it.id] || geom(0, 1, 1, W, GC);
         return (
           <Cell
             key={`ghost-${it.id}`}
             item={it}
             anim={anims.current[it.id]}
             L={g.w / g.s}
+            ch={CH}
             compact={!g.wide}
             col2={!g.wide && g.col === 0}
             active={false}
@@ -543,7 +557,7 @@ export default function BannerGrid({
         const it = byId.current[id];
         const i = order.indexOf(id);
         if (!it || i < 0) return null;
-        const g = geom(i, n, cols, W);
+        const g = geom(i, n, cols, W, GC);
         const a = animOf(id, g, mounted.current);
         return (
           <Cell
@@ -551,6 +565,7 @@ export default function BannerGrid({
             item={it}
             anim={a}
             L={g.w / g.s}
+            ch={CH}
             compact={!g.wide}
             col2={!g.wide && g.col === 0}
             active={active}
@@ -569,7 +584,7 @@ export default function BannerGrid({
           pointillés), posé sans nouveau rendu */}
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.veil, { opacity: dimV.interpolate({ inputRange: [0, 1], outputRange: [0, 1 - DIM] }) }]} />
       {/* Aperçu de la future disposition (survol de la languette) : cases en pointillés */}
-      {!onSlots && stage === 1 && drag.id && Array.from({ length: Math.min(drag.n, drag.cols === 1 ? 8 : 4) }, (_, i) => geom(i, drag.n, drag.cols === 1 ? 2 : 1, W)).map((gq, i) => (
+      {!onSlots && stage === 1 && drag.id && Array.from({ length: Math.min(drag.n, drag.cols === 1 ? 8 : 4) }, (_, i) => geom(i, drag.n, drag.cols === 1 ? 2 : 1, W, GC)).map((gq, i) => (
         <View key={`slot-${i}`} pointerEvents="none" style={[styles.slot, { left: gq.x + 3, top: gq.y + 3, width: gq.w - 6, height: gq.h - 6 }]} />
       ))}
 
@@ -582,7 +597,7 @@ export default function BannerGrid({
             opacity: copy.op, transform: [{ scale: copy.k }],
           }]}
         >
-          <Animated.View style={[styles.content, { width: copyType.L, transform: [{ scale: copy.s }] }]}>
+          <Animated.View style={[styles.content, { width: copyType.L, height: CH, transform: [{ scale: copy.s }] }]}>
             {renderBanner(pickedItem, { compact: copyType.compact, layoutWidth: copyType.L, inReorder: true, isWiggling: true, phase: 0 })}
           </Animated.View>
           <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.copyLine, { opacity: copy.line }]} />
@@ -617,7 +632,7 @@ export default function BannerGrid({
 const styles = StyleSheet.create({
   wrap: { flex: 1, position: 'relative' },
   cell: { position: 'absolute', overflow: 'hidden', backgroundColor: theme.colors.background },
-  content: { height: H1, transformOrigin: 'top left' },
+  content: { transformOrigin: 'top left' },
   lineBottom: { position: 'absolute', left: 0, right: 0, bottom: 0, height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border },
   lineRight: { position: 'absolute', top: 0, bottom: 0, right: 0, width: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border },
   copy: { position: 'absolute', overflow: 'hidden', backgroundColor: theme.colors.background, zIndex: 10, elevation: 10 },

@@ -30,8 +30,15 @@ const BOX = SIZE + 2 * (RAY_GAP + RAY_LEN) + 4;
 
 // 1.61 : mise en avant (bandeau tenu) et survol aimanté pilotés DIRECTEMENT par la grille (ref) :
 // l'animation part tout de suite, sans attendre un nouveau rendu de la liste.
-const Languette = forwardRef(function Languette({ visible, cols }, ref) {
+// 1.62 : `top` (haut de la pastille dans le conteneur, animé quand il change) et `dim` (grisée : la
+// bascule n'est pas possible) — utilisés par le partage (une languette par section)
+const Languette = forwardRef(function Languette({ visible, cols, top = LANGUETTE.top, dim = false }, ref) {
   const [W, setW] = useState(0);
+  const top0 = useRef(top).current;
+  const dy = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(dy, { toValue: top - top0, duration: 450, easing: Easing.inOut(Easing.cubic), useNativeDriver: true }).start();
+  }, [top]); // eslint-disable-line
   const x = useRef(new Animated.Value(1)).current;      // 0 = en place, 1 = sortie à droite
   const accent = useRef(new Animated.Value(0)).current; // 0 = repos, 1 = bandeau tenu
   const spin = useRef(new Animated.Value(0)).current;
@@ -77,8 +84,9 @@ const Languette = forwardRef(function Languette({ visible, cols }, ref) {
         <Animated.View
           style={[styles.wrap, {
             left: LANGUETTE.visible - SIZE - (BOX - SIZE) / 2,
-            top: LANGUETTE.top - (BOX - SIZE) / 2,
-            transform: [{ translateX }, { scale }],
+            top: top0 - (BOX - SIZE) / 2,
+            opacity: dim ? theme.dim : 1,
+            transform: [{ translateX }, { translateY: dy }, { scale }],
           }]}
         >
           {/* Rayons (derrière la pastille) */}

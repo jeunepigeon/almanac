@@ -12,31 +12,34 @@ const C_FAINT = theme.colors.textFaint; // couleurs lues sur le fil d'affichage
 const C_TEXT = theme.colors.text;
 const LINE_BASE = 100; // largeur de base du trait (mis à l'échelle)
 
-function TabText({ pos, i, label }) {
+function TabText({ pos, i, label, n }) {
   const style = useAnimatedStyle(() => {
     const p = i + 1;
     const p0 = Math.max(0, Math.min(1, 1 - Math.abs(pos.value - p))); // 1 sur l'onglet, 0 à 1 page
-    const atEdge = (i === 0 && pos.value < p) || (i === LABELS.length - 1 && pos.value > p);
+    const atEdge = (i === 0 && pos.value < p) || (i === n - 1 && pos.value > p);
     return { color: interpolateColor(atEdge ? 1 : p0, [0, 1], [C_FAINT, C_TEXT]) };
-  }, [i]);
+  }, [i, n]);
   return <Animated.Text style={[styles.tabText, style]}>{label}</Animated.Text>;
 }
 
-export default function AnimatedTabs({ pos, onPress, dimmed = false }) {
-  const [lay, setLay] = useState([null, null, null]); // { x, w } de chaque onglet
+// 1.62 : `labels` (par défaut Calendrier · Recherche · Stats) — l'onglet i est à la position i + 1
+export default function AnimatedTabs({ pos, onPress, dimmed = false, labels = LABELS }) {
+  const n = labels.length;
+  const [lay, setLay] = useState(() => labels.map(() => null)); // { x, w } de chaque onglet
   const ready = lay.every(Boolean);
-  const xs = ready ? lay.map((l) => l.x) : [0, 0, 0];
-  const ws = ready ? lay.map((l) => l.w) : [0, 0, 0];
+  const xs = ready ? lay.map((l) => l.x) : labels.map(() => 0);
+  const ws = ready ? lay.map((l) => l.w) : labels.map(() => 0);
+  const steps = labels.map((_, i) => i + 1);
 
   const lineStyle = useAnimatedStyle(() => {
-    const x = interpolate(pos.value, [1, 2, 3], xs, Extrapolation.CLAMP);
-    const w = interpolate(pos.value, [1, 2, 3], ws, Extrapolation.CLAMP);
+    const x = interpolate(pos.value, steps, xs, Extrapolation.CLAMP);
+    const w = interpolate(pos.value, steps, ws, Extrapolation.CLAMP);
     return { transform: [{ translateX: x }, { scaleX: w / LINE_BASE }] };
-  }, [xs[0], xs[1], xs[2], ws[0], ws[1], ws[2]]);
+  }, [xs.join('|'), ws.join('|'), n]); // eslint-disable-line
 
   return (
     <View style={[styles.tabs, dimmed && styles.dimmed]} pointerEvents={dimmed ? 'none' : 'auto'}>
-      {LABELS.map((label, i) => (
+      {labels.map((label, i) => (
         <TouchableOpacity
           key={label}
           onPress={() => onPress(i)}
@@ -46,7 +49,7 @@ export default function AnimatedTabs({ pos, onPress, dimmed = false }) {
             setLay((cur) => (cur[i] && cur[i].x === x && cur[i].w === width ? cur : cur.map((v, k) => (k === i ? { x, w: width } : v))));
           }}
         >
-          <TabText pos={pos} i={i} label={label} />
+          <TabText pos={pos} i={i} label={label} n={n} />
           <View style={styles.lineSpace} />
         </TouchableOpacity>
       ))}

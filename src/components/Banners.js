@@ -100,7 +100,7 @@ export function SobreBanner({ lastGlobalTimestamp, ...frame }) {
           <View style={[styles.counterWrap, frame.compact && styles.counterWrapCompact]}>
             <LiveCounter timestamp={lastGlobalTimestamp} style={styles.counter} numberOfLines={1} />
           </View>
-          <DateLine text={rangeFR(lastGlobalTimestamp, null)} />
+          {!frame.noDate && <DateLine text={rangeFR(lastGlobalTimestamp, null)} />}
         </>
       ) : (
         <>
@@ -122,7 +122,7 @@ export function CounterBanner({ label, color, labelColor, lastTimestamp, ...fram
           ? <LiveCounter timestamp={lastTimestamp} style={[styles.counter, { color }]} numberOfLines={1} />
           : <Text style={[styles.counter, { color }]}>—</Text>}
       </View>
-      <DateLine text={lastTimestamp ? rangeFR(lastTimestamp, null) : null} />
+      {!frame.noDate && <DateLine text={lastTimestamp ? rangeFR(lastTimestamp, null) : null} />}
     </Frame>
   );
 }
@@ -153,7 +153,7 @@ export function RecordBanner(frame) {
           : current ? <LiveCounter timestamp={p.last} style={[styles.counter, { color: c }]} numberOfLines={1} />
             : <Text style={[styles.counter, { color: c }]} numberOfLines={1}>{formatDurationSince(p.pastRecord.start, p.pastRecord.end)}</Text>}
       </View>
-      <DateLine text={p.last == null ? null : current ? rangeFR(p.last, null) : rangeFR(p.pastRecord.start, p.pastRecord.end)} />
+      {!frame.noDate && <DateLine text={p.last == null ? null : current ? rangeFR(p.last, null) : rangeFR(p.pastRecord.start, p.pastRecord.end)} />}
     </Frame>
   );
 }
